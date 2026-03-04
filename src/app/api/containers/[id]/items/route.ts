@@ -15,7 +15,7 @@ const ManageItemSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -34,11 +34,8 @@ export async function POST(
       );
     }
 
-    const container = await containersApi.addItem(
-      params.id,
-      parsed.data.itemId,
-      user.email
-    );
+    const { id } = await params;
+    const container = await containersApi.addItem(id, parsed.data.itemId, user.email);
 
     return Response.json({
       success: true,
@@ -46,14 +43,14 @@ export async function POST(
       message: "Item added to container",
     });
   } catch (err) {
-    console.error(`[POST /containers/${params.id}/items] Error:`, err);
+    console.error("[POST /containers/[id]/items] Error:", err);
     return serverErrorResponse("Failed to add item to container");
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -72,11 +69,8 @@ export async function DELETE(
       );
     }
 
-    const container = await containersApi.removeItem(
-      params.id,
-      parsed.data.itemId,
-      user.email
-    );
+    const { id } = await params;
+    const container = await containersApi.removeItem(id, parsed.data.itemId, user.email);
 
     return Response.json({
       success: true,
@@ -84,7 +78,7 @@ export async function DELETE(
       message: "Item removed from container",
     });
   } catch (err) {
-    console.error(`[DELETE /containers/${params.id}/items] Error:`, err);
+    console.error("[DELETE /containers/[id]/items] Error:", err);
     return serverErrorResponse("Failed to remove item from container");
   }
 }

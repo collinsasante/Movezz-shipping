@@ -2,7 +2,7 @@
 // POST /api/users  — create user account (super_admin only)
 import { NextRequest } from "next/server";
 import { usersApi } from "@/lib/airtable";
-import { createFirebaseUser, deleteFirebaseUser, setCustomClaims } from "@/lib/firebase-admin";
+import { createFirebaseUser, deleteFirebaseUser, setCustomClaims, sendPasswordResetEmail } from "@/lib/firebase-admin";
 import {
   requireAuth,
   serverErrorResponse,
@@ -89,10 +89,19 @@ export async function POST(request: NextRequest) {
       console.error("[POST /users] setCustomClaims failed (non-fatal):", claimsErr);
     }
 
+    // 4. Send password-setup email (non-fatal)
+    let emailSent = false;
+    try {
+      await sendPasswordResetEmail(email);
+      emailSent = true;
+    } catch (emailErr) {
+      console.error("[POST /users] sendPasswordResetEmail failed (non-fatal):", emailErr);
+    }
+
     return Response.json(
       {
         success: true,
-        data: { user: appUser, tempPassword },
+        data: { user: appUser, tempPassword, emailSent },
         message: `Account created for ${email}`,
       },
       { status: 201 }

@@ -26,7 +26,7 @@ const UpdateStatusSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -36,6 +36,7 @@ export async function PATCH(
   const { user } = authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateStatusSchema.safeParse(body);
 
@@ -48,7 +49,7 @@ export async function PATCH(
     const { status, notes, sendWhatsApp } = parsed.data;
 
     // Validate forward-only status progression
-    const existing = await itemsApi.getById(params.id);
+    const existing = await itemsApi.getById(id);
     const currentIndex = ITEM_STATUS_STEPS.indexOf(
       existing.status as ItemStatus
     );
@@ -62,7 +63,7 @@ export async function PATCH(
     }
 
     const item = await itemsApi.updateStatus(
-      params.id,
+      id,
       status as ItemStatus,
       user.email,
       user.role,
@@ -79,7 +80,7 @@ export async function PATCH(
     if (err instanceof BusinessError) {
       return badRequestResponse(err.message);
     }
-    console.error(`[PATCH /items/${params.id}/status] Error:`, err);
+    console.error("[PATCH /items/[id]/status] Error:", err);
     return serverErrorResponse("Failed to update item status");
   }
 }

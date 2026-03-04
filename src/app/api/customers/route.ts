@@ -2,7 +2,7 @@
 // POST /api/customers  — create customer (admin only)
 import { NextRequest } from "next/server";
 import { customersApi, usersApi } from "@/lib/airtable";
-import { createFirebaseUser, setCustomClaims } from "@/lib/firebase-admin";
+import { createFirebaseUser, setCustomClaims, sendPasswordResetEmail } from "@/lib/firebase-admin";
 import {
   requireAuth,
   serverErrorResponse,
@@ -98,10 +98,19 @@ export async function POST(request: NextRequest) {
       console.error("[POST /customers] setCustomClaims failed (non-fatal):", claimsErr);
     }
 
+    // 6. Send password-setup email (non-fatal)
+    let emailSent = false;
+    try {
+      await sendPasswordResetEmail(email);
+      emailSent = true;
+    } catch (emailErr) {
+      console.error("[POST /customers] sendPasswordResetEmail failed (non-fatal):", emailErr);
+    }
+
     return Response.json(
       {
         success: true,
-        data: { customer, user: appUser, tempPassword },
+        data: { customer, user: appUser, tempPassword, emailSent },
         message: `Customer ${customer.shippingMark} created successfully`,
       },
       { status: 201 }

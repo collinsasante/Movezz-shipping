@@ -136,7 +136,7 @@ export default function AdminDashboardPage() {
               <div className="space-y-2">
                 {ITEM_STATUS_STEPS.map((step) => {
                   const count = stats?.itemsByStatus?.[step] ?? 0;
-                  const total = Object.values(stats?.itemsByStatus ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+                  const total = Object.values(stats?.itemsByStatus ?? {}).reduce<number>((a, b) => a + (b ?? 0), 0);
                   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
                   return (
                     <div key={step}>

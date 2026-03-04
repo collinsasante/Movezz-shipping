@@ -106,7 +106,7 @@ export default function EditCustomerPage() {
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   required
-                  hint="Include country code (e.g. +1 for USA)"
+                  hint="Include country code (e.g. +86 for China)"
                 />
                 <Input
                   label="Email Address"

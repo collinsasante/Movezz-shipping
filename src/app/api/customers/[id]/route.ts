@@ -22,7 +22,7 @@ const UpdateCustomerSchema = z.object({
 // GET /api/customers/[id]
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -33,7 +33,7 @@ export async function GET(
   const { user } = authResult;
 
   try {
-    const { id } = params;
+    const { id } = await params;
 
     // Customers can only access their own data
     if (user.role === "customer" && user.customerId !== id) {
@@ -60,7 +60,7 @@ export async function GET(
       },
     });
   } catch (err) {
-    console.error(`[GET /customers/${params.id}] Error:`, err);
+    console.error("[GET /customers/[id]] Error:", err);
     return notFoundResponse("Customer not found");
   }
 }
@@ -68,13 +68,14 @@ export async function GET(
 // PATCH /api/customers/[id]
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateCustomerSchema.safeParse(body);
 
@@ -84,11 +85,7 @@ export async function PATCH(
       );
     }
 
-    const customer = await customersApi.update(
-      params.id,
-      parsed.data,
-      user.email
-    );
+    const customer = await customersApi.update(id, parsed.data, user.email);
 
     return Response.json({
       success: true,
@@ -96,7 +93,7 @@ export async function PATCH(
       message: "Customer updated successfully",
     });
   } catch (err) {
-    console.error(`[PATCH /customers/${params.id}] Error:`, err);
+    console.error("[PATCH /customers/[id]] Error:", err);
     return serverErrorResponse("Failed to update customer");
   }
 }
@@ -104,21 +101,22 @@ export async function PATCH(
 // DELETE /api/customers/[id] — soft delete (mark as inactive)
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
-    await customersApi.update(params.id, { status: "inactive" }, user.email);
+    const { id } = await params;
+    await customersApi.update(id, { status: "inactive" }, user.email);
 
     return Response.json({
       success: true,
       message: "Customer deactivated successfully",
     });
   } catch (err) {
-    console.error(`[DELETE /customers/${params.id}] Error:`, err);
+    console.error("[DELETE /customers/[id]] Error:", err);
     return serverErrorResponse("Failed to deactivate customer");
   }
 }

@@ -31,35 +31,37 @@ const UpdateStatusSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
-    const ticket = await supportApi.getById(params.id);
+    const { id } = await params;
+    const ticket = await supportApi.getById(id);
     // Customers can only view their own tickets
     if (user.role === "customer" && ticket.customerId !== user.customerId) {
       return forbiddenResponse("Access denied");
     }
     return Response.json({ success: true, data: ticket });
   } catch (err) {
-    console.error(`[GET /support/${params.id}] Error:`, err);
+    console.error("[GET /support/[id]] Error:", err);
     return serverErrorResponse("Failed to fetch ticket");
   }
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
-    const ticket = await supportApi.getById(params.id);
+    const { id } = await params;
+    const ticket = await supportApi.getById(id);
     if (user.role === "customer" && ticket.customerId !== user.customerId) {
       return forbiddenResponse("Access denied");
     }
@@ -84,7 +86,7 @@ export async function POST(
       : undefined;
 
     const updated = await supportApi.addMessage(
-      params.id,
+      id,
       user.role === "customer" ? "customer" : "admin",
       senderName,
       content,
@@ -93,29 +95,30 @@ export async function POST(
 
     return Response.json({ success: true, data: updated });
   } catch (err) {
-    console.error(`[POST /support/${params.id}] Error:`, err);
+    console.error("[POST /support/[id]] Error:", err);
     return serverErrorResponse("Failed to send message");
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateStatusSchema.safeParse(body);
     if (!parsed.success) {
       return badRequestResponse(parsed.error.errors.map((e) => e.message).join(", "));
     }
 
-    const ticket = await supportApi.updateStatus(params.id, parsed.data.status);
+    const ticket = await supportApi.updateStatus(id, parsed.data.status);
     return Response.json({ success: true, data: ticket });
   } catch (err) {
-    console.error(`[PATCH /support/${params.id}] Error:`, err);
+    console.error("[PATCH /support/[id]] Error:", err);
     return serverErrorResponse("Failed to update ticket");
   }
 }

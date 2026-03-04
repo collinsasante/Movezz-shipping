@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && wrangler dev",
+    "cf:deploy": "opennextjs-cloudflare build && node scripts/cf-pages-deploy.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -27,12 +30,11 @@
     "cookies-next": "^4.2.1",
     "date-fns": "^3.6.0",
     "firebase": "^10.12.3",
-    "firebase-admin": "^12.3.0",
     "jose": "^5.6.3",
     "lucide-react": "^0.408.0",
-    "next": "14.2.30",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "react-dropzone": "^14.2.3",
     "react-hook-form": "^7.52.1",
     "recharts": "^2.12.7",
@@ -40,14 +42,21 @@
     "typescript": "^5.5.3",
     "zod": "^3.23.8"
   },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "$jose"
+    }
+  },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.17.1",
     "@types/node": "^20.14.11",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
-    "eslint-config-next": "14.2.30",
+    "eslint-config-next": "latest",
     "postcss": "^8.4.39",
-    "tailwindcss": "^3.4.6"
+    "tailwindcss": "^3.4.6",
+    "wrangler": "^4.69.0"
   }
 }

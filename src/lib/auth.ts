@@ -22,12 +22,16 @@ const DEV_USER: AppUser = {
 const AUTH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const authCache = new Map<string, { user: AppUser; expiresAt: number }>();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of authCache.entries()) {
-    if (val.expiresAt <= now) authCache.delete(key);
-  }
-}, 60 * 1000);
+try {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of authCache.entries()) {
+      if (val.expiresAt <= now) authCache.delete(key);
+    }
+  }, 60 * 1000);
+} catch (e) {
+  console.warn("[auth] setInterval not available in this runtime:", e);
+}
 
 // ---- Extract and verify token from request ----
 export async function getAuthUser(

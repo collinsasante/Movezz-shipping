@@ -17,13 +17,14 @@ const UpdateStatusSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateStatusSchema.safeParse(body);
 
@@ -38,7 +39,7 @@ export async function PATCH(
     // Update arrival date if provided or if arriving in Ghana
     if (arrivalDate || status === "Arrived in Ghana") {
       await containersApi.update(
-        params.id,
+        id,
         { arrivalDate: arrivalDate ?? new Date().toISOString().split("T")[0] },
         user.email
       );
@@ -46,7 +47,7 @@ export async function PATCH(
 
     // updateStatus handles cascade logic
     const container = await containersApi.updateStatus(
-      params.id,
+      id,
       status,
       user.email,
       user.role,
@@ -67,7 +68,7 @@ export async function PATCH(
     if (err instanceof BusinessError) {
       return badRequestResponse(err.message);
     }
-    console.error(`[PATCH /containers/${params.id}/status] Error:`, err);
+    console.error("[PATCH /containers/[id]/status] Error:", err);
     return serverErrorResponse("Failed to update container status");
   }
 }

@@ -156,7 +156,7 @@ export default function ItemsPage() {
                   {item.isMissing && (
                     <AlertTriangle
                       className="h-3.5 w-3.5 text-red-500"
-                      title="Item is flagged as missing"
+                      aria-label="Item is flagged as missing"
                     />
                   )}
                 </div>

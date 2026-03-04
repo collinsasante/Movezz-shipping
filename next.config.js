@@ -1,16 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ["v5.airtableusercontent.com", "dl.airtable.com"],
     remotePatterns: [
       {
         protocol: "https",
         hostname: "*.airtableusercontent.com",
       },
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "firebasestorage.googleapis.com",
+      },
     ],
-  },
-  experimental: {
-    serverComponentsExternalPackages: ["firebase-admin"],
   },
 };
 

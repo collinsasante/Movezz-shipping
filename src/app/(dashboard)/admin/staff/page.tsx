@@ -52,6 +52,8 @@ export default function StaffPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
+  const [createdEmail, setCreatedEmail] = useState<string>("");
+  const [emailSent, setEmailSent] = useState(false);
   const [copiedPass, setCopiedPass] = useState(false);
 
   const [form, setForm] = useState({
@@ -132,6 +134,8 @@ export default function StaffPage() {
       const res = await axios.post("/api/users", form);
       setDialogOpen(false);
       setCreatedPassword(res.data.data?.tempPassword ?? null);
+      setCreatedEmail(form.email);
+      setEmailSent(res.data.data?.emailSent ?? false);
       load();
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
@@ -352,10 +356,25 @@ export default function StaffPage() {
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 space-y-4">
             <div className="text-center">
               <h3 className="font-bold text-gray-900 text-lg">User Created!</h3>
-              <p className="text-sm text-gray-500 mt-1">Share this temporary password with the user. They can change it after first login.</p>
+              {emailSent ? (
+                <p className="text-sm text-gray-500 mt-1">
+                  A password setup email has been sent to{" "}
+                  <span className="font-medium text-gray-700">{createdEmail}</span>.
+                  They will receive a link to set their own password.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mt-1">
+                  Email could not be sent. Share this temporary password with the user manually.
+                </p>
+              )}
             </div>
             <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between gap-3">
-              <code className="font-mono text-base font-bold text-gray-900 tracking-wider">{createdPassword}</code>
+              <div>
+                {emailSent && (
+                  <p className="text-xs text-gray-400 mb-1">Fallback password (if email fails)</p>
+                )}
+                <code className="font-mono text-base font-bold text-gray-900 tracking-wider">{createdPassword}</code>
+              </div>
               <button onClick={copyPassword} className="text-gray-400 hover:text-brand-600 transition-colors shrink-0">
                 {copiedPass ? <CheckCheck className="h-5 w-5 text-green-500" /> : <Copy className="h-5 w-5" />}
               </button>

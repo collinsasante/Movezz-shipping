@@ -6,6 +6,8 @@
 - Airtable account with base configured (see AIRTABLE_SCHEMA.md)
 - Firebase project configured
 - WhatsApp Business API access (optional — Airtable automations can handle this)
+- Cloudinary account (free tier works — for item photo uploads)
+- Firebase Storage enabled (for support chat file attachments)
 
 ---
 
@@ -23,17 +25,35 @@ npm install
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Create a new project
 3. Enable **Authentication** → Email/Password
-4. Go to **Project Settings** → Copy Web App config to `.env.local`
-5. Generate **Service Account** key:
+4. Enable **Storage** (for support chat file attachments):
+   - Build → Storage → Get Started → choose a region → Done
+   - In Storage Rules, allow authenticated users to read/write: `allow read, write: if request.auth != null;`
+5. Go to **Project Settings** → Copy Web App config to `.env.local`
+6. Generate **Service Account** key:
    - Project Settings → Service Accounts → Generate new private key
    - Copy `project_id`, `client_email`, `private_key` to `.env.local`
+
+---
+
+## Step 2b: Set Up Cloudinary (Item Photos)
+
+1. Create a free account at [Cloudinary](https://cloudinary.com/)
+2. Go to your **Dashboard** → copy Cloud Name, API Key, API Secret
+3. Add to `.env.local`:
+   ```
+   CLOUDINARY_CLOUD_NAME=your-cloud-name
+   CLOUDINARY_API_KEY=your-api-key
+   CLOUDINARY_API_SECRET=your-api-secret
+   ```
+4. (Optional) In Cloudinary → Settings → Upload → Add an upload preset named `pakkmaxx_unsigned` with **Unsigned** signing mode for direct browser uploads (not required — the app uses server-signed uploads).
 
 ---
 
 ## Step 3: Set Up Airtable
 
 1. Create a new Airtable base called **"Pakkmaxx"**
-2. Create all 7 tables as documented in `AIRTABLE_SCHEMA.md`
+2. Create all **8 tables** as documented in `AIRTABLE_SCHEMA.md`:
+   - Customers, Items, Orders, Containers, StatusHistory, ActivityLogs, Users, **SupportTickets**
 3. Get your API key: [Airtable Account](https://airtable.com/account) → API section
 4. Copy your Base ID from the URL: `https://airtable.com/appXXXXXXXXXXXXXX/...`
 5. Add both to `.env.local`
@@ -68,8 +88,9 @@ cp .env.example .env.local
 Required variables:
 - `AIRTABLE_API_KEY` - Your Airtable personal access token
 - `AIRTABLE_BASE_ID` - Your Airtable base ID (appXXXXX...)
-- `NEXT_PUBLIC_FIREBASE_*` - Firebase client config (7 variables)
+- `NEXT_PUBLIC_FIREBASE_*` - Firebase client config (6 variables)
 - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` - Firebase Admin SDK
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` - Item photo uploads
 
 ---
 
@@ -83,7 +104,50 @@ Open http://localhost:3000
 
 ---
 
-## Step 7: Deploy to Vercel (Production)
+## Step 7: Deploy to Cloudflare Pages (Production)
+
+### Option A: CLI (Recommended for first deploy)
+```bash
+npm run cf:build      # Builds for Cloudflare using OpenNext adapter
+npm run cf:deploy     # Builds + deploys via Wrangler
+```
+
+On first run, `wrangler` will prompt you to log in to Cloudflare.
+
+### Option B: GitHub Integration
+1. Push code to GitHub
+2. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages**
+3. Create application → **Pages** → Connect to Git
+4. Select your repo
+5. Set build settings:
+   - **Build command**: `npm run cf:build`
+   - **Build output directory**: `.open-next/assets`
+6. Add all environment variables (see below)
+7. Deploy!
+
+### Environment Variables in Cloudflare:
+Go to **Workers & Pages → your project → Settings → Environment Variables**
+
+Add all variables from `.env.example`. For `FIREBASE_PRIVATE_KEY`:
+- Cloudflare handles multiline correctly — paste as-is:
+```
+-----BEGIN PRIVATE KEY-----
+XXXXXXXXXXXX
+-----END PRIVATE KEY-----
+```
+
+> **Note:** `NEXT_PUBLIC_*` variables must be added as **Plain text** variables (not secrets) so they get inlined at build time.
+
+### Preview locally before deploying:
+```bash
+npm run cf:preview
+```
+
+---
+
+## Step 7 (Alternative): Deploy to Vercel
+
+If you prefer Vercel over Cloudflare:
 
 ### Option A: CLI
 ```bash
@@ -98,10 +162,7 @@ vercel
 3. Add all environment variables in Vercel → Settings → Environment Variables
 4. Deploy!
 
-### Environment Variables in Vercel:
-Add all variables from `.env.example` as **Production** environment variables.
-
-For `FIREBASE_PRIVATE_KEY`, use the exact format with `\n` for newlines:
+For `FIREBASE_PRIVATE_KEY` on Vercel, use the `\n` format:
 ```
 "-----BEGIN PRIVATE KEY-----\nXXXXX\n-----END PRIVATE KEY-----\n"
 ```
@@ -128,12 +189,15 @@ For `FIREBASE_PRIVATE_KEY`, use the exact format with `\n` for newlines:
 
 - [ ] Login to admin dashboard works
 - [ ] Create a test customer
-- [ ] Receive a test item
+- [ ] Receive a test item (upload a photo — verifies Cloudinary)
 - [ ] Status update triggers (check WhatsApp)
 - [ ] Create a container and add items
 - [ ] Update container status to "Arrived in Ghana" — verify all items update
 - [ ] Customer login works
 - [ ] Customer can see their items
+- [ ] Customer opens a support ticket — admin receives it in Support tab
+- [ ] Admin replies to ticket — customer sees response
+- [ ] Support chat file/image upload works (verifies Firebase Storage)
 
 ---
 

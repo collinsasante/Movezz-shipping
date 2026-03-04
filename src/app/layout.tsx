@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ToastProvider } from "@/components/ui/toast";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
   title: "Pakkmaxx | Freight Forwarding & Shipment Tracking",
   description:
-    "Pakkmaxx - Professional freight forwarding from USA to Ghana. Track your packages, manage orders, and get real-time WhatsApp notifications.",
-  keywords: ["freight forwarding", "Ghana shipping", "package tracking", "Pakkmaxx"],
-  icons: { icon: "/favicon.ico" },
+    "Pakkmaxx - Professional freight forwarding from China to Ghana. Track your packages, manage orders, and get real-time WhatsApp notifications.",
+  keywords: ["freight forwarding", "Ghana shipping", "China shipping", "package tracking", "Pakkmaxx"],
+  icons: { icon: "/icon.svg", shortcut: "/icon.svg" },
 };
 
 export default function RootLayout({
@@ -21,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} h-full antialiased`}>
+      <body className="font-sans h-full antialiased">
         <AuthProvider>
           <ToastProvider>
             {children}

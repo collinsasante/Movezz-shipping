@@ -21,7 +21,7 @@ const UpdateOrderSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -32,7 +32,8 @@ export async function GET(
   const { user } = authResult;
 
   try {
-    const order = await ordersApi.getById(params.id);
+    const { id } = await params;
+    const order = await ordersApi.getById(id);
 
     if (user.role === "customer" && order.customerId !== user.customerId) {
       return Response.json(
@@ -45,9 +46,9 @@ export async function GET(
     const items = order.itemIds.length
       ? (
           await Promise.all(
-            order.itemIds.map((id) =>
-              itemsApi.getById(id).catch((err) => {
-                console.error(`[orders/${params.id}] Failed to fetch item ${id}:`, err);
+            order.itemIds.map((itemId) =>
+              itemsApi.getById(itemId).catch((err) => {
+                console.error(`[orders/${id}] Failed to fetch item ${itemId}:`, err);
                 return null;
               })
             )
@@ -60,20 +61,21 @@ export async function GET(
       data: { ...order, items },
     });
   } catch (err) {
-    console.error(`[GET /orders/${params.id}] Error:`, err);
+    console.error("[GET /orders/[id]] Error:", err);
     return notFoundResponse("Order not found");
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateOrderSchema.safeParse(body);
 
@@ -83,7 +85,7 @@ export async function PATCH(
       );
     }
 
-    const order = await ordersApi.update(params.id, parsed.data, user.email);
+    const order = await ordersApi.update(id, parsed.data, user.email);
 
     // Sync payment to Keepup when marked as Paid (non-fatal)
     if (parsed.data.status === "Paid" && order.keepupSaleId) {
@@ -100,7 +102,7 @@ export async function PATCH(
       message: "Order updated successfully",
     });
   } catch (err) {
-    console.error(`[PATCH /orders/${params.id}] Error:`, err);
+    console.error("[PATCH /orders/[id]] Error:", err);
     return serverErrorResponse("Failed to update order");
   }
 }
@@ -108,30 +110,30 @@ export async function PATCH(
 // DELETE /api/orders/[id]
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
-    // Get the keepupSaleId before deleting
-    const existing = await ordersApi.getById(params.id);
+    const { id } = await params;
+    const existing = await ordersApi.getById(id);
 
-    await ordersApi.delete(params.id, user.email);
+    await ordersApi.delete(id, user.email);
 
     // Cancel in Keepup (non-fatal)
     if (existing.keepupSaleId) {
       try {
         await cancelKeepupSale(existing.keepupSaleId);
       } catch (keepupErr) {
-        console.error(`[DELETE /orders] Keepup cancel failed (non-fatal):`, keepupErr);
+        console.error("[DELETE /orders] Keepup cancel failed (non-fatal):", keepupErr);
       }
     }
 
     return Response.json({ success: true, message: "Order deleted" });
   } catch (err) {
-    console.error(`[DELETE /orders/${params.id}] Error:`, err);
+    console.error("[DELETE /orders/[id]] Error:", err);
     return serverErrorResponse("Failed to delete order");
   }
 }

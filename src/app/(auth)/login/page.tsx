@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signInWithGoogle } from "@/lib/firebase";
 import { useToast } from "@/components/ui/toast";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, Package } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import axios from "axios";
 
@@ -21,27 +20,16 @@ function GoogleIcon() {
   );
 }
 
-function Divider() {
-  return (
-    <div className="flex items-center gap-3 my-5">
-      <div className="flex-1 h-px bg-gray-200" />
-      <span className="text-xs text-gray-400 font-medium">or</span>
-      <div className="flex-1 h-px bg-gray-200" />
-    </div>
-  );
-}
-
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { error: toastError } = useToast();
 
-  const [email, setEmail]                   = useState("");
-  const [password, setPassword]             = useState("");
-  const [showPassword, setShowPassword]     = useState(false);
-  const [loading, setLoading]               = useState(false);
-  const [googleLoading, setGoogleLoading]   = useState(false);
-  const [devLoading, setDevLoading]         = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const redirect = searchParams?.get("redirect");
 
@@ -68,40 +56,21 @@ export default function LoginPage() {
     }
   };
 
-  const handleDevLogin = async () => {
-    setDevLoading(true);
-    try {
-      const res = await axios.post("/api/auth/verify", { idToken: "DEV_ADMIN_TEST_TOKEN" });
-      goToDashboard(res.data.data.user.role);
-    } catch {
-      toastError("Dev login failed", "Make sure NODE_ENV=development");
-    } finally {
-      setDevLoading(false);
-    }
-  };
-
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     try {
       const result  = await signInWithGoogle();
       const idToken = await result.user.getIdToken();
-
       const res = await axios
         .post("/api/auth/verify", { idToken })
         .catch((err) => {
-          if (axios.isAxiosError(err) && err.response?.data?.code === "NOT_REGISTERED") {
-            return null;
-          }
+          if (axios.isAxiosError(err) && err.response?.data?.code === "NOT_REGISTERED") return null;
           throw err;
         });
-
       if (res) {
         goToDashboard(res.data.data.user.role);
       } else {
-        toastError(
-          "Account not found",
-          "Your account hasn't been set up yet. Contact your administrator."
-        );
+        toastError("Account not found", "Your account hasn't been set up yet. Contact your administrator.");
       }
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : "";
@@ -117,120 +86,170 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-brand-600 to-brand-900 text-white flex-col justify-between p-12">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-            <Package className="h-6 w-6 text-white" />
-          </div>
-          <span className="font-black text-2xl tracking-tight">Pakkmaxx</span>
-        </div>
-        <div>
-          <h1 className="text-4xl font-black leading-tight mb-4">
-            Your trusted freight<br />partner from USA<br />to Ghana 🇬🇭
-          </h1>
-          <p className="text-brand-200 text-lg">
-            Track your packages, manage orders, and get real-time updates via WhatsApp.
-          </p>
-        </div>
-        <div className="flex gap-6">
-          <div><p className="text-3xl font-black">500+</p><p className="text-brand-200 text-sm">Happy customers</p></div>
-          <div><p className="text-3xl font-black">10K+</p><p className="text-brand-200 text-sm">Packages delivered</p></div>
-          <div><p className="text-3xl font-black">99%</p><p className="text-brand-200 text-sm">On-time delivery</p></div>
-        </div>
+    <div className="flex flex-col h-full min-h-[600px]">
+      {/* Brand at top */}
+      <div className="flex items-center gap-2.5 px-10 pt-8">
+        <Image src="/logowithouttext.png" alt="Pakkmaxx" width={28} height={28} className="rounded" />
+        <span className="text-sm font-semibold text-gray-700 tracking-tight">Pakkmaxx</span>
       </div>
 
-      {/* Right form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
-        <div className="w-full max-w-md">
-          <div className="flex lg:hidden items-center gap-2 mb-8">
-            <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center">
-              <Package className="h-5 w-5 text-white" />
-            </div>
-            <span className="font-black text-xl text-gray-900">Pakkmaxx</span>
-          </div>
+      {/* Form — vertically centred */}
+      <div className="flex-1 flex items-center justify-center px-10">
+        <div className="w-full max-w-sm">
+          <h2 className="text-3xl font-bold text-gray-900 mb-1.5">Welcome Back</h2>
+          <p className="text-sm text-gray-400 mb-8">Enter your email and password to access your account</p>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
-              <p className="text-gray-500 text-sm mt-1">Sign in to access your dashboard</p>
-            </div>
-
-            {/* Google */}
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={googleLoading || loading}
-              className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border-2 border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {googleLoading ? (
-                <svg className="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : <GoogleIcon />}
-              Continue with Google
-            </button>
-
-            <Divider />
-
-            <form onSubmit={handleLogin} className="space-y-4">
-              <Input
-                label="Email Address"
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+              <input
                 type="email"
-                placeholder="you@example.com"
+                placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
+                className="w-full h-11 px-4 rounded-lg bg-gray-100 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0"
               />
+            </div>
 
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
-                <Input
-                  label="Password"
+                <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Your password"
+                  placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete="current-password"
+                  className="w-full h-11 px-4 pr-11 rounded-lg bg-gray-100 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0"
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   onClick={() => setShowPassword(!showPassword)}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+            </div>
 
-              <div className="flex justify-end">
-                <Link href="/reset-password" className="text-sm text-brand-600 hover:underline">
-                  Forgot password?
-                </Link>
-              </div>
+            <div className="flex items-center justify-between text-sm">
+              <label className="flex items-center gap-2 text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  defaultChecked
+                  className="h-3.5 w-3.5 rounded border-gray-300 accent-gray-900"
+                />
+                Remember me
+              </label>
+              <Link href="/reset-password" className="text-gray-500 hover:text-gray-900 transition-colors">
+                Forgot Password?
+              </Link>
+            </div>
 
-              <Button type="submit" className="w-full" size="lg" loading={loading} disabled={googleLoading}>
-                Sign In
-              </Button>
-            </form>
+            <button
+              type="submit"
+              disabled={loading || googleLoading}
+              className="w-full h-11 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </button>
+          </form>
 
-            {process.env.NODE_ENV === "development" && (
-              <button
-                type="button"
-                onClick={handleDevLogin}
-                disabled={devLoading}
-                className="mt-4 w-full h-9 rounded-lg border border-dashed border-amber-400 bg-amber-50 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
-              >
-                {devLoading ? "Logging in..." : "Dev Login (Admin) — dev only"}
-              </button>
-            )}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading || googleLoading}
+            className="mt-3 w-full h-11 flex items-center justify-center gap-3 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {googleLoading ? (
+              <svg className="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : <GoogleIcon />}
+            Sign In with Google
+          </button>
+        </div>
+      </div>
 
-            <p className="text-center text-sm text-gray-500 mt-6">
-              Need access? Contact your Pakkmaxx administrator.
+      {/* Bottom link */}
+      <p className="text-center text-sm text-gray-400 pb-8">
+        Need access?{" "}
+        <span className="text-gray-700 font-medium">Contact your Pakkmaxx administrator.</span>
+      </p>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        background:
+          "radial-gradient(ellipse 80% 80% at 80% 20%, rgba(180,0,180,0.5) 0%, transparent 60%)," +
+          "radial-gradient(ellipse 70% 70% at 20% 80%, rgba(0,80,220,0.4) 0%, transparent 60%)," +
+          "linear-gradient(135deg, #0a0014 0%, #0d001e 100%)",
+      }}
+    >
+      <div
+        className="w-full max-w-5xl flex overflow-hidden shadow-2xl"
+        style={{ borderRadius: "24px", minHeight: "620px" }}
+      >
+        {/* ── Left panel ── */}
+        <div
+          className="hidden lg:flex lg:w-[48%] flex-col justify-between p-10 relative overflow-hidden"
+          style={{
+            background:
+              "radial-gradient(ellipse 130% 90% at 90% 10%, rgba(30,100,255,0.55) 0%, transparent 55%)," +
+              "radial-gradient(ellipse 100% 110% at 10% 90%, rgba(220,0,130,0.6) 0%, transparent 55%)," +
+              "radial-gradient(ellipse 70% 70% at 55% 45%, rgba(140,0,220,0.45) 0%, transparent 55%)," +
+              "radial-gradient(ellipse 60% 60% at 80% 70%, rgba(0,180,255,0.3) 0%, transparent 55%)," +
+              "linear-gradient(145deg, #040010 0%, #0a0022 60%, #12002e 100%)",
+          }}
+        >
+          {/* Noise / shimmer overlay */}
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.015) 2px, rgba(255,255,255,0.015) 4px)",
+            }}
+          />
+
+          {/* Top label */}
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="h-px w-8 bg-white/25" />
+            <span className="text-xs font-semibold tracking-widest text-white/40 uppercase">
+              Our Mission
+            </span>
+          </div>
+
+          {/* Bottom text */}
+          <div className="relative z-10">
+            <h1 className="text-4xl font-black text-white leading-[1.15] mb-4">
+              Move Anything,<br />Anywhere<br />Reliably.
+            </h1>
+            <p className="text-sm text-white/50 leading-relaxed max-w-xs">
+              Seamlessly shipping from China to Ghana. Track every package, every mile, every step of the way.
             </p>
           </div>
+        </div>
+
+        {/* ── Right panel ── */}
+        <div className="flex-1 bg-white flex flex-col">
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-gray-200 border-t-gray-900 animate-spin" />
+              </div>
+            }
+          >
+            <LoginForm />
+          </Suspense>
         </div>
       </div>
     </div>

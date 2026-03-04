@@ -28,7 +28,7 @@ const UpdateItemSchema = z.object({
 // GET /api/items/[id]
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -39,7 +39,8 @@ export async function GET(
   const { user } = authResult;
 
   try {
-    const item = await itemsApi.getById(params.id);
+    const { id } = await params;
+    const item = await itemsApi.getById(id);
 
     // Customers can only access their own items
     if (user.role === "customer" && item.customerId !== user.customerId) {
@@ -50,14 +51,14 @@ export async function GET(
     }
 
     // Fetch status history
-    const history = await statusHistoryApi.getForRecord(params.id);
+    const history = await statusHistoryApi.getForRecord(id);
 
     return Response.json({
       success: true,
       data: { ...item, statusHistory: history },
     });
   } catch (err) {
-    console.error(`[GET /items/${params.id}] Error:`, err);
+    console.error("[GET /items/[id]] Error:", err);
     return notFoundResponse("Item not found");
   }
 }
@@ -65,7 +66,7 @@ export async function GET(
 // PATCH /api/items/[id]
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -75,6 +76,7 @@ export async function PATCH(
   const { user } = authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateItemSchema.safeParse(body);
 
@@ -84,7 +86,7 @@ export async function PATCH(
       );
     }
 
-    const item = await itemsApi.update(params.id, parsed.data, user.email);
+    const item = await itemsApi.update(id, parsed.data, user.email);
 
     return Response.json({
       success: true,
@@ -92,7 +94,7 @@ export async function PATCH(
       message: "Item updated successfully",
     });
   } catch (err) {
-    console.error(`[PATCH /items/${params.id}] Error:`, err);
+    console.error("[PATCH /items/[id]] Error:", err);
     return serverErrorResponse("Failed to update item");
   }
 }
@@ -100,17 +102,18 @@ export async function PATCH(
 // DELETE /api/items/[id]
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
-    await itemsApi.delete(params.id, user.email);
+    const { id } = await params;
+    await itemsApi.delete(id, user.email);
     return Response.json({ success: true, message: "Item deleted" });
   } catch (err) {
-    console.error(`[DELETE /items/${params.id}] Error:`, err);
+    console.error("[DELETE /items/[id]] Error:", err);
     return serverErrorResponse("Failed to delete item");
   }
 }

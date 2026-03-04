@@ -28,7 +28,7 @@ const ManageItemSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, [
     "super_admin",
@@ -37,15 +37,16 @@ export async function GET(
   if (authResult instanceof Response) return authResult;
 
   try {
-    const container = await containersApi.getById(params.id);
+    const { id } = await params;
+    const container = await containersApi.getById(id);
 
     // Hydrate items — log failures but return partial data
     const items = container.itemIds.length
       ? (
           await Promise.all(
-            container.itemIds.map((id) =>
-              itemsApi.getById(id).catch((err) => {
-                console.error(`[containers/${params.id}] Failed to fetch item ${id}:`, err);
+            container.itemIds.map((itemId) =>
+              itemsApi.getById(itemId).catch((err) => {
+                console.error(`[containers/${id}] Failed to fetch item ${itemId}:`, err);
                 return null;
               })
             )
@@ -58,20 +59,21 @@ export async function GET(
       data: { ...container, items },
     });
   } catch (err) {
-    console.error(`[GET /containers/${params.id}] Error:`, err);
+    console.error("[GET /containers/[id]] Error:", err);
     return notFoundResponse("Container not found");
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
+    const { id } = await params;
     const body = await request.json();
     const parsed = UpdateContainerSchema.safeParse(body);
 
@@ -81,11 +83,7 @@ export async function PATCH(
       );
     }
 
-    const container = await containersApi.update(
-      params.id,
-      parsed.data,
-      user.email
-    );
+    const container = await containersApi.update(id, parsed.data, user.email);
 
     return Response.json({
       success: true,
@@ -93,7 +91,7 @@ export async function PATCH(
       message: "Container updated",
     });
   } catch (err) {
-    console.error(`[PATCH /containers/${params.id}] Error:`, err);
+    console.error("[PATCH /containers/[id]] Error:", err);
     return serverErrorResponse("Failed to update container");
   }
 }
@@ -101,17 +99,18 @@ export async function PATCH(
 // DELETE /api/containers/[id]
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
-    await containersApi.delete(params.id, user.email);
+    const { id } = await params;
+    await containersApi.delete(id, user.email);
     return Response.json({ success: true, message: "Container deleted" });
   } catch (err) {
-    console.error(`[DELETE /containers/${params.id}] Error:`, err);
+    console.error("[DELETE /containers/[id]] Error:", err);
     return serverErrorResponse("Failed to delete container");
   }
 }

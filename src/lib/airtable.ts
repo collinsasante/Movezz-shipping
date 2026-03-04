@@ -2,6 +2,7 @@ import Airtable, { FieldSet, Record as AirtableRecord } from "airtable";
 import type {
   Customer,
   Item,
+  ItemPhoto,
   Order,
   Container,
   StatusHistory,
@@ -493,7 +494,8 @@ export const itemsApi = {
     if (input.height) fields["Height"] = input.height;
     if (input.trackingNumber) fields["TrackingNumber"] = input.trackingNumber;
     if (input.photoUrls && input.photoUrls.length > 0) {
-      fields["Photos"] = input.photoUrls.map((url) => ({ url }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
     }
 
     const record = await createRecord(TABLES.ITEMS, fields);
@@ -507,6 +509,7 @@ export const itemsApi = {
       newStatus: "Arrived at Transit Warehouse",
       changedBy: createdByEmail,
       changedByRole: "warehouse_staff",
+      changedAt: new Date().toISOString(),
     });
 
     await activityLogsApi.log({
@@ -539,7 +542,8 @@ export const itemsApi = {
     if (input.containerId !== undefined) fields["Container"] = [input.containerId];
     if (input.isMissing !== undefined) fields["IsMissing"] = input.isMissing;
     if (input.photoUrls !== undefined) {
-      fields["Photos"] = input.photoUrls.map((url) => ({ url }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
     }
 
     const record = await updateRecord(TABLES.ITEMS, id, fields);
@@ -590,6 +594,7 @@ export const itemsApi = {
       newStatus,
       changedBy: changedByEmail,
       changedByRole,
+      changedAt: new Date().toISOString(),
       notes,
     });
 
@@ -817,6 +822,7 @@ export const ordersApi = {
         newStatus: input.status,
         changedBy: updatedByEmail,
         changedByRole: "super_admin",
+        changedAt: new Date().toISOString(),
       });
     }
 
@@ -938,6 +944,7 @@ export const containersApi = {
       newStatus,
       changedBy: changedByEmail,
       changedByRole,
+      changedAt: new Date().toISOString(),
       notes,
     });
 
