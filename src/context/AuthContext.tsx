@@ -34,25 +34,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchAppUser = useCallback(async (user: User) => {
     try {
-      const idToken = await user.getIdToken();
+      // Force-refresh the Firebase token to ensure it's never expired when sent to the server
+      const idToken = await user.getIdToken(true);
       const res = await axios.post("/api/auth/verify", { idToken });
       if (res.data.success) {
         setAppUser(res.data.data.user);
       }
     } catch (err) {
       console.error("Failed to fetch app user:", err);
-      setAppUser(null);
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const code = err.response?.data?.code;
-        if (status === 500) {
-          // Server error — sign out stale Firebase session to stop retrying
+        if (status === 401) {
+          // Token is genuinely invalid — sign out
+          setAppUser(null);
           await signOut().catch(() => {});
         } else if (status === 404 && code === "NOT_REGISTERED") {
-          // Firebase session exists but no Airtable record — sign out so user can sign up cleanly
+          // Not in the system — sign out
+          setAppUser(null);
           await signOut().catch(() => {});
         }
+        // 500 or other transient errors: do NOT sign out — keep the current session alive
       }
+      // Network errors or non-Axios errors: do nothing, user stays logged in
     }
   }, []);
 

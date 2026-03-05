@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       { success: true, data: { user: appUser, uid: decoded.uid, email: decoded.email } },
       {
         status: 200,
-        headers: { "Set-Cookie": `auth-token=${idToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600` },
+        headers: { "Set-Cookie": `auth-token=${idToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800` },
       }
     );
   } catch (err: unknown) {

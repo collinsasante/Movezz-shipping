@@ -30,7 +30,7 @@ export async function middleware(request: NextRequest) {
 
   const authToken = request.cookies.get("auth-token")?.value;
 
-  // If no token, redirect to login
+  // If no token at all, redirect to login
   if (!authToken) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
@@ -42,46 +42,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // For admin routes, verify role via lightweight check
-  // (Full verification happens server-side in page components / API routes)
-  try {
-    const verifyRes = await fetch(new URL("/api/auth/verify-cookie", request.url), {
-      headers: { cookie: request.headers.get("cookie") ?? "" },
-    });
-
-    if (!verifyRes.ok) {
-      const loginUrl = new URL("/login", request.url);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    const data = await verifyRes.json().catch(() => null);
-
-    if (!data?.success) {
-      const loginUrl = new URL("/login", request.url);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    const userRole: string = data.data?.role ?? "";
-
-    // Check role-based route protection
-    for (const [route, allowedRoles] of Object.entries(ROLE_ROUTES)) {
-      if (pathname.startsWith(route) && !allowedRoles.includes(userRole)) {
-        // Redirect customers to customer dashboard, admins to admin dashboard
-        if (userRole === "customer") {
-          return NextResponse.redirect(new URL("/customer", request.url));
-        }
-        if (userRole === "super_admin" || userRole === "warehouse_staff") {
-          return NextResponse.redirect(new URL("/admin", request.url));
-        }
-        return NextResponse.redirect(new URL("/login", request.url));
-      }
-    }
-
-    return NextResponse.next();
-  } catch {
-    // On middleware error, allow through (route handlers will enforce auth)
-    return NextResponse.next();
-  }
+  // Cookie exists — allow through.
+  // Full token verification + role enforcement happens in API routes and
+  // client-side AuthContext (which redirects on role mismatch).
+  // We avoid calling verify-cookie in middleware because any transient
+  // Airtable/JWKS error would incorrectly redirect the user to login.
+  return NextResponse.next();
 }
 
 export const config = {
