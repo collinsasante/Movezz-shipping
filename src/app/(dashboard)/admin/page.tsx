@@ -47,6 +47,7 @@ export default function AdminDashboardPage() {
             icon={Users}
             iconColor="text-blue-600"
             iconBg="bg-blue-50"
+            href="/admin/customers"
           />
           <StatCard
             title="Items in Warehouse"
@@ -55,6 +56,7 @@ export default function AdminDashboardPage() {
             icon={Package}
             iconColor="text-indigo-600"
             iconBg="bg-indigo-50"
+            href="/admin/items"
           />
           <StatCard
             title="Containers in Transit"
@@ -63,6 +65,7 @@ export default function AdminDashboardPage() {
             icon={Container}
             iconColor="text-purple-600"
             iconBg="bg-purple-50"
+            href="/admin/containers"
           />
           <StatCard
             title="Items in Sorting"
@@ -71,6 +74,7 @@ export default function AdminDashboardPage() {
             icon={SortAsc}
             iconColor="text-amber-600"
             iconBg="bg-amber-50"
+            href="/admin/sorting"
           />
           <StatCard
             title="Lost Items"
@@ -79,6 +83,7 @@ export default function AdminDashboardPage() {
             icon={AlertTriangle}
             iconColor="text-red-600"
             iconBg="bg-red-50"
+            href="/admin/sorting"
           />
           <StatCard
             title="Ready for Pickup"
@@ -87,6 +92,7 @@ export default function AdminDashboardPage() {
             icon={HandCoins}
             iconColor="text-brand-600"
             iconBg="bg-brand-50"
+            href="/admin/sorting"
           />
         </div>
       </div>

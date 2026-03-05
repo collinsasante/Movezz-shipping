@@ -9,6 +9,7 @@ interface StatCardProps {
   icon: LucideIcon;
   iconColor?: string;
   iconBg?: string;
+  href?: string;
   trend?: {
     value: number;
     positive?: boolean;
@@ -24,13 +25,12 @@ export function StatCard({
   icon: Icon,
   iconColor = "text-brand-600",
   iconBg = "bg-brand-50",
+  href,
   trend,
   className,
 }: StatCardProps) {
-  return (
-    <div
-      className={cn("bg-white rounded-xl border border-gray-200 p-5 shadow-sm", className)}
-    >
+  const inner = (
+    <>
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-medium text-gray-600">{title}</p>
         <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", iconBg)}>
@@ -60,6 +60,22 @@ export function StatCard({
       {trend?.label && (
         <p className="text-xs text-gray-500 mt-0.5">{trend.label}</p>
       )}
-    </div>
+    </>
   );
+
+  const base = cn(
+    "bg-white rounded-xl border border-gray-200 p-5 shadow-sm",
+    href && "cursor-pointer hover:shadow-md hover:border-gray-300 transition-all",
+    className
+  );
+
+  if (href) {
+    return (
+      <a href={href} className={base}>
+        {inner}
+      </a>
+    );
+  }
+
+  return <div className={base}>{inner}</div>;
 }

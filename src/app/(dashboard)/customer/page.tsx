@@ -67,6 +67,7 @@ export default function CustomerDashboardPage() {
             icon={Package}
             iconColor="text-blue-600"
             iconBg="bg-blue-50"
+            href="/customer/items"
           />
           <StatCard
             title="Total Orders"
@@ -75,6 +76,7 @@ export default function CustomerDashboardPage() {
             icon={ShoppingCart}
             iconColor="text-purple-600"
             iconBg="bg-purple-50"
+            href="/customer/orders"
           />
           <StatCard
             title="Pending Payment"
@@ -83,6 +85,7 @@ export default function CustomerDashboardPage() {
             icon={DollarSign}
             iconColor="text-amber-600"
             iconBg="bg-amber-50"
+            href="/customer/orders"
           />
           <StatCard
             title="Ready for Pickup"
@@ -91,6 +94,7 @@ export default function CustomerDashboardPage() {
             icon={MapPin}
             iconColor="text-green-600"
             iconBg="bg-green-50"
+            href="/customer/items"
           />
         </div>
 
