@@ -418,8 +418,10 @@ export const itemsApi = {
       formulas.push(`{IsMissing} = ${params.isMissing ? 1 : 0}`);
     if (params.search) {
       const s = escapeFormula(params.search.toLowerCase());
+      // Only search plain text fields — lookup fields (CustomerShippingMark, CustomerName)
+      // are array-typed and can cause formula errors; filter those in JS below.
       formulas.push(
-        `OR(SEARCH('${s}', LOWER({Description})), SEARCH('${s}', LOWER({TrackingNumber})), SEARCH('${s}', LOWER({ItemRef})), SEARCH('${s}', LOWER({CustomerShippingMark})), SEARCH('${s}', LOWER({CustomerName})))`
+        `OR(SEARCH('${s}', LOWER({Description})), SEARCH('${s}', LOWER({TrackingNumber})), SEARCH('${s}', LOWER({ItemRef})))`
       );
     }
 
@@ -438,6 +440,19 @@ export const itemsApi = {
       items = items.filter((item) => item.containerId === params.containerId);
     if (params.orderId)
       items = items.filter((item) => item.orderId === params.orderId);
+
+    // JS filter for search on lookup fields (shipping mark, customer name)
+    if (params.search) {
+      const s = params.search.toLowerCase();
+      items = items.filter(
+        (item) =>
+          item.itemRef?.toLowerCase().includes(s) ||
+          item.description?.toLowerCase().includes(s) ||
+          item.trackingNumber?.toLowerCase().includes(s) ||
+          item.customerShippingMark?.toLowerCase().includes(s) ||
+          item.customerName?.toLowerCase().includes(s)
+      );
+    }
 
     // CustomerName/CustomerShippingMark lookup fields may not exist in the base.
     // If any item is missing a name, batch-resolve from the Customers table.

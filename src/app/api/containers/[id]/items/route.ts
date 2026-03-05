@@ -43,8 +43,9 @@ export async function POST(
       message: "Item added to container",
     });
   } catch (err) {
-    console.error("[POST /containers/[id]/items] Error:", err);
-    return serverErrorResponse("Failed to add item to container");
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[POST /containers/[id]/items] Error:", errMsg);
+    return serverErrorResponse(`Failed to add item: ${errMsg}`);
   }
 }
 

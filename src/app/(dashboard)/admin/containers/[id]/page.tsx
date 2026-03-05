@@ -67,22 +67,25 @@ export default function ContainerDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const searchItems = useCallback(async (query: string) => {
+    setSearchLoading(true);
+    setSearchDone(false);
+    try {
+      const params = query.length >= 1 ? { search: query } : {};
+      const res = await axios.get("/api/items", { params });
+      const all: Item[] = res.data.data;
+      setItemResults(all.filter((item) => !container?.items?.some((ci) => ci.id === item.id)));
+    } catch { setItemResults([]); } finally {
+      setSearchLoading(false);
+      setSearchDone(true);
+    }
+  }, [container]);
+
   useEffect(() => {
-    if (itemSearch.length < 2) { setItemResults([]); setSearchDone(false); return; }
-    const timer = setTimeout(async () => {
-      setSearchLoading(true);
-      setSearchDone(false);
-      try {
-        const res = await axios.get("/api/items", { params: { search: itemSearch } });
-        const all: Item[] = res.data.data;
-        setItemResults(all.filter((item) => !container?.items?.some((ci) => ci.id === item.id)));
-      } catch { setItemResults([]); } finally {
-        setSearchLoading(false);
-        setSearchDone(true);
-      }
-    }, 300);
+    if (itemSearch.length === 0) { setItemResults([]); setSearchDone(false); return; }
+    const timer = setTimeout(() => searchItems(itemSearch), 300);
     return () => clearTimeout(timer);
-  }, [itemSearch, container]);
+  }, [itemSearch, searchItems]);
 
   const openEdit = () => {
     if (!container) return;
@@ -323,6 +326,7 @@ export default function ContainerDetailPage() {
                   placeholder="Search by ref or shipping mark..."
                   value={itemSearch}
                   onChange={(e) => setItemSearch(e.target.value)}
+                  onFocus={() => searchItems(itemSearch)}
                   onBlur={() => setTimeout(() => { setItemResults([]); setSearchDone(false); }, 200)}
                   className="h-8 text-xs px-3 border border-gray-200 rounded-lg w-56 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
