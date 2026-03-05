@@ -119,7 +119,7 @@ export default function AdminDashboardPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Items Pipeline */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5">
+          <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-900">Items Pipeline</h2>
               <a href="/admin/items" className="text-sm text-brand-600 hover:underline">
@@ -158,7 +158,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Unpaid Invoices */}
-          <div className="bg-white border border-gray-100 rounded-xl p-5">
+          <div>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-900">Unpaid Invoices</h2>
               <a href="/admin/orders" className="text-sm text-brand-600 hover:underline">

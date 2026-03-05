@@ -272,13 +272,14 @@ function mapActivityLog(record: AirtableRecord<FieldSet>): ActivityLog {
 
 function mapUser(record: AirtableRecord<FieldSet>): AppUser {
   const f = record.fields;
+  const rawName = f["CustomerName"];
   return {
     id: record.id,
     firebaseUid: (f["FirebaseUID"] as string) ?? "",
     email: (f["Email"] as string) ?? "",
     role: (f["Role"] as UserRole) ?? "customer",
     customerId: ((f["CustomerRecord"] as string[]) ?? [])[0] ?? undefined,
-    customerName: (f["CustomerName"] as string) ?? undefined,
+    customerName: (Array.isArray(rawName) ? rawName[0] : rawName) as string | undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     lastLogin: (f["LastLogin"] as string) ?? undefined,
   };
@@ -556,7 +557,8 @@ export const itemsApi = {
     changedByEmail: string,
     changedByRole: UserRole,
     notes?: string,
-    sendWhatsApp = false
+    sendWhatsApp = false,
+    skipContainerCheck = false
   ): Promise<Item> {
     const existing = await getRecord(TABLES.ITEMS, id);
     const previousStatus = existing.fields["Status"] as string;
@@ -564,7 +566,7 @@ export const itemsApi = {
     const customerId = ((existing.fields["Customer"] as string[]) ?? [])[0];
 
     // Validation: can only set "Shipped to Ghana" if item belongs to a container
-    if (newStatus === "Shipped to Ghana") {
+    if (newStatus === "Shipped to Ghana" && !skipContainerCheck) {
       const containerId = (
         (existing.fields["Container"] as string[]) ?? []
       )[0];
@@ -861,10 +863,13 @@ export const containersApi = {
     const containerId = existing.fields["ContainerID"] as string;
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
 
+    console.log(`[cascade] container ${containerId}: ${previousStatus} → ${newStatus}`);
+    console.log(`[cascade] items in container:`, itemIds);
+
     await updateRecord(TABLES.CONTAINERS, id, { Status: newStatus });
+    console.log(`[cascade] container status updated OK`);
 
     // ---- CASCADE STATUS TO ALL ITEMS ----
-    // Map container statuses to the corresponding item status
     const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
       "Shipped to Ghana": "Shipped to Ghana",
       "Arrived in Ghana": "Arrived in Ghana",
@@ -873,22 +878,32 @@ export const containersApi = {
     };
 
     const targetItemStatus = containerToItemStatus[newStatus];
+    console.log(`[cascade] targetItemStatus:`, targetItemStatus ?? "none (no cascade for this status)");
+
     if (targetItemStatus && itemIds.length > 0) {
       await Promise.all(
-        itemIds.map((itemId) =>
-          itemsApi
-            .updateStatus(
+        itemIds.map(async (itemId) => {
+          console.log(`[cascade] updating item ${itemId} → ${targetItemStatus}`);
+          try {
+            await itemsApi.updateStatus(
               itemId,
               targetItemStatus,
               changedByEmail,
               changedByRole,
-              `Container ${containerId} → ${newStatus}`
-            )
-            .catch((err) =>
-              console.error(`Failed to update item ${itemId}:`, err)
-            )
-        )
+              `Container ${containerId} → ${newStatus}`,
+              false,
+              true // skipContainerCheck — item is already in this container
+            );
+            console.log(`[cascade] item ${itemId} updated OK`);
+          } catch (err) {
+            console.error(`[cascade] FAILED to update item ${itemId}:`, err);
+          }
+        })
       );
+    } else if (!targetItemStatus) {
+      console.log(`[cascade] skipping — no item status mapped for container status "${newStatus}"`);
+    } else {
+      console.log(`[cascade] skipping — container has no items`);
     }
 
     const updated = await getRecord(TABLES.CONTAINERS, id);

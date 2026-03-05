@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
             const msg = createErr instanceof Error ? createErr.message : String(createErr);
             console.error("[verify] step=auto_create_customer error:", msg);
             return Response.json(
-              { success: false, error: "Failed to set up your account. Please contact support." },
+              { success: false, error: "Failed to set up your account.", detail: msg, step: "auto_create_customer" },
               { status: 500 }
             );
           }

@@ -53,7 +53,7 @@ export default function CustomerDashboardPage() {
   return (
     <div className="flex flex-col h-full">
       <Header
-        title={`Hello, ${appUser?.customerName?.split(" ")[0] ?? "there"} 👋`}
+        title={`Hello, ${(typeof appUser?.customerName === "string" ? appUser.customerName.split(" ")[0] : null) ?? appUser?.email?.split("@")[0] ?? "there"} 👋`}
         subtitle="Here's an overview of your shipments"
       />
 
@@ -168,7 +168,7 @@ export default function CustomerDashboardPage() {
               )}
             </div>
 
-            <div className="bg-white border border-gray-100 rounded-xl p-5">
+            <div>
               {selectedItem ? (
                 <>
                   <div className="mb-4 pb-4 border-b border-gray-50">
