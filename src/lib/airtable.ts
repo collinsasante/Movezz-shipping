@@ -942,18 +942,39 @@ export const containersApi = {
     itemId: string,
     addedByEmail: string
   ): Promise<Container> {
-    const container = await getRecord(TABLES.CONTAINERS, containerId);
+    console.log("[addItem] containerId:", containerId, "itemId:", itemId);
+
+    let container: AirtableRecord<FieldSet>;
+    try {
+      container = await getRecord(TABLES.CONTAINERS, containerId);
+      console.log("[addItem] fetched container OK, Items field:", JSON.stringify(container.fields["Items"]));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : JSON.stringify(e);
+      throw new Error(`[addItem:getContainer] ${msg}`);
+    }
+
     const currentItems = (container.fields["Items"] as string[]) ?? [];
 
     if (!currentItems.includes(itemId)) {
       currentItems.push(itemId);
-      await updateRecord(TABLES.CONTAINERS, containerId, {
-        Items: currentItems,
-      });
+      try {
+        await updateRecord(TABLES.CONTAINERS, containerId, { Items: currentItems });
+        console.log("[addItem] updated container Items OK");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : JSON.stringify(e);
+        throw new Error(`[addItem:updateContainerItems] ${msg}`);
+      }
+    } else {
+      console.log("[addItem] item already in container Items list");
     }
 
-    // Also link back on the item
-    await updateRecord(TABLES.ITEMS, itemId, { Container: [containerId] });
+    try {
+      await updateRecord(TABLES.ITEMS, itemId, { Container: [containerId] });
+      console.log("[addItem] updated item Container field OK");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : JSON.stringify(e);
+      throw new Error(`[addItem:updateItemContainer] ${msg}`);
+    }
 
     const updated = await getRecord(TABLES.CONTAINERS, containerId);
     return mapContainer(updated);
