@@ -110,7 +110,7 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    await itemsApi.delete(id, user.email);
+    await itemsApi.delete(id);
     return Response.json({ success: true, message: "Item deleted" });
   } catch (err) {
     console.error("[DELETE /items/[id]] Error:", err);

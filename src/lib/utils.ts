@@ -57,6 +57,7 @@ export function formatDateTime(dateStr: string | undefined | null): string {
   try {
     const date = parseISO(dateStr);
     if (!isValid(date)) return "Invalid Date";
+    if (!dateStr.includes("T")) return format(date, "MMM dd, yyyy");
     return format(date, "MMM dd, yyyy HH:mm");
   } catch {
     return "Invalid Date";

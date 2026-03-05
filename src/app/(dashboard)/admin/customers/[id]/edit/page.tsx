@@ -25,6 +25,7 @@ export default function EditCustomerPage() {
     email: "",
     notes: "",
     status: "active" as "active" | "inactive",
+    shippingType: "" as "air" | "sea" | "",
   });
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export default function EditCustomerPage() {
           email: c.email ?? "",
           notes: c.notes ?? "",
           status: c.status ?? "active",
+          shippingType: c.shippingType ?? "",
         });
       } catch {
         error("Failed to load customer");
@@ -52,7 +54,8 @@ export default function EditCustomerPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await axios.patch(`/api/customers/${id}`, form);
+      const payload = { ...form, shippingType: form.shippingType || undefined };
+      await axios.patch(`/api/customers/${id}`, payload);
       success("Customer updated");
       router.push(`/admin/customers/${id}`);
     } catch (err: unknown) {
@@ -117,20 +120,37 @@ export default function EditCustomerPage() {
                   required
                 />
               </div>
-              <Select
-                label="Status"
-                value={form.status}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    status: e.target.value as "active" | "inactive",
-                  })
-                }
-                options={[
-                  { value: "active", label: "Active" },
-                  { value: "inactive", label: "Inactive" },
-                ]}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <Select
+                  label="Status"
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      status: e.target.value as "active" | "inactive",
+                    })
+                  }
+                  options={[
+                    { value: "active", label: "Active" },
+                    { value: "inactive", label: "Inactive" },
+                  ]}
+                />
+                <Select
+                  label="Shipping Type"
+                  value={form.shippingType}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      shippingType: e.target.value as "air" | "sea" | "",
+                    })
+                  }
+                  options={[
+                    { value: "", label: "Not set" },
+                    { value: "air", label: "Air Freight" },
+                    { value: "sea", label: "Sea Freight" },
+                  ]}
+                />
+              </div>
               <Textarea
                 label="Notes (optional)"
                 placeholder="Any special notes about this customer..."

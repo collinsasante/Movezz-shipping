@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Package } from "lucide-react";
+import Image from "next/image";
 import { resetPassword } from "@/lib/firebase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,11 +31,9 @@ export default function ResetPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-8 bg-gray-50">
       <div className="w-full max-w-md">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center">
-            <Package className="h-5 w-5 text-white" />
-          </div>
-          <span className="font-black text-xl text-gray-900">Pakkmaxx</span>
+        <div className="flex items-center gap-2.5 mb-8">
+          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={36} height={36} className="rounded-lg" />
+          <span className="text-sm font-semibold text-gray-700 tracking-tight">Pakkmaxx</span>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">

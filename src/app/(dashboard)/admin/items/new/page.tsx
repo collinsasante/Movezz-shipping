@@ -76,7 +76,7 @@ export default function NewItemPage() {
     height: "",
     dimensionUnit: "cm" as "cm" | "inches",
     trackingNumber: "",
-    dateReceived: new Date().toISOString().split("T")[0],
+    dateReceived: new Date().toISOString().slice(0, 16),
     notes: "",
   });
 
@@ -216,8 +216,8 @@ export default function NewItemPage() {
                   required
                 />
                 <Input
-                  label="Date Received"
-                  type="date"
+                  label="Date & Time Received"
+                  type="datetime-local"
                   value={form.dateReceived}
                   onChange={(e) => setForm({ ...form, dateReceived: e.target.value })}
                   required

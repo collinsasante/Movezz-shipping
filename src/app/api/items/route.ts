@@ -10,17 +10,17 @@ import {
 import { z } from "zod";
 
 const CreateItemSchema = z.object({
-  weight: z.number().positive("Weight must be positive"),
-  length: z.number().positive().optional(),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
+  weight: z.number().positive("Weight must be positive").max(10000),
+  length: z.number().positive().max(10000).optional(),
+  width: z.number().positive().max(10000).optional(),
+  height: z.number().positive().max(10000).optional(),
   dimensionUnit: z.enum(["cm", "inches"]).default("cm"),
-  description: z.string().optional().default(""),
-  dateReceived: z.string(),
-  trackingNumber: z.string().optional(),
-  customerId: z.string().min(1, "Customer ID is required"),
-  notes: z.string().optional(),
-  photoUrls: z.array(z.string().url()).optional(),
+  description: z.string().max(1000).optional().default(""),
+  dateReceived: z.string().max(50),
+  trackingNumber: z.string().max(100).optional(),
+  customerId: z.string().min(1, "Customer ID is required").max(50),
+  notes: z.string().max(2000).optional(),
+  photoUrls: z.array(z.string().url().max(500)).max(20).optional(),
 });
 
 // GET /api/items

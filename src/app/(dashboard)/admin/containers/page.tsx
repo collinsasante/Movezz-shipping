@@ -84,9 +84,12 @@ export default function ContainersPage() {
             },
             {
               key: "name",
-              header: "Name",
+              header: "Container #",
               render: (c) => (
-                <span className="font-medium text-sm">{c.name}</span>
+                <div>
+                  <code className="font-mono text-xs font-bold text-gray-800">{c.trackingNumber || "—"}</code>
+                  {c.name && <p className="text-xs text-gray-400">{c.name}</p>}
+                </div>
               ),
             },
             {
@@ -104,11 +107,11 @@ export default function ContainersPage() {
               ),
             },
             {
-              key: "departureDate",
-              header: "Departure",
+              key: "eta",
+              header: "ETA",
               render: (c) => (
                 <span className="text-xs text-gray-500">
-                  {c.departureDate ? formatDate(c.departureDate) : "—"}
+                  {c.eta ? formatDate(c.eta) : "—"}
                 </span>
               ),
             },
@@ -118,15 +121,6 @@ export default function ContainersPage() {
               render: (c) => (
                 <span className="text-xs text-gray-500">
                   {c.arrivalDate ? formatDate(c.arrivalDate) : "—"}
-                </span>
-              ),
-            },
-            {
-              key: "trackingNumber",
-              header: "Tracking",
-              render: (c) => (
-                <span className="text-xs text-gray-500">
-                  {c.trackingNumber ?? "—"}
                 </span>
               ),
             },

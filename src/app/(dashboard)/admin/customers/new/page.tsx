@@ -9,16 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { generateShippingMark } from "@/lib/utils";
-import { ArrowLeft, Tag, Copy, CheckCheck } from "lucide-react";
+import { ArrowLeft, Tag } from "lucide-react";
 import axios from "axios";
 
 export default function NewCustomerPage() {
   const router = useRouter();
-  const { success, error } = useToast();
+  const { error } = useToast();
   const [loading, setLoading] = useState(false);
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  const [copiedPass, setCopiedPass] = useState(false);
+  const [createdMark, setCreatedMark] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -36,8 +36,9 @@ export default function NewCustomerPage() {
     setLoading(true);
     try {
       const res = await axios.post("/api/customers", form);
-      setTempPassword(res.data.data.tempPassword);
       setEmailSent(res.data.data.emailSent ?? false);
+      setCreatedMark(res.data.data.customer?.shippingMark ?? preview);
+      setCreated(true);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
         ? err.response?.data?.error ?? "Failed to create customer"
@@ -45,14 +46,6 @@ export default function NewCustomerPage() {
       error("Error", msg);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const copyPassword = () => {
-    if (tempPassword) {
-      navigator.clipboard.writeText(tempPassword);
-      setCopiedPass(true);
-      setTimeout(() => setCopiedPass(false), 2000);
     }
   };
 
@@ -149,8 +142,8 @@ export default function NewCustomerPage() {
         </form>
       </div>
 
-      {/* Temp password success modal */}
-      {tempPassword && (
+      {/* Success modal */}
+      {created && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 space-y-4">
             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto">
@@ -158,32 +151,22 @@ export default function NewCustomerPage() {
             </div>
             <div className="text-center">
               <h3 className="font-bold text-gray-900 text-lg">Customer Created!</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Shipping mark: <code className="font-mono font-bold text-gray-800">{createdMark}</code>
+              </p>
               {emailSent ? (
-                <p className="text-sm text-gray-500 mt-1">
-                  A password setup email has been sent to{" "}
-                  <span className="font-medium text-gray-700">{form.email}</span>.
-                  The customer will receive a link to set their own password.
+                <p className="text-sm text-green-600 mt-2">
+                  A password setup email was sent to <span className="font-medium">{form.email}</span>.
                 </p>
               ) : (
-                <p className="text-sm text-gray-500 mt-1">
-                  Email could not be sent. Share this temporary password with the customer manually.
+                <p className="text-sm text-amber-600 mt-2">
+                  Email could not be sent. Ask the customer to use "Forgot password" on the login page.
                 </p>
               )}
             </div>
-            <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div>
-                {emailSent && (
-                  <p className="text-xs text-gray-400 mb-1">Fallback password (if email fails)</p>
-                )}
-                <code className="font-mono text-base font-bold text-gray-900 tracking-wider">{tempPassword}</code>
-              </div>
-              <button onClick={copyPassword} className="text-gray-400 hover:text-brand-600 transition-colors shrink-0">
-                {copiedPass ? <CheckCheck className="h-5 w-5 text-green-500" /> : <Copy className="h-5 w-5" />}
-              </button>
-            </div>
             <button
               onClick={() => router.push("/admin/customers")}
-              className="w-full py-2.5 bg-brand-600 text-white rounded-xl font-medium text-sm hover:bg-brand-700 transition-colors"
+              className="w-full py-2.5 bg-gray-900 text-white rounded-xl font-medium text-sm hover:bg-gray-700 transition-colors"
             >
               Done
             </button>

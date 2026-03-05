@@ -120,7 +120,7 @@ export async function DELETE(
     const { id } = await params;
     const existing = await ordersApi.getById(id);
 
-    await ordersApi.delete(id, user.email);
+    await ordersApi.delete(id);
 
     // Cancel in Keepup (non-fatal)
     if (existing.keepupSaleId) {

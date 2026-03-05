@@ -18,7 +18,9 @@ import {
   ChevronRight,
   ShieldCheck,
   MessageCircle,
+  Settings,
 } from "lucide-react";
+import Image from "next/image";
 import axios from "axios";
 
 const navItems = [
@@ -55,7 +57,7 @@ const navItems = [
   },
   {
     href: "/admin/reports",
-    label: "Activity Log",
+    label: "Status History",
     icon: Activity,
   },
   {
@@ -67,6 +69,11 @@ const navItems = [
     href: "/admin/support",
     label: "Support",
     icon: MessageCircle,
+  },
+  {
+    href: "/admin/settings",
+    label: "Settings",
+    icon: Settings,
   },
 ];
 
@@ -108,9 +115,7 @@ export function AdminSidebar() {
       >
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-white font-bold text-sm">
-              P
-            </div>
+            <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
             <span className="font-bold text-lg tracking-tight">Pakkmaxx</span>
           </div>
         )}

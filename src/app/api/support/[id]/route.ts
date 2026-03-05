@@ -13,13 +13,13 @@ import { z } from "zod";
 
 const AddMessageSchema = z
   .object({
-    content: z.string().default(""),
+    content: z.string().max(5000).default(""),
     type: z.enum(["text", "image", "voice", "document"]).optional(),
-    fileUrl: z.string().url().optional(),
-    fileName: z.string().optional(),
-    fileSize: z.number().optional(),
-    duration: z.number().optional(),
-    mimeType: z.string().optional(),
+    fileUrl: z.string().url().max(500).optional(),
+    fileName: z.string().max(255).optional(),
+    fileSize: z.number().max(100_000_000).optional(),
+    duration: z.number().max(3600).optional(),
+    mimeType: z.string().max(100).optional(),
   })
   .refine((d) => d.content.trim().length > 0 || d.fileUrl, {
     message: "Message content or file attachment is required",

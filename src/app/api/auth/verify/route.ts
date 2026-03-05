@@ -2,20 +2,10 @@
 // DELETE /api/auth/verify — sign out (clear cookie)
 import { NextRequest } from "next/server";
 import { verifyIdToken } from "@/lib/firebase-admin";
-import { usersApi } from "@/lib/airtable";
+import { usersApi, customersApi } from "@/lib/airtable";
 import { badRequestResponse } from "@/lib/auth";
 
 const IS_DEV = process.env.NODE_ENV === "development";
-
-// DEV-ONLY: hardcoded test admin — gated by NODE_ENV, never runs in production
-const DEV_TOKEN = "DEV_ADMIN_TEST_TOKEN";
-const DEV_USER = {
-  id: "dev-user-id",
-  firebaseUid: "dev-uid",
-  email: "dev@pakkmaxx.com",
-  role: "super_admin" as const,
-  createdAt: new Date().toISOString(),
-};
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,22 +16,13 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("idToken is required");
     }
 
-    if (IS_DEV && idToken === DEV_TOKEN) {
-      return Response.json(
-        { success: true, data: { user: DEV_USER, uid: DEV_USER.firebaseUid, email: DEV_USER.email } },
-        { status: 200, headers: { "Set-Cookie": `auth-token=${DEV_TOKEN}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600` } }
-      );
-    }
-
     // Verify Firebase token
     let decoded;
     try {
       decoded = await verifyIdToken(idToken);
-    } catch (tokenErr) {
-      const msg = tokenErr instanceof Error ? tokenErr.message : String(tokenErr);
-      console.error("[verify] Token verification failed:", msg);
+    } catch {
       return Response.json(
-        { success: false, error: "Invalid or expired token", ...(IS_DEV && { detail: msg }) },
+        { success: false, error: "Invalid or expired token" },
         { status: 401 }
       );
     }
@@ -101,14 +82,32 @@ export async function POST(request: NextRequest) {
           );
         }
       } else {
-        return Response.json(
-          {
-            success: false,
-            error: "You are not registered in this system. Ask an administrator to add you.",
-            code: "NOT_REGISTERED",
-          },
-          { status: 404 }
-        );
+        // Check if this Firebase user was created by an admin (email exists in Customers table)
+        const existingCustomer = await customersApi.getByEmail(decoded.email ?? "").catch(() => null);
+        if (existingCustomer) {
+          try {
+            appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "customer", existingCustomer.id);
+            // Link Firebase UID to customer record (non-fatal)
+            customersApi.linkFirebaseUid(existingCustomer.id, decoded.uid).catch(() => {});
+            console.log(`[verify] Auto-registered customer: ${decoded.email}`);
+          } catch (createErr) {
+            const msg = createErr instanceof Error ? createErr.message : String(createErr);
+            console.error("[verify] step=auto_create_customer error:", msg);
+            return Response.json(
+              { success: false, error: "Failed to set up your account. Please contact support." },
+              { status: 500 }
+            );
+          }
+        } else {
+          return Response.json(
+            {
+              success: false,
+              error: "You are not registered in this system. Ask an administrator to add you.",
+              code: "NOT_REGISTERED",
+            },
+            { status: 404 }
+          );
+        }
       }
     }
 

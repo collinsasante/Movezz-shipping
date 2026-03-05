@@ -9,7 +9,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusUpdateModal } from "@/components/shared/StatusUpdateModal";
 import { Select } from "@/components/ui/select";
-import { formatDate } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 import type { Item, ItemStatus } from "@/types";
 import { Plus, Package, Edit2, AlertTriangle, Trash2 } from "lucide-react";
 import axios from "axios";
@@ -176,9 +176,19 @@ export default function ItemsPage() {
               header: "Received",
               render: (item) => (
                 <span className="text-xs text-gray-500">
-                  {formatDate(item.dateReceived)}
+                  {formatDateTime(item.dateReceived)}
                 </span>
               ),
+            },
+            {
+              key: "cbm",
+              header: "CBM",
+              render: (item) => {
+                if (!item.length || !item.width || !item.height) return <span className="text-xs text-gray-400">—</span>;
+                const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
+                const cbm = (item.length * item.width * item.height * factor) / 1_000_000;
+                return <span className="text-xs text-gray-700">{cbm.toFixed(4)} m³</span>;
+              },
             },
             {
               key: "actions",

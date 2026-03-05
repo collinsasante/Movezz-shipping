@@ -39,6 +39,8 @@ export interface Customer {
   shippingMark: string; // e.g. PAKKMAXX-COLLINS-4821
   firebaseUid?: string;
   status: CustomerStatus;
+  shippingType?: "air" | "sea";
+  exchangeRate?: number;
   notes?: string;
   createdAt: string;
   // Computed from linked records
@@ -59,6 +61,9 @@ export interface UpdateCustomerInput {
   email?: string;
   notes?: string;
   status?: CustomerStatus;
+  shippingType?: "air" | "sea";
+  exchangeRate?: number | null;
+  shippingAddress?: string;
 }
 
 // ============================================================
@@ -171,25 +176,25 @@ export interface UpdateOrderInput {
 export interface Container {
   id: string;
   containerId: string; // e.g. PMX-CON-2024-001
-  name: string;
+  name?: string; // Shipping Line (optional)
   description?: string;
   status: ContainerStatus;
   itemIds: string[];
   items?: Item[];
   itemCount?: number;
-  departureDate?: string;
+  eta?: string; // Estimated Time of Arrival (stored in DepartureDate Airtable field)
   arrivalDate?: string;
-  trackingNumber?: string;
+  trackingNumber: string; // Container Number (mandatory)
   notes?: string;
   createdAt: string;
   createdBy?: string;
 }
 
 export interface CreateContainerInput {
-  name: string;
+  name?: string; // Shipping Line (optional)
   description?: string;
-  departureDate?: string;
-  trackingNumber?: string;
+  eta?: string;
+  trackingNumber: string; // Container Number (mandatory)
   notes?: string;
 }
 
@@ -197,7 +202,7 @@ export interface UpdateContainerInput {
   name?: string;
   description?: string;
   status?: ContainerStatus;
-  departureDate?: string;
+  eta?: string;
   arrivalDate?: string;
   trackingNumber?: string;
   notes?: string;

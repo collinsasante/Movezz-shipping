@@ -12,11 +12,14 @@ import {
 import { z } from "zod";
 
 const UpdateCustomerSchema = z.object({
-  name: z.string().min(2).optional(),
-  phone: z.string().min(7).optional(),
-  email: z.string().email().optional(),
-  notes: z.string().optional(),
+  name: z.string().min(2).max(200).optional(),
+  phone: z.string().min(7).max(30).optional(),
+  email: z.string().email().max(254).optional(),
+  notes: z.string().max(2000).optional(),
   status: z.enum(["active", "inactive"]).optional(),
+  shippingType: z.enum(["air", "sea"]).optional(),
+  exchangeRate: z.number().positive().optional().nullable(),
+  shippingAddress: z.string().max(500).optional(),
 });
 
 // GET /api/customers/[id]
@@ -98,7 +101,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/customers/[id] — soft delete (mark as inactive)
+// DELETE /api/customers/[id] — hard delete customer record
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -109,14 +112,14 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    await customersApi.update(id, { status: "inactive" }, user.email);
+    await customersApi.delete(id);
 
     return Response.json({
       success: true,
-      message: "Customer deactivated successfully",
+      message: "Customer deleted successfully",
     });
   } catch (err) {
     console.error("[DELETE /customers/[id]] Error:", err);
-    return serverErrorResponse("Failed to deactivate customer");
+    return serverErrorResponse("Failed to delete customer");
   }
 }

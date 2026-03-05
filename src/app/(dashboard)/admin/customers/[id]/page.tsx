@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/ui/badge";
@@ -18,9 +18,14 @@ import {
   Tag,
   Package,
   ShoppingCart,
-  Edit,
+  Edit2,
+  Check,
+  X,
   Trash2,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
 import axios from "axios";
 
 interface CustomerDetail extends Customer {
@@ -31,17 +36,34 @@ interface CustomerDetail extends Customer {
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { error, success } = useToast();
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       try {
         const res = await axios.get(`/api/customers/${id}`);
-        setCustomer(res.data.data);
+        const c = res.data.data;
+        setCustomer(c);
+        if (searchParams.get("edit") === "true") {
+          setEditForm({
+            name: c.name ?? "",
+            phone: c.phone ?? "",
+            email: c.email ?? "",
+            notes: c.notes ?? "",
+            status: c.status ?? "active",
+            shippingType: c.shippingType ?? "",
+            shippingAddress: c.shippingAddress ?? "",
+          });
+          setEditing(true);
+        }
       } catch {
         error("Failed to load customer");
       } finally {
@@ -49,16 +71,48 @@ export default function CustomerDetailPage() {
       }
     };
     load();
-  }, [id, error]);
+  }, [id, error, searchParams]);
+
+  const openEdit = () => {
+    if (!customer) return;
+    setEditForm({
+      name: customer.name ?? "",
+      phone: customer.phone ?? "",
+      email: customer.email ?? "",
+      notes: customer.notes ?? "",
+      status: customer.status ?? "active",
+      shippingType: customer.shippingType ?? "",
+      shippingAddress: customer.shippingAddress ?? "",
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      const res = await axios.patch(`/api/customers/${id}`, {
+        ...editForm,
+        shippingType: editForm.shippingType || undefined,
+        shippingAddress: editForm.shippingAddress || undefined,
+      });
+      setCustomer((prev) => prev ? { ...prev, ...res.data.data } : prev);
+      success("Customer updated");
+      setEditing(false);
+    } catch {
+      error("Failed to update customer");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
     try {
       await axios.delete(`/api/customers/${id}`);
-      success("Customer deactivated");
+      success("Customer deleted");
       router.push("/admin/customers");
     } catch {
-      error("Failed to deactivate customer");
+      error("Failed to delete customer");
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -94,17 +148,9 @@ export default function CustomerDetailPage() {
             Back
           </button>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.push(`/admin/customers/${id}/edit`)}
-            >
-              <Edit className="h-4 w-4 mr-1.5" />
-              Edit
-            </Button>
             {confirmDelete ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-red-600">Deactivate customer?</span>
+                <span className="text-sm text-red-600">Delete customer?</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -140,54 +186,94 @@ export default function CustomerDetailPage() {
           {/* Profile Card */}
           <Card>
             <CardHeader>
-              <CardTitle>Customer Profile</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Customer Profile</span>
+                {!editing ? (
+                  <button onClick={openEdit} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button onClick={saveEdit} disabled={savingEdit} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600 transition-colors disabled:opacity-50">
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => setEditing(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xl">
-                  {customer.name.charAt(0).toUpperCase()}
+              {editing ? (
+                <div className="space-y-3">
+                  <Input label="Full Name" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+                  <Input label="Phone" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+                  <Input label="Email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                  <Input label="Shipping Address" value={editForm.shippingAddress} onChange={(e) => setEditForm({ ...editForm, shippingAddress: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Select
+                      label="Status"
+                      value={editForm.status}
+                      onChange={(e) => setEditForm({ ...editForm, status: e.target.value as "active" | "inactive" })}
+                      options={[
+                        { value: "active", label: "Active" },
+                        { value: "inactive", label: "Inactive" },
+                      ]}
+                    />
+                    <Select
+                      label="Shipping Type"
+                      value={editForm.shippingType}
+                      onChange={(e) => setEditForm({ ...editForm, shippingType: e.target.value as "air" | "sea" | "" })}
+                      options={[
+                        { value: "", label: "Not set" },
+                        { value: "air", label: "Air Freight" },
+                        { value: "sea", label: "Sea Freight" },
+                      ]}
+                    />
+                  </div>
+                  <Textarea label="Notes (optional)" value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} />
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => setEditing(false)} disabled={savingEdit}>Cancel</Button>
+                    <Button size="sm" className="flex-1" onClick={saveEdit} loading={savingEdit}>Save Changes</Button>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-gray-900">{customer.name}</p>
-                  <StatusBadge status={customer.status} />
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-xl">
+                      {customer.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">{customer.name}</p>
+                      <StatusBadge status={customer.status} />
+                    </div>
+                  </div>
 
-              <div className="space-y-2.5 pt-2">
-                <InfoRow icon={Mail} label="Email" value={customer.email} />
-                <InfoRow icon={Phone} label="Phone" value={customer.phone} />
-                <InfoRow
-                  icon={MapPin}
-                  label="Shipping Address"
-                  value={customer.shippingAddress}
-                />
-                <InfoRow icon={Tag} label="Shipping Mark">
-                  <code className="text-xs font-mono bg-brand-50 text-brand-700 px-2 py-1 rounded font-bold">
-                    {customer.shippingMark}
-                  </code>
-                </InfoRow>
-                <InfoRow
-                  icon={Package}
-                  label="Total Items"
-                  value={String(customer.items?.length ?? 0)}
-                />
-                <InfoRow
-                  icon={ShoppingCart}
-                  label="Total Orders"
-                  value={String(customer.orders?.length ?? 0)}
-                />
-                <InfoRow
-                  icon={Package}
-                  label="Member Since"
-                  value={formatDate(customer.createdAt)}
-                />
-              </div>
+                  <div className="space-y-2.5 pt-2">
+                    <InfoRow icon={Mail} label="Email" value={customer.email} />
+                    <InfoRow icon={Phone} label="Phone" value={customer.phone} />
+                    <InfoRow icon={MapPin} label="Shipping Address" value={customer.shippingAddress} />
+                    <InfoRow icon={Tag} label="Shipping Mark">
+                      <code className="text-xs font-mono bg-brand-50 text-brand-700 px-2 py-1 rounded font-bold">
+                        {customer.shippingMark}
+                      </code>
+                    </InfoRow>
+                    <InfoRow icon={Package} label="Total Items" value={String(customer.items?.length ?? 0)} />
+                    <InfoRow icon={ShoppingCart} label="Total Orders" value={String(customer.orders?.length ?? 0)} />
+                    {customer.shippingType && (
+                      <InfoRow icon={Package} label="Shipping Type" value={customer.shippingType === "air" ? "Air Freight" : "Sea Freight"} />
+                    )}
+                    <InfoRow icon={Package} label="Member Since" value={formatDate(customer.createdAt)} />
+                  </div>
 
-              {customer.notes && (
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-xs text-gray-500 mb-1">Notes</p>
-                  <p className="text-sm text-gray-700">{customer.notes}</p>
-                </div>
+                  {customer.notes && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <p className="text-xs text-gray-500 mb-1">Notes</p>
+                      <p className="text-sm text-gray-700">{customer.notes}</p>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

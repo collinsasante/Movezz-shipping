@@ -11,10 +11,10 @@ import {
 import { z } from "zod";
 
 const CreateCustomerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  phone: z.string().min(7, "Phone number is required"),
-  email: z.string().email("Invalid email address"),
-  notes: z.string().optional(),
+  name: z.string().min(2, "Name must be at least 2 characters").max(200),
+  phone: z.string().min(7, "Phone number is required").max(30),
+  email: z.string().email("Invalid email address").max(254),
+  notes: z.string().max(2000).optional(),
 });
 
 function generateTempPassword(): string {
@@ -66,37 +66,58 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, phone, email, notes } = parsed.data;
+
+    // Check for duplicate phone
+    const existingByPhone = await customersApi.getByPhone(phone);
+    if (existingByPhone) {
+      return badRequestResponse("A customer with this phone number already exists");
+    }
+
     const tempPassword = generateTempPassword();
 
     // 1. Create Firebase user
-    const firebaseUser = await createFirebaseUser(email, tempPassword);
+    let firebaseUser: { uid: string };
+    try {
+      firebaseUser = await createFirebaseUser(email, tempPassword);
+    } catch (fbErr: unknown) {
+      const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
+      console.error("[POST /customers] createFirebaseUser failed:", msg);
+      if (msg.includes("EMAIL_EXISTS") || msg.includes("email-already-in-use") || msg.includes("already exists")) {
+        return badRequestResponse("A user with this email already exists");
+      }
+      return Response.json({ success: false, error: "Failed to create login account. Please try again." }, { status: 500 });
+    }
 
     // 2. Create customer in Airtable
-    const customer = await customersApi.create(
-      { name, phone, email, notes },
-      user.email
-    );
+    let customer: Awaited<ReturnType<typeof customersApi.create>>;
+    try {
+      customer = await customersApi.create(
+        { name, phone, email, notes },
+        user.email
+      );
+    } catch (atErr: unknown) {
+      const msg = atErr instanceof Error ? atErr.message : String(atErr);
+      console.error("[POST /customers] customersApi.create failed:", msg);
+      // Rollback Firebase user
+      await import("@/lib/firebase-admin").then(m => m.deleteFirebaseUser(firebaseUser.uid)).catch(() => {});
+      return Response.json({ success: false, error: "Failed to save customer record. Please try again." }, { status: 500 });
+    }
 
     // 3. Create user record linking Firebase UID → Airtable customer
-    const appUser = await usersApi.create(
-      firebaseUser.uid,
-      email,
-      "customer",
-      customer.id
-    );
+    try {
+      await usersApi.create(firebaseUser.uid, email, "customer", customer.id);
+    } catch (userErr: unknown) {
+      console.error("[POST /customers] usersApi.create failed:", userErr);
+      // Non-fatal — customer exists, login will auto-create user record on first sign-in
+    }
 
     // 4. Link Firebase UID to customer record
-    await customersApi.linkFirebaseUid(customer.id, firebaseUser.uid);
+    await customersApi.linkFirebaseUid(customer.id, firebaseUser.uid).catch((e) =>
+      console.error("[POST /customers] linkFirebaseUid failed (non-fatal):", e)
+    );
 
-    // 5. Set Firebase custom claims (non-fatal — user can still log in without them)
-    try {
-      await setCustomClaims(firebaseUser.uid, {
-        role: "customer",
-        customerId: customer.id,
-      });
-    } catch (claimsErr) {
-      console.error("[POST /customers] setCustomClaims failed (non-fatal):", claimsErr);
-    }
+    // 5. Set Firebase custom claims (no-op, non-fatal)
+    setCustomClaims(firebaseUser.uid, { role: "customer", customerId: customer.id }).catch(() => {});
 
     // 6. Send password-setup email (non-fatal)
     let emailSent = false;
@@ -110,24 +131,16 @@ export async function POST(request: NextRequest) {
     return Response.json(
       {
         success: true,
-        data: { customer, user: appUser, tempPassword, emailSent },
+        data: { customer, emailSent },
         message: `Customer ${customer.shippingMark} created successfully`,
       },
       { status: 201 }
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /customers] Error:", msg);
-    // Firebase duplicate email errors
-    if (msg.includes("email-already-in-use") || msg.includes("already-exists") || msg.includes("already exists")) {
-      return badRequestResponse("A user with this email already exists");
-    }
+    console.error("[POST /customers] Unexpected error:", msg);
     return Response.json(
-      {
-        success: false,
-        error: "Failed to create customer",
-        ...(process.env.NODE_ENV === "development" && { detail: msg }),
-      },
+      { success: false, error: "Failed to create customer" },
       { status: 500 }
     );
   }

@@ -11,17 +11,17 @@ import { z } from "zod";
 
 const EmailSignupSchema = z.object({
   flow: z.literal("email"),
-  name: z.string().min(2, "Full name must be at least 2 characters"),
-  phone: z.string().min(7, "Valid phone number is required"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  name: z.string().min(2, "Full name must be at least 2 characters").max(200),
+  phone: z.string().min(7, "Valid phone number is required").max(30),
+  email: z.string().email("Invalid email address").max(254),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
 });
 
 const GoogleSignupSchema = z.object({
   flow: z.literal("google"),
-  name: z.string().min(2, "Full name must be at least 2 characters"),
-  phone: z.string().min(7, "Valid phone number is required"),
-  idToken: z.string().min(1, "Google ID token is required"),
+  name: z.string().min(2, "Full name must be at least 2 characters").max(200),
+  phone: z.string().min(7, "Valid phone number is required").max(30),
+  idToken: z.string().min(1, "Google ID token is required").max(4096),
 });
 
 const SignupSchema = z.discriminatedUnion("flow", [

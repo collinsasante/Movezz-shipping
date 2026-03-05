@@ -10,11 +10,11 @@ import {
 import { z } from "zod";
 
 const CreateContainerSchema = z.object({
-  name: z.string().min(2, "Container name is required"),
-  description: z.string().optional(),
-  departureDate: z.string().optional(),
-  trackingNumber: z.string().optional(),
-  notes: z.string().optional(),
+  name: z.string().max(200).optional(),
+  description: z.string().max(1000).optional(),
+  eta: z.string().max(50).optional(),
+  trackingNumber: z.string().min(1, "Container number is required").max(100),
+  notes: z.string().max(2000).optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     console.error("[POST /containers] Error:", err);
-    return serverErrorResponse("Failed to create container");
+    return serverErrorResponse(`Failed to create container: ${errMsg}`);
   }
 }

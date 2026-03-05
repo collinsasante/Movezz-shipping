@@ -2,32 +2,61 @@
 // FIREBASE AUTH - Server-side only (no firebase-admin SDK)
 // Uses jose + Google REST APIs — zero heavy Node.js dependencies
 // ============================================================
-import { createRemoteJWKSet, jwtVerify, SignJWT, importPKCS8 } from "jose";
+import { createLocalJWKSet, jwtVerify, SignJWT, importPKCS8 } from "jose";
+import type { JWTVerifyOptions } from "jose";
 
-console.log("[firebase-admin] loading module...");
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID!;
-const CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL!;
-const RAW_KEY = process.env.FIREBASE_PRIVATE_KEY ?? "";
-const PRIVATE_KEY = RAW_KEY.includes("\\n") ? RAW_KEY.replace(/\\n/g, "\n") : RAW_KEY;
+// Cloudflare context is stored in AsyncLocalStorage by OpenNext's init.js.
+// Reading directly from it is more reliable than process.env inside Workers,
+// because process.env is only populated on the first request.
+function getCfEnv(): Record<string, string | undefined> {
+  const ctx = (globalThis as Record<symbol, unknown>)[
+    Symbol.for("__cloudflare-context__")
+  ] as { env?: Record<string, string> } | undefined;
+  return ctx?.env ?? {};
+}
 
-const BASE_URL = `https://identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}`;
+function getEnvVar(key: string): string {
+  const val = process.env[key] ?? getCfEnv()[key] ?? "";
+  if (!val) console.error(`[firebase-admin] env var missing: ${key}`);
+  return val;
+}
 
-console.log("[firebase-admin] env check — PROJECT_ID:", PROJECT_ID ? "✓" : "MISSING", "| CLIENT_EMAIL:", CLIENT_EMAIL ? "✓" : "MISSING", "| PRIVATE_KEY:", PRIVATE_KEY ? "✓" : "MISSING");
+const getProjectId = () => getEnvVar("FIREBASE_PROJECT_ID");
+const getClientEmail = () => getEnvVar("FIREBASE_CLIENT_EMAIL");
+const getPrivateKey = () => {
+  const raw = getEnvVar("FIREBASE_PRIVATE_KEY");
+  return raw.includes("\\n") ? raw.replace(/\\n/g, "\n") : raw;
+};
+const getBaseUrl = () => `https://identitytoolkit.googleapis.com/v1/projects/${getProjectId()}`;
 
-// Google's public JWKS for verifying Firebase ID tokens
-const JWKS = createRemoteJWKSet(
-  new URL(
-    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
-  )
-);
+// ── JWKS via global fetch (createRemoteJWKSet uses https.get which unenv doesn't support)
+const JWKS_URL =
+  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+let _jwksCache: { keys: object[] } | null = null;
+let _jwksCacheTime = 0;
+const JWKS_TTL = 6 * 60 * 60 * 1000; // 6 h
+
+async function getJWKS() {
+  const now = Date.now();
+  if (_jwksCache && now - _jwksCacheTime < JWKS_TTL) return _jwksCache;
+  const resp = await fetch(JWKS_URL);
+  if (!resp.ok) throw new Error(`JWKS fetch failed: ${resp.status}`);
+  _jwksCache = (await resp.json()) as { keys: object[] };
+  _jwksCacheTime = now;
+  return _jwksCache;
+}
 
 // ── Token Verification ────────────────────────────────────────────────────────
 
 export async function verifyIdToken(idToken: string) {
-  const { payload } = await jwtVerify(idToken, JWKS, {
-    issuer: `https://securetoken.google.com/${PROJECT_ID}`,
-    audience: PROJECT_ID,
-  });
+  const projectId = getProjectId();
+  const jwks = await getJWKS();
+  const keySet = createLocalJWKSet(jwks as Parameters<typeof createLocalJWKSet>[0]);
+  const opts: JWTVerifyOptions = {
+    issuer: `https://securetoken.google.com/${projectId}`,
+    audience: projectId,
+  };
+  const { payload } = await jwtVerify(idToken, keySet, opts);
   return {
     uid: payload.sub as string,
     email: payload["email"] as string | undefined,
@@ -45,15 +74,15 @@ async function getAdminToken(): Promise<string> {
     return _cachedToken.token;
   }
 
-  const key = await importPKCS8(PRIVATE_KEY, "RS256");
+  const key = await importPKCS8(getPrivateKey(), "RS256");
   const nowSec = Math.floor(now / 1000);
 
   const assertion = await new SignJWT({
     scope: "https://www.googleapis.com/auth/identitytoolkit",
   })
     .setProtectedHeader({ alg: "RS256" })
-    .setIssuer(CLIENT_EMAIL)
-    .setSubject(CLIENT_EMAIL)
+    .setIssuer(getClientEmail())
+    .setSubject(getClientEmail())
     .setAudience("https://oauth2.googleapis.com/token")
     .setIssuedAt(nowSec)
     .setExpirationTime(nowSec + 3600)
@@ -84,7 +113,7 @@ async function getAdminToken(): Promise<string> {
 
 export async function createFirebaseUser(email: string, password: string) {
   const token = await getAdminToken();
-  const resp = await fetch(`${BASE_URL}/accounts`, {
+  const resp = await fetch(`${getBaseUrl()}/accounts`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -104,7 +133,7 @@ export async function createFirebaseUser(email: string, password: string) {
 
 export async function deleteFirebaseUser(uid: string) {
   const token = await getAdminToken();
-  const resp = await fetch(`${BASE_URL}/accounts:batchDelete`, {
+  const resp = await fetch(`${getBaseUrl()}/accounts:batchDelete`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -121,7 +150,7 @@ export async function deleteFirebaseUser(uid: string) {
 
 export async function getFirebaseUser(uid: string) {
   const token = await getAdminToken();
-  const resp = await fetch(`${BASE_URL}/accounts:lookup`, {
+  const resp = await fetch(`${getBaseUrl()}/accounts:lookup`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,

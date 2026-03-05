@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusUpdateModal } from "@/components/shared/StatusUpdateModal";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import type { Item, StatusHistory } from "@/types";
 import {
   ArrowLeft,
@@ -333,7 +333,12 @@ export default function AdminItemDetailPage() {
                 <InfoRow icon={Scale} label="Weight" value={`${item.weight} kg`} />
                 <InfoRow icon={Package} label="Dimensions" value={dimensions} />
                 <InfoRow icon={Hash} label="Tracking Number" value={item.trackingNumber} />
-                <InfoRow icon={Calendar} label="Date Received" value={formatDate(item.dateReceived)} />
+                <InfoRow icon={Calendar} label="Date Received" value={formatDateTime(item.dateReceived)} />
+                {item.length && item.width && item.height ? (() => {
+                  const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
+                  const cbm = (item.length * item.width * item.height * factor) / 1_000_000;
+                  return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
+                })() : null}
                 <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
                 {item.createdBy && (
                   <InfoRow icon={User} label="Created by" value={item.createdBy} />

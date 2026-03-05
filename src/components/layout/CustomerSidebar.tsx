@@ -14,7 +14,9 @@ import {
   Copy,
   CheckCheck,
   MessageCircle,
+  Settings,
 } from "lucide-react";
+import Image from "next/image";
 import axios from "axios";
 import type { SupportTicket } from "@/types";
 
@@ -24,6 +26,7 @@ const navItems = [
   { href: "/customer/orders", label: "My Invoices", icon: ShoppingCart },
   { href: "/customer/tracking", label: "Tracking", icon: MapPin },
   { href: "/customer/support", label: "Support", icon: MessageCircle },
+  { href: "/customer/settings", label: "Settings", icon: Settings },
 ];
 
 export function CustomerSidebar() {
@@ -66,9 +69,7 @@ export function CustomerSidebar() {
     <aside className="flex flex-col h-full w-64 bg-white border-r border-gray-200">
       {/* Logo */}
       <div className="flex items-center gap-2 h-16 px-6 border-b border-gray-100">
-        <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-sm">
-          P
-        </div>
+        <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
         <span className="font-bold text-lg tracking-tight text-gray-900">
           Pakkmaxx
         </span>

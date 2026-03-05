@@ -8,19 +8,48 @@
  */
 
 import { execSync } from "node:child_process";
-import { cpSync, rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { cpSync, rmSync, mkdirSync, existsSync, writeFileSync, readdirSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STAGING = ".pages-deploy";
 const OPENNEXT = ".open-next";
 
+// Merge src → dest, skipping files that already exist in dest (old files fill gaps)
+function mergeOldFiles(src, dest) {
+  if (!existsSync(src)) return;
+  mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src, { withFileTypes: true })) {
+    const s = join(src, entry.name);
+    const d = join(dest, entry.name);
+    if (entry.isDirectory()) mergeOldFiles(s, d);
+    else if (!existsSync(d)) copyFileSync(s, d);
+  }
+}
+
 console.log("🏗  Preparing Cloudflare Pages deploy directory...");
+
+// Preserve previous static assets so browsers with cached old HTML can still
+// find their old chunk/CSS files without needing a hard refresh.
+const OLD_STATIC = ".old-static-backup";
+const prevStatic = join(STAGING, "_next", "static");
+if (existsSync(prevStatic)) {
+  rmSync(OLD_STATIC, { recursive: true, force: true });
+  cpSync(prevStatic, OLD_STATIC, { recursive: true });
+  console.log("✅ Backed up previous _next/static for chunk continuity");
+}
 
 rmSync(STAGING, { recursive: true, force: true });
 mkdirSync(STAGING, { recursive: true });
 
 // Static assets
 cpSync(join(OPENNEXT, "assets"), STAGING, { recursive: true });
+
+// Merge old static files back — new files take precedence, old fill the gaps
+if (existsSync(OLD_STATIC)) {
+  mergeOldFiles(OLD_STATIC, join(STAGING, "_next", "static"));
+  rmSync(OLD_STATIC, { recursive: true, force: true });
+  console.log("✅ Merged old static assets into new build");
+}
 
 // Write _worker.js — uses top-level await import() inside try-catch so any
 // module-init error is captured and returned as an HTTP response (visible
@@ -109,7 +138,7 @@ export default {
     // Only serve if response is 2xx (not 404/405/other errors).
     if (env.ASSETS && (request.method === "GET" || request.method === "HEAD")) {
       const assetResp = await env.ASSETS.fetch(request.clone()).catch(() => null);
-      if (assetResp && assetResp.ok) return assetResp;
+      if (assetResp && (assetResp.ok || assetResp.status === 304)) return assetResp;
     }
 
     try {
@@ -130,7 +159,14 @@ export default {
         }
 
         console.log("[worker] calling server handler");
-        const nextResp = await serverHandler(reqOrResp, env, ctx, request.signal);
+        let nextResp = await serverHandler(reqOrResp, env, ctx, request.signal);
+        // Prevent browsers from caching HTML pages — stale HTML causes chunk 404s after redeploy
+        const ct = nextResp.headers.get("content-type") ?? "";
+        if (ct.includes("text/html")) {
+          const h = new Headers(nextResp.headers);
+          h.set("Cache-Control", "no-cache, must-revalidate");
+          nextResp = new Response(nextResp.body, { status: nextResp.status, statusText: nextResp.statusText, headers: h });
+        }
         if (nextResp.status >= 500) {
           const logs = capturedErrors.join("\\n");
           console.error("[worker] Next.js returned", nextResp.status, "for", path);
@@ -154,6 +190,16 @@ export default {
 
 writeFileSync(join(STAGING, "_worker.js"), workerJs);
 console.log("✅ Generated diagnostic _worker.js");
+
+// _headers — prevent browsers from caching HTML pages between deployments.
+// Static chunks are content-addressed so they can be cached forever.
+writeFileSync(join(STAGING, "_headers"), `\
+/*
+  Cache-Control: no-cache, must-revalidate
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+`);
 
 for (const dir of ["cloudflare", "middleware", "server-functions", ".build", "cloudflare-templates"]) {
   const src = join(OPENNEXT, dir);

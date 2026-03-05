@@ -14,16 +14,16 @@ import {
 import { z } from "zod";
 
 const UpdateContainerSchema = z.object({
-  name: z.string().min(2).optional(),
-  description: z.string().optional(),
-  departureDate: z.string().optional(),
-  arrivalDate: z.string().optional(),
-  trackingNumber: z.string().optional(),
-  notes: z.string().optional(),
+  name: z.string().max(200).optional(),
+  description: z.string().max(1000).optional(),
+  eta: z.string().max(50).optional(),
+  arrivalDate: z.string().max(50).optional(),
+  trackingNumber: z.string().max(100).optional(),
+  notes: z.string().max(2000).optional(),
 });
 
 const ManageItemSchema = z.object({
-  itemId: z.string().min(1, "Item ID is required"),
+  itemId: z.string().min(1, "Item ID is required").max(50),
 });
 
 export async function GET(
@@ -107,7 +107,7 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    await containersApi.delete(id, user.email);
+    await containersApi.delete(id);
     return Response.json({ success: true, message: "Container deleted" });
   } catch (err) {
     console.error("[DELETE /containers/[id]] Error:", err);

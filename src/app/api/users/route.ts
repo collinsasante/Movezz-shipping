@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
     return Response.json(
       {
         success: true,
-        data: { user: appUser, tempPassword, emailSent },
+        data: { user: appUser, emailSent },
         message: `Account created for ${email}`,
       },
       { status: 201 }

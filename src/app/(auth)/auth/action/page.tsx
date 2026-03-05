@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import {
   confirmPasswordReset,
@@ -11,6 +11,34 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2 } from "lucide-react";
+
+function SuccessRedirect({ message }: { message: string }) {
+  const router = useRouter();
+  const [count, setCount] = useState(3);
+
+  useEffect(() => {
+    if (count <= 0) { router.replace("/login"); return; }
+    const t = setTimeout(() => setCount((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [count, router]);
+
+  return (
+    <div className="text-center py-4">
+      <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <CheckCircle className="h-7 w-7 text-green-600" />
+      </div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">Done!</h2>
+      <p className="text-sm text-gray-500 mb-6">{message}</p>
+      <p className="text-sm text-gray-400 mb-4">Redirecting to sign in in {count}…</p>
+      <Link
+        href="/login"
+        className="inline-flex items-center justify-center h-11 px-8 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors"
+      >
+        Sign In now
+      </Link>
+    </div>
+  );
+}
 
 // ── Reset Password view ──────────────────────────────────────────────────────
 
@@ -70,23 +98,7 @@ function ResetPasswordView({ oobCode }: { oobCode: string }) {
   }
 
   if (done) {
-    return (
-      <div className="text-center py-4">
-        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="h-7 w-7 text-green-600" />
-        </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Password updated!</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          Your password has been changed successfully. You can now sign in with your new password.
-        </p>
-        <Link
-          href="/login"
-          className="inline-flex items-center justify-center h-11 px-8 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors"
-        >
-          Sign In
-        </Link>
-      </div>
-    );
+    return <SuccessRedirect message="Your password has been changed successfully." />;
   }
 
   if (error && !email) {
@@ -195,21 +207,7 @@ function VerifyEmailView({ oobCode }: { oobCode: string }) {
   }
 
   if (status === "done") {
-    return (
-      <div className="text-center py-4">
-        <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="h-7 w-7 text-green-600" />
-        </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Email verified!</h2>
-        <p className="text-sm text-gray-500 mb-6">Your email address has been verified. You can now sign in.</p>
-        <Link
-          href="/login"
-          className="inline-flex items-center justify-center h-11 px-8 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors"
-        >
-          Sign In
-        </Link>
-      </div>
-    );
+    return <SuccessRedirect message="Your email address has been verified. You can now sign in." />;
   }
 
   return (
@@ -291,7 +289,7 @@ function ActionContent() {
       <div className="flex-1 flex flex-col">
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-10 pt-8">
-          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={28} height={28} className="rounded" />
+          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={36} height={36} className="rounded-lg" />
           <span className="text-sm font-semibold text-gray-700 tracking-tight">Pakkmaxx</span>
         </div>
 

@@ -16,10 +16,10 @@ export default function NewContainerPage() {
   const { success, error } = useToast();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    name: "",
+    name: "",       // Shipping Line (optional)
+    trackingNumber: "",  // Container Number (mandatory)
+    eta: "",
     description: "",
-    departureDate: "",
-    trackingNumber: "",
     notes: "",
   });
 
@@ -27,7 +27,13 @@ export default function NewContainerPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await axios.post("/api/containers", form);
+      const res = await axios.post("/api/containers", {
+        name: form.name || undefined,
+        trackingNumber: form.trackingNumber,
+        eta: form.eta || undefined,
+        description: form.description || undefined,
+        notes: form.notes || undefined,
+      });
       success(
         "Container created!",
         `ID: ${res.data.data.containerId}`
@@ -66,36 +72,33 @@ export default function NewContainerPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <Input
-                label="Container Name"
-                placeholder="e.g. July 2024 Shipment"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                label="Container Number"
+                placeholder="e.g. MSCU1234567"
+                value={form.trackingNumber}
+                onChange={(e) => setForm({ ...form, trackingNumber: e.target.value })}
                 required
+                hint="The actual container number (mandatory)"
               />
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Shipping Line (optional)"
+                  placeholder="e.g. MSC, Maersk, CMA CGM"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+                <Input
+                  label="Estimated Arrival (ETA)"
+                  type="date"
+                  value={form.eta}
+                  onChange={(e) => setForm({ ...form, eta: e.target.value })}
+                />
+              </div>
               <Textarea
                 label="Description (optional)"
                 placeholder="Additional details about this container..."
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="Departure Date (optional)"
-                  type="date"
-                  value={form.departureDate}
-                  onChange={(e) =>
-                    setForm({ ...form, departureDate: e.target.value })
-                  }
-                />
-                <Input
-                  label="Shipping Tracking # (optional)"
-                  placeholder="Container tracking number"
-                  value={form.trackingNumber}
-                  onChange={(e) =>
-                    setForm({ ...form, trackingNumber: e.target.value })
-                  }
-                />
-              </div>
               <Textarea
                 label="Notes (optional)"
                 value={form.notes}

@@ -6,16 +6,6 @@ import { verifyIdToken } from "./firebase-admin";
 import { usersApi } from "./airtable";
 import type { AppUser, UserRole } from "@/types";
 
-const IS_DEV = process.env.NODE_ENV === "development";
-const DEV_TOKEN = "DEV_ADMIN_TEST_TOKEN";
-const DEV_USER: AppUser = {
-  id: "dev-user-id",
-  firebaseUid: "dev-uid",
-  email: "dev@pakkmaxx.com",
-  role: "super_admin",
-  createdAt: new Date().toISOString(),
-};
-
 // ── In-memory auth cache ──────────────────────────────────────────────────────
 // Caches the AppUser per token for 5 minutes to avoid an Airtable round-trip
 // on every polling request. The cache is cleared automatically when entries expire.
@@ -46,9 +36,6 @@ export async function getAuthUser(
       : cookieToken;
 
     if (!token) return null;
-
-    // DEV-ONLY: bypass Firebase verification for test token
-    if (IS_DEV && token === DEV_TOKEN) return DEV_USER;
 
     // Return cached user if still valid
     const cached = authCache.get(token);

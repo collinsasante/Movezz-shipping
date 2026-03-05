@@ -6,8 +6,8 @@ import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth
 import { z } from "zod";
 
 const CreateTicketSchema = z.object({
-  subject: z.string().min(3, "Subject is required"),
-  content: z.string().min(5, "Message is required"),
+  subject: z.string().min(3, "Subject is required").max(200),
+  content: z.string().min(5, "Message is required").max(5000),
 });
 
 export async function GET(request: NextRequest) {

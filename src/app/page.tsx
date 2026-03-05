@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2 } from "lucide-react";
+import Image from "next/image";
 
 // Root page — redirect based on authenticated role
 export default function RootPage() {
@@ -28,9 +29,7 @@ export default function RootPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <div className="w-16 h-16 rounded-2xl bg-brand-600 flex items-center justify-center mx-auto mb-4">
-          <span className="text-3xl font-black text-white">P</span>
-        </div>
+        <Image src="/logowithouttext.png" alt="Pakkmaxx" width={64} height={64} className="rounded-2xl mx-auto mb-4" />
         <Loader2 className="h-5 w-5 animate-spin text-brand-600 mx-auto mt-2" />
         <p className="text-sm text-gray-500 mt-2">Loading Pakkmaxx...</p>
       </div>

@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/utils";
 import type { Container, Item, ContainerStatus } from "@/types";
+import { Input } from "@/components/ui/input";
 import {
   ArrowLeft,
   Package,
@@ -18,6 +19,9 @@ import {
   RefreshCw,
   Plus,
   Container as ContainerIcon,
+  Edit2,
+  Check,
+  X,
 } from "lucide-react";
 import axios from "axios";
 
@@ -43,6 +47,9 @@ export default function ContainerDetailPage() {
   const [addItemId, setAddItemId] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", trackingNumber: "", eta: "", notes: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +64,36 @@ export default function ContainerDetailPage() {
   }, [id, error]);
 
   useEffect(() => { load(); }, [load]);
+
+  const openEdit = () => {
+    if (!container) return;
+    setEditForm({
+      name: container.name ?? "",
+      trackingNumber: container.trackingNumber ?? "",
+      eta: container.eta?.split("T")[0] ?? "",
+      notes: container.notes ?? "",
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      await axios.patch(`/api/containers/${id}`, {
+        name: editForm.name || undefined,
+        trackingNumber: editForm.trackingNumber || undefined,
+        eta: editForm.eta || undefined,
+        notes: editForm.notes || undefined,
+      });
+      success("Container updated");
+      setEditing(false);
+      load();
+    } catch {
+      error("Failed to update container");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -133,7 +170,7 @@ export default function ContainerDetailPage() {
     <div className="flex flex-col h-full">
       <Header
         title={container.containerId}
-        subtitle={container.name}
+        subtitle={container.trackingNumber + (container.name ? ` · ${container.name}` : "")}
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
@@ -178,32 +215,49 @@ export default function ContainerDetailPage() {
           {/* Container Info Card */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ContainerIcon className="h-5 w-5 text-brand-600" />
-                Container Info
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <ContainerIcon className="h-5 w-5 text-brand-600" />
+                  Container Info
+                </span>
+                {!editing ? (
+                  <button onClick={openEdit} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+                    <Edit2 className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button onClick={saveEdit} disabled={savingEdit} className="p-1.5 rounded-lg hover:bg-green-50 text-green-600 transition-colors disabled:opacity-50">
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button onClick={() => setEditing(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <InfoItem label="Container ID" value={container.containerId} mono />
-              <InfoItem label="Name" value={container.name} />
-              <InfoItem label="Status">
-                <StatusBadge status={container.status} />
-              </InfoItem>
-              <InfoItem label="Total Items" value={String(container.items?.length ?? 0)} />
-              <InfoItem
-                label="Departure"
-                value={container.departureDate ? formatDate(container.departureDate) : "—"}
-              />
-              <InfoItem
-                label="Arrival"
-                value={container.arrivalDate ? formatDate(container.arrivalDate) : "—"}
-              />
-              {container.trackingNumber && (
-                <InfoItem
-                  label="Tracking #"
-                  value={container.trackingNumber}
-                  mono
-                />
+              {editing ? (
+                <div className="space-y-3">
+                  <Input label="Container #" value={editForm.trackingNumber} onChange={(e) => setEditForm({ ...editForm, trackingNumber: e.target.value })} />
+                  <Input label="Shipping Line (optional)" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="e.g. MSC, Maersk" />
+                  <Input label="ETA" type="date" value={editForm.eta} onChange={(e) => setEditForm({ ...editForm, eta: e.target.value })} />
+                  <Input label="Notes (optional)" value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
+                </div>
+              ) : (
+                <>
+                  <InfoItem label="Container #" value={container.trackingNumber} mono />
+                  {container.name && <InfoItem label="Shipping Line" value={container.name} />}
+                  <InfoItem label="Status">
+                    <StatusBadge status={container.status} />
+                  </InfoItem>
+                  <InfoItem label="Total Items" value={String(container.items?.length ?? 0)} />
+                  <InfoItem label="ETA" value={container.eta ? formatDate(container.eta) : "—"} />
+                  <InfoItem label="Arrived" value={container.arrivalDate ? formatDate(container.arrivalDate) : "—"} />
+                  <InfoItem label="Created" value={container.createdAt ? formatDate(container.createdAt) : "—"} />
+                  {container.notes && <InfoItem label="Notes" value={container.notes} />}
+                </>
               )}
 
               {/* Status Update */}

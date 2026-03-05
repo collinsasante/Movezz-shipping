@@ -56,10 +56,10 @@ export default function CustomersPage() {
     setDeletingId(id);
     try {
       await axios.delete(`/api/customers/${id}`);
-      success("Customer deactivated");
+      success("Customer deleted");
       setCustomers((prev) => prev.filter((c) => c.id !== id));
     } catch {
-      error("Failed to deactivate customer");
+      error("Failed to delete customer");
     } finally {
       setDeletingId(null);
       setConfirmDeleteId(null);
@@ -151,7 +151,7 @@ export default function CustomersPage() {
                 >
                   {confirmDeleteId === c.id ? (
                     <>
-                      <span className="text-xs text-red-600 mr-1">Deactivate?</span>
+                      <span className="text-xs text-red-600 mr-1">Delete?</span>
                       <button
                         onClick={() => handleDelete(c.id)}
                         disabled={deletingId === c.id}
@@ -169,7 +169,7 @@ export default function CustomersPage() {
                   ) : (
                     <>
                       <button
-                        onClick={() => router.push(`/admin/customers/${c.id}`)}
+                        onClick={() => router.push(`/admin/customers/${c.id}?edit=true`)}
                         className="p-1.5 text-gray-400 hover:text-brand-600 hover:bg-brand-50 rounded transition-colors"
                         title="Edit"
                       >
@@ -178,7 +178,7 @@ export default function CustomersPage() {
                       <button
                         onClick={() => setConfirmDeleteId(c.id)}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Deactivate"
+                        title="Delete"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

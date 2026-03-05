@@ -164,6 +164,8 @@ function mapCustomer(record: AirtableRecord<FieldSet>): Customer {
     shippingMark: (f["ShippingMark"] as string) ?? "",
     firebaseUid: (f["FirebaseUID"] as string) ?? undefined,
     status: ((f["Status"] as string) ?? "active") as Customer["status"],
+    shippingType: ((f["ShippingType"] as string) ?? undefined) as Customer["shippingType"],
+    exchangeRate: (f["ExchangeRate"] as number) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
   };
@@ -185,8 +187,8 @@ function mapItem(record: AirtableRecord<FieldSet>): Item {
     dateReceived: (f["DateReceived"] as string) ?? toISOString(),
     trackingNumber: (f["TrackingNumber"] as string) ?? undefined,
     customerId: ((f["Customer"] as string[]) ?? [])[0] ?? "",
-    customerName: (f["CustomerName"] as string) ?? undefined,
-    customerShippingMark: (f["CustomerShippingMark"] as string) ?? undefined,
+    customerName: (Array.isArray(f["CustomerName"]) ? (f["CustomerName"] as string[])[0] : (f["CustomerName"] as string)) ?? undefined,
+    customerShippingMark: (Array.isArray(f["CustomerShippingMark"]) ? (f["CustomerShippingMark"] as string[])[0] : (f["CustomerShippingMark"] as string)) ?? undefined,
     status: ((f["Status"] as string) ??
       "Arrived at Transit Warehouse") as ItemStatus,
     containerId: ((f["Container"] as string[]) ?? [])[0] ?? undefined,
@@ -223,14 +225,14 @@ function mapContainer(record: AirtableRecord<FieldSet>): Container {
   return {
     id: record.id,
     containerId: (f["ContainerID"] as string) ?? record.id,
-    name: (f["Name"] as string) ?? "",
+    name: (f["Name"] as string) ?? undefined,
     description: (f["Description"] as string) ?? undefined,
     status: ((f["Status"] as string) ?? "Loading") as ContainerStatus,
     itemIds: (f["Items"] as string[]) ?? [],
     itemCount: ((f["Items"] as string[]) ?? []).length,
-    departureDate: (f["DepartureDate"] as string) ?? undefined,
+    eta: (f["DepartureDate"] as string) ?? undefined,
     arrivalDate: (f["ArrivalDate"] as string) ?? undefined,
-    trackingNumber: (f["TrackingNumber"] as string) ?? undefined,
+    trackingNumber: (f["TrackingNumber"] as string) ?? "",
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     createdBy: (f["CreatedBy"] as string) ?? undefined,
@@ -312,7 +314,25 @@ export const customersApi = {
   async getByFirebaseUid(uid: string): Promise<Customer | null> {
     const records = await getAllRecords(
       TABLES.CUSTOMERS,
-      `{FirebaseUID} = '${uid}'`
+      `{FirebaseUID} = '${escapeFormula(uid)}'`
+    );
+    if (records.length === 0) return null;
+    return mapCustomer(records[0]);
+  },
+
+  async getByPhone(phone: string): Promise<Customer | null> {
+    const records = await getAllRecords(
+      TABLES.CUSTOMERS,
+      `{Phone} = '${escapeFormula(phone)}'`
+    );
+    if (records.length === 0) return null;
+    return mapCustomer(records[0]);
+  },
+
+  async getByEmail(email: string): Promise<Customer | null> {
+    const records = await getAllRecords(
+      TABLES.CUSTOMERS,
+      `{Email} = '${escapeFormula(email)}'`
     );
     if (records.length === 0) return null;
     return mapCustomer(records[0]);
@@ -336,15 +356,6 @@ export const customersApi = {
       Notes: input.notes ?? "",
       // CreatedAt is a "Created time" field — Airtable fills it automatically
       CreatedBy: createdByEmail,
-    });
-
-    await activityLogsApi.log({
-      action: "CREATE_CUSTOMER",
-      userEmail: createdByEmail,
-      userRole: "super_admin",
-      details: `Created customer: ${input.name} (${shippingMark})`,
-      entityType: "Customer",
-      entityId: record.id,
     });
 
     return mapCustomer(record);
@@ -376,16 +387,11 @@ export const customersApi = {
     if (input.email !== undefined) fields["Email"] = input.email;
     if (input.notes !== undefined) fields["Notes"] = input.notes;
     if (input.status !== undefined) fields["Status"] = input.status;
+    if (input.shippingType !== undefined) fields["ShippingType"] = input.shippingType;
+    if (input.exchangeRate !== undefined) fields["ExchangeRate"] = input.exchangeRate ?? undefined;
+    if (input.shippingAddress !== undefined) fields["ShippingAddress"] = input.shippingAddress;
 
     const record = await updateRecord(TABLES.CUSTOMERS, id, fields);
-    await activityLogsApi.log({
-      action: "UPDATE_CUSTOMER",
-      userEmail: updatedByEmail,
-      userRole: "super_admin",
-      details: `Updated customer ID: ${id}`,
-      entityType: "Customer",
-      entityId: id,
-    });
     return mapCustomer(record);
   },
 
@@ -393,17 +399,8 @@ export const customersApi = {
     await updateRecord(TABLES.CUSTOMERS, id, { FirebaseUID: uid });
   },
 
-  async delete(id: string, deletedByEmail: string): Promise<void> {
-    // Soft delete — mark as inactive
-    await updateRecord(TABLES.CUSTOMERS, id, { Status: "inactive" });
-    await activityLogsApi.log({
-      action: "DELETE_CUSTOMER",
-      userEmail: deletedByEmail,
-      userRole: "super_admin",
-      details: `Deactivated customer ID: ${id}`,
-      entityType: "Customer",
-      entityId: id,
-    });
+  async delete(id: string): Promise<void> {
+    await deleteRecord(TABLES.CUSTOMERS, id);
   },
 };
 
@@ -460,7 +457,16 @@ export const itemsApi = {
 
   async getById(id: string): Promise<Item> {
     const record = await getRecord(TABLES.ITEMS, id);
-    return mapItem(record);
+    const item = mapItem(record);
+    console.log("[itemsApi.getById] customerName:", item.customerName, "customerId:", item.customerId);
+    if (item.customerId && !item.customerName) {
+      const customer = await customersApi.getById(item.customerId).catch(() => null);
+      if (customer) {
+        item.customerName = customer.name;
+        item.customerShippingMark = customer.shippingMark;
+      }
+    }
+    return item;
   },
 
   async getByCustomer(customerId: string): Promise<Item[]> {
@@ -512,15 +518,6 @@ export const itemsApi = {
       changedAt: new Date().toISOString(),
     });
 
-    await activityLogsApi.log({
-      action: "CREATE_ITEM",
-      userEmail: createdByEmail,
-      userRole: "warehouse_staff",
-      details: `Received item ${itemRef} for customer ${input.customerId}`,
-      entityType: "Item",
-      entityId: record.id,
-    });
-
     return mapItem(record);
   },
 
@@ -547,14 +544,6 @@ export const itemsApi = {
     }
 
     const record = await updateRecord(TABLES.ITEMS, id, fields);
-    await activityLogsApi.log({
-      action: "UPDATE_ITEM",
-      userEmail: updatedByEmail,
-      userRole: "warehouse_staff",
-      details: `Updated item ID: ${id}`,
-      entityType: "Item",
-      entityId: id,
-    });
     return mapItem(record);
   },
 
@@ -598,15 +587,6 @@ export const itemsApi = {
       notes,
     });
 
-    await activityLogsApi.log({
-      action: "UPDATE_ITEM_STATUS",
-      userEmail: changedByEmail,
-      userRole: changedByRole,
-      details: `Item ${itemRef}: ${previousStatus} → ${newStatus}`,
-      entityType: "Item",
-      entityId: id,
-    });
-
     // Send WhatsApp notification only if explicitly requested
     const orderId = ((existing.fields["Order"] as string[]) ?? [])[0];
     if (sendWhatsApp && orderId && customerId) {
@@ -640,19 +620,7 @@ export const itemsApi = {
     markedByEmail: string,
     markedByRole: UserRole
   ): Promise<Item> {
-    const existing = await getRecord(TABLES.ITEMS, id);
-    const itemRef = existing.fields["ItemRef"] as string;
-
     await updateRecord(TABLES.ITEMS, id, { IsMissing: true });
-    await activityLogsApi.log({
-      action: "MARK_ITEM_MISSING",
-      userEmail: markedByEmail,
-      userRole: markedByRole,
-      details: `Item ${itemRef} marked as MISSING`,
-      entityType: "Item",
-      entityId: id,
-    });
-
     const updated = await getRecord(TABLES.ITEMS, id);
     return mapItem(updated);
   },
@@ -671,20 +639,10 @@ export const itemsApi = {
     );
   },
 
-  async delete(id: string, deletedByEmail: string): Promise<void> {
-    const existing = await getRecord(TABLES.ITEMS, id);
-    const itemRef = (existing.fields["ItemRef"] as string) ?? id;
+  async delete(id: string): Promise<void> {
     // Unlink from container and order before deleting
     await updateRecord(TABLES.ITEMS, id, { Container: [], Order: [] });
     await deleteRecord(TABLES.ITEMS, id);
-    await activityLogsApi.log({
-      action: "DELETE_ITEM",
-      userEmail: deletedByEmail,
-      userRole: "warehouse_staff",
-      details: `Deleted item ${itemRef}`,
-      entityType: "Item",
-      entityId: id,
-    });
   },
 };
 
@@ -760,21 +718,11 @@ export const ordersApi = {
       await updateRecord(TABLES.ITEMS, itemId, { Order: [record.id] });
     }
 
-    await activityLogsApi.log({
-      action: "CREATE_ORDER",
-      userEmail: createdByEmail,
-      userRole: "super_admin",
-      details: `Created order ${orderRef} for customer ${input.customerId}`,
-      entityType: "Order",
-      entityId: record.id,
-    });
-
     return mapOrder(record);
   },
 
-  async delete(id: string, deletedByEmail: string): Promise<void> {
+  async delete(id: string): Promise<void> {
     const existing = await getRecord(TABLES.ORDERS, id);
-    const orderRef = (existing.fields["OrderRef"] as string) ?? id;
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
     // Unlink all items from this order
     await Promise.all(
@@ -785,14 +733,6 @@ export const ordersApi = {
       )
     );
     await deleteRecord(TABLES.ORDERS, id);
-    await activityLogsApi.log({
-      action: "DELETE_ORDER",
-      userEmail: deletedByEmail,
-      userRole: "super_admin",
-      details: `Deleted order ${orderRef}`,
-      entityType: "Order",
-      entityId: id,
-    });
   },
 
   async update(
@@ -877,28 +817,20 @@ export const containersApi = {
 
     const fields: FieldSet = {
       ContainerID: containerId,
-      Name: input.name,
-      Description: input.description ?? "",
       Status: "Loading",
-      Notes: input.notes ?? "",
-      // CreatedAt is a "Created time" field — Airtable fills it automatically
+      TrackingNumber: input.trackingNumber,
+      // CreatedAt is a "Created time" auto-field — Airtable fills it automatically
       CreatedBy: createdByEmail,
     };
 
-    if (input.departureDate) fields["DepartureDate"] = input.departureDate;
-    if (input.trackingNumber) fields["TrackingNumber"] = input.trackingNumber;
+    if (input.name) fields["Name"] = input.name;
+    if (input.description) fields["Description"] = input.description;
+    if (input.notes) fields["Notes"] = input.notes;
+    if (input.eta) fields["DepartureDate"] = input.eta;
 
+    console.log("[containersApi.create] creating with fields:", JSON.stringify(Object.keys(fields)));
     const record = await createRecord(TABLES.CONTAINERS, fields);
-
-    await activityLogsApi.log({
-      action: "CREATE_CONTAINER",
-      userEmail: createdByEmail,
-      userRole: "super_admin",
-      details: `Created container: ${containerId} - ${input.name}`,
-      entityType: "Container",
-      entityId: record.id,
-    });
-
+    console.log("[containersApi.create] created record id:", record.id);
     return mapContainer(record);
   },
 
@@ -911,8 +843,8 @@ export const containersApi = {
     if (input.name !== undefined) fields["Name"] = input.name;
     if (input.description !== undefined) fields["Description"] = input.description;
     if (input.status !== undefined) fields["Status"] = input.status;
-    if (input.departureDate !== undefined)
-      fields["DepartureDate"] = input.departureDate;
+    if (input.eta !== undefined)
+      fields["DepartureDate"] = input.eta;
     if (input.arrivalDate !== undefined) fields["ArrivalDate"] = input.arrivalDate;
     if (input.trackingNumber !== undefined)
       fields["TrackingNumber"] = input.trackingNumber;
@@ -946,15 +878,6 @@ export const containersApi = {
       changedByRole,
       changedAt: new Date().toISOString(),
       notes,
-    });
-
-    await activityLogsApi.log({
-      action: "UPDATE_CONTAINER_STATUS",
-      userEmail: changedByEmail,
-      userRole: changedByRole,
-      details: `Container ${containerId}: ${previousStatus} → ${newStatus}`,
-      entityType: "Container",
-      entityId: id,
     });
 
     // ---- ARRIVAL IN GHANA LOGIC ----
@@ -999,20 +922,11 @@ export const containersApi = {
     // Also link back on the item
     await updateRecord(TABLES.ITEMS, itemId, { Container: [containerId] });
 
-    await activityLogsApi.log({
-      action: "ADD_ITEM_TO_CONTAINER",
-      userEmail: addedByEmail,
-      userRole: "warehouse_staff",
-      details: `Added item ${itemId} to container ${container.fields["ContainerID"]}`,
-      entityType: "Container",
-      entityId: containerId,
-    });
-
     const updated = await getRecord(TABLES.CONTAINERS, containerId);
     return mapContainer(updated);
   },
 
-  async delete(id: string, deletedByEmail: string): Promise<void> {
+  async delete(id: string): Promise<void> {
     const existing = await getRecord(TABLES.CONTAINERS, id);
     const containerId = (existing.fields["ContainerID"] as string) ?? id;
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
@@ -1025,14 +939,6 @@ export const containersApi = {
       )
     );
     await deleteRecord(TABLES.CONTAINERS, id);
-    await activityLogsApi.log({
-      action: "DELETE_CONTAINER",
-      userEmail: deletedByEmail,
-      userRole: "super_admin",
-      details: `Deleted container ${containerId}`,
-      entityType: "Container",
-      entityId: id,
-    });
   },
 
   async removeItem(
@@ -1046,15 +952,6 @@ export const containersApi = {
 
     await updateRecord(TABLES.CONTAINERS, containerId, { Items: newItems });
     await updateRecord(TABLES.ITEMS, itemId, { Container: [] });
-
-    await activityLogsApi.log({
-      action: "REMOVE_ITEM_FROM_CONTAINER",
-      userEmail: removedByEmail,
-      userRole: "warehouse_staff",
-      details: `Removed item ${itemId} from container ${container.fields["ContainerID"]}`,
-      entityType: "Container",
-      entityId: containerId,
-    });
 
     const updated = await getRecord(TABLES.CONTAINERS, containerId);
     return mapContainer(updated);
@@ -1139,13 +1036,13 @@ export const activityLogsApi = {
 // ============================================================
 export const usersApi = {
   async getByFirebaseUid(uid: string): Promise<AppUser | null> {
-    const records = await getAllRecords(TABLES.USERS, `{FirebaseUID} = '${uid}'`);
+    const records = await getAllRecords(TABLES.USERS, `{FirebaseUID} = '${escapeFormula(uid)}'`);
     if (records.length === 0) return null;
     return mapUser(records[0]);
   },
 
   async getByEmail(email: string): Promise<AppUser | null> {
-    const records = await getAllRecords(TABLES.USERS, `{Email} = '${email}'`);
+    const records = await getAllRecords(TABLES.USERS, `{Email} = '${escapeFormula(email)}'`);
     if (records.length === 0) return null;
     return mapUser(records[0]);
   },

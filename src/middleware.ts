@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 // ROUTE PROTECTION MIDDLEWARE
 // ============================================================
 
-const PUBLIC_PATHS = ["/login", "/reset-password", "/api/auth"];
+const PUBLIC_PATHS = ["/login", "/reset-password", "/auth", "/api/auth"];
 
 const ROLE_ROUTES: Record<string, string[]> = {
   "/admin": ["super_admin", "warehouse_staff"],
@@ -13,7 +13,6 @@ const ROLE_ROUTES: Record<string, string[]> = {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  console.log("[middleware] path:", pathname);
 
   // Allow public paths without auth
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {

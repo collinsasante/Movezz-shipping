@@ -15,11 +15,9 @@ import {
 } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/utils";
 import type { AppUser, UserRole } from "@/types";
-import { Plus, ShieldCheck, Trash2, Copy, CheckCheck, DollarSign, Save } from "lucide-react";
+import { Plus, ShieldCheck, Trash2, Copy, CheckCheck } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
-
-const RATES_LS_KEY = "pakk_exchange_rates";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
@@ -60,35 +58,6 @@ export default function StaffPage() {
     email: "",
     role: "warehouse_staff" as "super_admin" | "warehouse_staff",
   });
-
-  const [rates, setRates] = useState({ usdToGhs: "", shippingRatePerCbm: "" });
-  const [ratesSaved, setRatesSaved] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(RATES_LS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setRates({
-          usdToGhs: parsed.usdToGhs?.toString() ?? "",
-          shippingRatePerCbm: parsed.shippingRatePerCbm?.toString() ?? "",
-        });
-      }
-    } catch {}
-  }, []);
-
-  const saveRates = () => {
-    const usdToGhs = parseFloat(rates.usdToGhs);
-    const shippingRatePerCbm = parseFloat(rates.shippingRatePerCbm);
-    if (isNaN(usdToGhs) || isNaN(shippingRatePerCbm)) {
-      error("Invalid rates", "Please enter valid numbers");
-      return;
-    }
-    localStorage.setItem(RATES_LS_KEY, JSON.stringify({ usdToGhs, shippingRatePerCbm }));
-    setRatesSaved(true);
-    success("Rates saved", "Exchange rates updated successfully");
-    setTimeout(() => setRatesSaved(false), 2000);
-  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -163,43 +132,6 @@ export default function StaffPage() {
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {/* Billing Details */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
-              <DollarSign className="h-4 w-4 text-green-600" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Billing Details</h2>
-              <p className="text-xs text-gray-500">Used for automatic CBM cost calculations</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <Input
-              label="USD → GHS Rate"
-              type="number"
-              step="0.01"
-              placeholder="e.g. 15.50"
-              value={rates.usdToGhs}
-              onChange={(e) => setRates({ ...rates, usdToGhs: e.target.value })}
-              hint="How many GHS per 1 USD"
-            />
-            <Input
-              label="Shipping Rate (USD per CBM)"
-              type="number"
-              step="0.01"
-              placeholder="e.g. 200"
-              value={rates.shippingRatePerCbm}
-              onChange={(e) => setRates({ ...rates, shippingRatePerCbm: e.target.value })}
-              hint="Cost in USD for 1 cubic metre"
-            />
-          </div>
-          <Button size="sm" onClick={saveRates}>
-            <Save className="h-3.5 w-3.5 mr-1.5" />
-            {ratesSaved ? "Saved!" : "Save Rates"}
-          </Button>
-        </div>
-
         {/* Staff list */}
         <div className="flex items-center justify-end">
           <Button onClick={openDialog}>

@@ -34,8 +34,12 @@ function LoginForm() {
   const redirect = searchParams?.get("redirect");
 
   const goToDashboard = (role: string) => {
-    if (redirect) return router.replace(redirect);
-    router.replace(role === "customer" ? "/customer" : "/admin");
+    const defaultPath = role === "customer" ? "/customer" : "/admin";
+    // Only allow internal relative redirects to prevent open redirect attacks
+    if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
+      return router.replace(redirect);
+    }
+    router.replace(defaultPath);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
