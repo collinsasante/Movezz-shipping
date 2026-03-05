@@ -2,7 +2,7 @@
 // PATCH  /api/customers/[id]  — update customer
 // DELETE /api/customers/[id]  — deactivate customer
 import { NextRequest } from "next/server";
-import { customersApi, itemsApi, ordersApi, statusHistoryApi } from "@/lib/airtable";
+import { customersApi, itemsApi, ordersApi } from "@/lib/airtable";
 import {
   requireAuth,
   serverErrorResponse,

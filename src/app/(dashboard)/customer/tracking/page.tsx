@@ -23,7 +23,7 @@ export default function CustomerTrackingPage() {
     setHistoryLoading(true);
     try {
       const res = await axios.get(`/api/items/${itemId}`);
-      setSelectedHistory(res.data.data.statusHistory ?? []);
+      setSelectedHistory([]);
     } catch {
       setSelectedHistory([]);
     } finally {

@@ -521,18 +521,6 @@ export const itemsApi = {
 
     const record = await createRecord(TABLES.ITEMS, fields);
 
-    // Log status history
-    await statusHistoryApi.log({
-      recordType: "Item",
-      recordId: record.id,
-      recordRef: itemRef,
-      previousStatus: "",
-      newStatus: "Arrived at Transit Warehouse",
-      changedBy: createdByEmail,
-      changedByRole: "warehouse_staff",
-      changedAt: new Date().toISOString(),
-    });
-
     return mapItem(record);
   },
 
@@ -588,19 +576,6 @@ export const itemsApi = {
     }
 
     await updateRecord(TABLES.ITEMS, id, { Status: newStatus });
-
-    // Log status history
-    await statusHistoryApi.log({
-      recordType: "Item",
-      recordId: id,
-      recordRef: itemRef,
-      previousStatus,
-      newStatus,
-      changedBy: changedByEmail,
-      changedByRole,
-      changedAt: new Date().toISOString(),
-      notes,
-    });
 
     // Send WhatsApp notification only if explicitly requested
     const orderId = ((existing.fields["Order"] as string[]) ?? [])[0];
@@ -768,19 +743,6 @@ export const ordersApi = {
 
     const record = await updateRecord(TABLES.ORDERS, id, fields);
 
-    if (input.status && input.status !== previousStatus) {
-      await statusHistoryApi.log({
-        recordType: "Order",
-        recordId: id,
-        recordRef: orderRef,
-        previousStatus,
-        newStatus: input.status,
-        changedBy: updatedByEmail,
-        changedByRole: "super_admin",
-        changedAt: new Date().toISOString(),
-      });
-    }
-
     return mapOrder(record);
   },
 
@@ -900,18 +862,6 @@ export const containersApi = {
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
 
     await updateRecord(TABLES.CONTAINERS, id, { Status: newStatus });
-
-    await statusHistoryApi.log({
-      recordType: "Container",
-      recordId: id,
-      recordRef: containerId,
-      previousStatus,
-      newStatus,
-      changedBy: changedByEmail,
-      changedByRole,
-      changedAt: new Date().toISOString(),
-      notes,
-    });
 
     // ---- CASCADE STATUS TO ALL ITEMS ----
     // Map container statuses to the corresponding item status

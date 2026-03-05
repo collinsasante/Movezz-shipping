@@ -2,7 +2,7 @@
 // PATCH  /api/items/[id]  — update item fields
 // DELETE /api/items/[id]  — delete item
 import { NextRequest } from "next/server";
-import { itemsApi, statusHistoryApi } from "@/lib/airtable";
+import { itemsApi } from "@/lib/airtable";
 import {
   requireAuth,
   serverErrorResponse,
@@ -50,12 +50,9 @@ export async function GET(
       );
     }
 
-    // Fetch status history
-    const history = await statusHistoryApi.getForRecord(id);
-
     return Response.json({
       success: true,
-      data: { ...item, statusHistory: history },
+      data: item,
     });
   } catch (err) {
     console.error("[GET /items/[id]] Error:", err);

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { StatusUpdateModal } from "@/components/shared/StatusUpdateModal";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import type { Item, StatusHistory } from "@/types";
+import type { Item } from "@/types";
 import {
   ArrowLeft,
   Package,
@@ -22,7 +22,6 @@ import {
   ShoppingCart,
   AlertTriangle,
   Loader2,
-  Clock,
   Trash2,
   Edit2,
 } from "lucide-react";
@@ -34,9 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
-interface ItemDetail extends Item {
-  statusHistory?: StatusHistory[];
-}
+interface ItemDetail extends Item {}
 
 function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: React.ReactNode }) {
   return (
@@ -379,36 +376,13 @@ export default function AdminItemDetailPage() {
             )}
           </div>
 
-          {/* Right column: Tracking + History */}
+          {/* Right column: Tracking */}
           <div className="space-y-5">
             {/* Tracking Timeline */}
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
               <h3 className="font-semibold text-gray-900 mb-4">Tracking</h3>
-              <TrackingTimeline currentStatus={item.status} history={item.statusHistory ?? []} />
+              <TrackingTimeline currentStatus={item.status} history={[]} />
             </div>
-
-            {/* Status History */}
-            {item.statusHistory && item.statusHistory.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-5">
-                <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
-                  <Clock className="h-4 w-4 text-brand-600" />
-                  Status History
-                </h3>
-                <div className="space-y-3">
-                  {item.statusHistory.map((h) => (
-                    <div key={h.id} className="relative pl-4 border-l-2 border-gray-100">
-                      <p className="text-xs font-semibold text-gray-700">{h.newStatus}</p>
-                      {h.previousStatus && (
-                        <p className="text-xs text-gray-400">from {h.previousStatus}</p>
-                      )}
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {formatDate(h.changedAt)} · {h.changedBy}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

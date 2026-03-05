@@ -12,7 +12,6 @@ import {
   Container,
   ShoppingCart,
   SortAsc,
-  Activity,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -54,11 +53,6 @@ const navItems = [
     href: "/admin/sorting",
     label: "Sorting",
     icon: SortAsc,
-  },
-  {
-    href: "/admin/reports",
-    label: "Status History",
-    icon: Activity,
   },
   {
     href: "/admin/staff",
