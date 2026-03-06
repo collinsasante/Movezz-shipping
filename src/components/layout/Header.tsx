@@ -2,9 +2,10 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { Bell, Search, X, MessageCircle, Package } from "lucide-react";
+import { Bell, Search, X, MessageCircle, Package, Menu } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useSidebar } from "@/context/SidebarContext";
 
 interface HeaderProps {
   title: string;
@@ -25,6 +26,7 @@ export function Header({ title, subtitle }: HeaderProps) {
   const { appUser } = useAuth();
   const role = appUser?.role ?? "";
   const { notifications, unread, markAllRead, clearAll } = useNotifications(role);
+  const { openSidebar } = useSidebar();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -50,10 +52,20 @@ export function Header({ title, subtitle }: HeaderProps) {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
-        {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
+    <header className="h-14 lg:h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 shrink-0">
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={openSidebar}
+          className="lg:hidden p-2 -ml-1 rounded-lg hover:bg-gray-100 text-gray-500 shrink-0"
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-lg lg:text-xl font-semibold text-gray-900 truncate">{title}</h1>
+          {subtitle && <p className="text-xs lg:text-sm text-gray-500 truncate hidden sm:block">{subtitle}</p>}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

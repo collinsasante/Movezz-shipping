@@ -3,18 +3,16 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CustomerSidebar } from "@/components/layout/CustomerSidebar";
 import { WhatsAppButton } from "@/components/shared/WhatsAppButton";
 import { Loader2 } from "lucide-react";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const { appUser, loading } = useAuth();
   const pathname = usePathname();
+  const { open, closeSidebar } = useSidebar();
 
   if (loading) {
     return (
@@ -59,6 +57,14 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Mobile backdrop — dismisses sidebar when tapping outside */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+          onClick={closeSidebar}
+        />
+      )}
+
       {/* Sidebar */}
       {(appUser.role === "super_admin" || appUser.role === "warehouse_staff") && (
         <AdminSidebar />
@@ -72,5 +78,17 @@ export default function DashboardLayout({
 
       <WhatsAppButton />
     </div>
+  );
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <SidebarProvider>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </SidebarProvider>
   );
 }

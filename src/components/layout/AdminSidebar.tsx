@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { useSidebar } from "@/context/SidebarContext";
 import {
   LayoutDashboard,
   Users,
@@ -17,6 +18,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Settings,
+  X,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -34,20 +36,27 @@ const navItems = [
 export function AdminSidebar() {
   const pathname = usePathname();
   const { appUser, signOut } = useAuth();
+  const { open, closeSidebar } = useSidebar();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
     <aside
       className={cn(
-        "flex flex-col h-full bg-gray-900 text-white transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
+        "flex flex-col bg-gray-900 text-white",
+        // Mobile: fixed drawer, slides in from left
+        "fixed inset-y-0 left-0 z-50 w-72 transition-transform duration-300 ease-in-out",
+        // Desktop: static in flow, collapsible width
+        "lg:relative lg:translate-x-0 lg:z-auto lg:h-full",
+        collapsed ? "lg:w-16" : "lg:w-64",
+        // Mobile open/close
+        open ? "translate-x-0" : "-translate-x-full"
       )}
     >
       {/* Logo */}
       <div
         className={cn(
-          "flex items-center h-16 px-4 border-b border-gray-700",
-          collapsed ? "justify-center" : "justify-between"
+          "flex items-center h-14 lg:h-16 px-4 border-b border-gray-700 shrink-0",
+          collapsed ? "lg:justify-center" : "justify-between"
         )}
       >
         {!collapsed && (
@@ -56,12 +65,22 @@ export function AdminSidebar() {
             <span className="font-bold text-lg tracking-tight">Pakkmaxx</span>
           </div>
         )}
+        {/* Mobile: X to close drawer | Desktop: chevron to collapse */}
         <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.innerWidth < 1024) {
+              closeSidebar();
+            } else {
+              setCollapsed(!collapsed);
+            }
+          }}
+          className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors shrink-0"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          <X className="h-4 w-4 lg:hidden" />
+          <span className="hidden lg:block">
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </span>
         </button>
       </div>
 
@@ -76,9 +95,10 @@ export function AdminSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={closeSidebar}
               title={collapsed ? item.label : undefined}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors",
                 isActive
                   ? "text-white bg-white/10"
                   : "text-gray-300 hover:bg-white/5 hover:text-white"
@@ -92,7 +112,7 @@ export function AdminSidebar() {
       </nav>
 
       {/* User section */}
-      <div className="border-t border-gray-700 p-3">
+      <div className="border-t border-gray-700 p-3 shrink-0">
         {!collapsed && (
           <div className="px-2 pb-2">
             <p className="text-xs text-gray-400 truncate">{appUser?.email}</p>
@@ -102,10 +122,10 @@ export function AdminSidebar() {
           </div>
         )}
         <button
-          onClick={signOut}
+          onClick={() => { closeSidebar(); signOut(); }}
           className={cn(
             "flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors",
-            collapsed && "justify-center"
+            collapsed && "lg:justify-center"
           )}
           title={collapsed ? "Sign out" : undefined}
         >

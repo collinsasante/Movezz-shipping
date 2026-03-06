@@ -6,7 +6,7 @@ import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { StatusBadge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import type { Item, StatusHistory } from "@/types";
-import { Package, Search } from "lucide-react";
+import { Package, Search, ArrowLeft } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 
@@ -73,8 +73,8 @@ export default function CustomerTrackingPage() {
       <Header title="Package Tracking" subtitle="Track all your shipments" />
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Items list */}
-        <div className="w-80 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+        {/* Items list — full width on mobile, fixed sidebar on desktop */}
+        <div className="flex-1 md:flex-none md:w-80 md:border-r md:border-gray-200 bg-white flex flex-col overflow-hidden">
           <div className="p-4 border-b border-gray-100">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -92,10 +92,7 @@ export default function CustomerTrackingPage() {
             {loading ? (
               <div className="p-4 space-y-2">
                 {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-16 bg-gray-100 rounded-xl animate-pulse"
-                  />
+                  <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
                 ))}
               </div>
             ) : filteredItems.length === 0 ? (
@@ -118,12 +115,8 @@ export default function CustomerTrackingPage() {
                     <Package className="h-4 w-4 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-mono text-xs font-bold text-gray-700">
-                      {item.itemRef}
-                    </p>
-                    <p className="text-sm text-gray-800 truncate">
-                      {item.description}
-                    </p>
+                    <p className="font-mono text-xs font-bold text-gray-700">{item.itemRef}</p>
+                    <p className="text-sm text-gray-800 truncate">{item.description}</p>
                     <div className="mt-1">
                       <StatusBadge status={item.status} />
                     </div>
@@ -134,41 +127,57 @@ export default function CustomerTrackingPage() {
           </div>
         </div>
 
-        {/* Tracking detail */}
-        <div className="flex-1 p-8 overflow-y-auto">
-          {selectedItem ? (
-            <div className="max-w-lg">
-              {/* Item header */}
-              <div className="mb-6">
+        {/* Tracking detail — full screen overlay on mobile, inline panel on desktop */}
+        {selectedItem && (
+          <div className="fixed inset-0 z-50 bg-white overflow-y-auto md:relative md:inset-auto md:z-auto md:flex-1 md:p-8">
+            {/* Mobile header with back button */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 sticky top-0 bg-white z-10 md:hidden">
+              <button
+                onClick={() => { setSelectedItem(null); setSelectedHistory([]); }}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="font-mono font-bold text-sm text-gray-900 truncate">{selectedItem.itemRef}</p>
+              </div>
+              <StatusBadge status={selectedItem.status} />
+            </div>
+
+            <div className="p-5 md:p-0 md:max-w-lg">
+              {/* Item header — desktop only (mobile has its own above) */}
+              <div className="hidden md:block mb-6">
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="font-mono font-bold text-lg text-gray-900">
-                      {selectedItem.itemRef}
-                    </p>
+                    <p className="font-mono font-bold text-lg text-gray-900">{selectedItem.itemRef}</p>
                     <p className="text-gray-600">{selectedItem.description}</p>
                   </div>
                   <StatusBadge status={selectedItem.status} />
                 </div>
-
                 <div className="flex flex-wrap gap-4 text-sm text-gray-500 mt-3">
-                  <span>Weight: {selectedItem.weight} kg</span>
+                  {selectedItem.weight && <span>Weight: {selectedItem.weight} kg</span>}
                   {selectedItem.trackingNumber && (
-                    <span>
-                      Tracking:{" "}
-                      <code className="font-mono">
-                        {selectedItem.trackingNumber}
-                      </code>
-                    </span>
+                    <span>Tracking: <code className="font-mono">{selectedItem.trackingNumber}</code></span>
+                  )}
+                  <span>Received: {formatDate(selectedItem.dateReceived)}</span>
+                </div>
+              </div>
+
+              {/* Mobile item description */}
+              <div className="md:hidden mb-4">
+                <p className="text-base text-gray-800 font-medium">{selectedItem.description}</p>
+                <div className="flex flex-wrap gap-3 text-sm text-gray-500 mt-2">
+                  {selectedItem.weight && <span>Weight: {selectedItem.weight} kg</span>}
+                  {selectedItem.trackingNumber && (
+                    <span>Tracking: <code className="font-mono text-xs">{selectedItem.trackingNumber}</code></span>
                   )}
                   <span>Received: {formatDate(selectedItem.dateReceived)}</span>
                 </div>
               </div>
 
               {/* Timeline */}
-              <div className="bg-white border border-gray-100 rounded-xl p-6">
-                <h3 className="font-semibold text-gray-900 mb-5">
-                  Shipment Timeline
-                </h3>
+              <div className="bg-white border border-gray-100 rounded-xl p-5">
+                <h3 className="font-semibold text-gray-900 mb-5">Shipment Timeline</h3>
                 {historyLoading ? (
                   <div className="space-y-4">
                     {[1, 2, 3].map((i) => (
@@ -176,20 +185,20 @@ export default function CustomerTrackingPage() {
                     ))}
                   </div>
                 ) : (
-                  <TrackingTimeline
-                    currentStatus={selectedItem.status}
-                    history={selectedHistory}
-                  />
+                  <TrackingTimeline currentStatus={selectedItem.status} history={selectedHistory} />
                 )}
               </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <Package className="h-12 w-12 text-gray-200 mb-3" />
-              <p className="text-gray-500">Select a package to track it</p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Desktop empty state */}
+        {!selectedItem && (
+          <div className="hidden md:flex flex-1 flex-col items-center justify-center h-full text-center">
+            <Package className="h-12 w-12 text-gray-200 mb-3" />
+            <p className="text-gray-500">Select a package to track it</p>
+          </div>
+        )}
       </div>
     </div>
   );

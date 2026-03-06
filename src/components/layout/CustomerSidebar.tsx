@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { useSidebar } from "@/context/SidebarContext";
 import {
   LayoutDashboard,
   Package,
@@ -14,6 +15,7 @@ import {
   Copy,
   CheckCheck,
   Settings,
+  X,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -28,6 +30,7 @@ const navItems = [
 export function CustomerSidebar() {
   const pathname = usePathname();
   const { appUser, signOut } = useAuth();
+  const { open, closeSidebar } = useSidebar();
   const [copied, setCopied] = useState(false);
 
   const shippingMark = appUser?.shippingMark ?? "";
@@ -41,15 +44,35 @@ export function CustomerSidebar() {
   };
 
   return (
-    <aside className="flex flex-col h-full w-64 bg-white border-r border-gray-200">
+    <aside
+      className={cn(
+        "flex flex-col bg-white border-r border-gray-200",
+        // Mobile: fixed drawer, slides in from left
+        "fixed inset-y-0 left-0 z-50 w-72 transition-transform duration-300 ease-in-out",
+        // Desktop: static in flow
+        "lg:relative lg:translate-x-0 lg:w-64 lg:z-auto lg:h-full",
+        // Mobile open/close transform
+        open ? "translate-x-0" : "-translate-x-full"
+      )}
+    >
       {/* Logo */}
-      <div className="flex items-center gap-2 h-16 px-6 border-b border-gray-100">
-        <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
-        <span className="font-bold text-lg tracking-tight text-gray-900">Pakkmaxx</span>
+      <div className="flex items-center justify-between h-14 lg:h-16 px-5 border-b border-gray-100 shrink-0">
+        <div className="flex items-center gap-2">
+          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
+          <span className="font-bold text-lg tracking-tight text-gray-900">Pakkmaxx</span>
+        </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={closeSidebar}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       {/* Shipping Mark Card */}
-      <div className="mx-4 mt-4 p-3 bg-brand-50 border border-brand-100 rounded-xl">
+      <div className="mx-4 mt-4 p-3 bg-brand-50 border border-brand-100 rounded-xl shrink-0">
         <p className="text-xs text-brand-600 font-medium mb-1">Your Shipping Mark</p>
         <div className="flex items-center justify-between gap-2">
           <code className="text-xs font-mono font-bold text-brand-800 truncate">
@@ -82,8 +105,9 @@ export function CustomerSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={closeSidebar}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors",
                 isActive
                   ? "bg-brand-50 text-brand-700 border border-brand-100"
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
@@ -102,7 +126,7 @@ export function CustomerSidebar() {
       </nav>
 
       {/* User section */}
-      <div className="border-t border-gray-100 p-4">
+      <div className="border-t border-gray-100 p-4 shrink-0">
         <div className="mb-2">
           <p className="text-sm font-medium text-gray-900 truncate">
             {appUser?.customerName ?? appUser?.email}
@@ -110,7 +134,7 @@ export function CustomerSidebar() {
           <p className="text-xs text-gray-500 truncate">{appUser?.email}</p>
         </div>
         <button
-          onClick={signOut}
+          onClick={() => { closeSidebar(); signOut(); }}
           className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
         >
           <LogOut className="h-4 w-4" />

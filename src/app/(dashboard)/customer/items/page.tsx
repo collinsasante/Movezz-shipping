@@ -176,9 +176,9 @@ export default function CustomerItemsPage() {
           />
         </div>
 
-        {/* Detail + Tracking Panel */}
+        {/* Detail + Tracking Panel — full screen on mobile, side panel on desktop */}
         {selectedItem && (
-          <div className="w-88 border-l border-gray-200 bg-white overflow-y-auto shrink-0" style={{ width: "22rem" }}>
+          <div className="fixed inset-0 z-50 bg-white overflow-y-auto md:relative md:inset-auto md:z-auto md:w-[22rem] md:border-l md:border-gray-200 md:shrink-0">
             {/* Panel header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
               <div>
@@ -200,13 +200,7 @@ export default function CustomerItemsPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Photos</p>
                   <div className="flex gap-2 overflow-x-auto pb-1">
                     {selectedItem.photos.map((photo) => (
-                      <a
-                        key={photo.id}
-                        href={photo.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0"
-                      >
+                      <a key={photo.id} href={photo.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
                         <img
                           src={photo.url}
                           alt={photo.filename}
@@ -236,24 +230,13 @@ export default function CustomerItemsPage() {
                   <DetailRow label="Weight" value={`${selectedItem.weight} kg`} />
                 ) : null}
                 {selectedItem.length && selectedItem.width && selectedItem.height && (
-                  <DetailRow
-                    label="Dimensions"
-                    value={`${selectedItem.length} × ${selectedItem.width} × ${selectedItem.height} ${selectedItem.dimensionUnit}`}
-                  />
+                  <DetailRow label="Dimensions" value={`${selectedItem.length} × ${selectedItem.width} × ${selectedItem.height} ${selectedItem.dimensionUnit}`} />
                 )}
                 <DetailRow label="Date Received" value={formatDate(selectedItem.dateReceived)} />
-                {selectedItem.trackingNumber && (
-                  <DetailRow label="US Tracking #" value={selectedItem.trackingNumber} />
-                )}
-                {selectedItem.containerName && (
-                  <DetailRow label="Container" value={selectedItem.containerName} />
-                )}
-                {selectedItem.orderRef && (
-                  <DetailRow label="Order" value={selectedItem.orderRef} />
-                )}
-                {selectedItem.notes && (
-                  <DetailRow label="Notes" value={selectedItem.notes} />
-                )}
+                {selectedItem.trackingNumber && <DetailRow label="US Tracking #" value={selectedItem.trackingNumber} />}
+                {selectedItem.containerName && <DetailRow label="Container" value={selectedItem.containerName} />}
+                {selectedItem.orderRef && <DetailRow label="Order" value={selectedItem.orderRef} />}
+                {selectedItem.notes && <DetailRow label="Notes" value={selectedItem.notes} />}
               </div>
 
               {/* Tracking timeline */}
