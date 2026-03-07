@@ -34,18 +34,23 @@ export default function ItemsPage() {
   }>({ open: false });
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const load = useCallback(
-    async (searchQuery?: string, statusF?: string) => {
+    async (searchQuery?: string, statusF?: string, pageNum: number = 1) => {
       setLoading(true);
       try {
         const res = await axios.get("/api/items", {
           params: {
             search: searchQuery || undefined,
             status: statusF || undefined,
+            page: pageNum,
+            limit: 50,
           },
         });
         setItems(res.data.data);
+        setTotalPages(res.data.totalPages ?? 1);
       } catch {
         error("Failed to load items");
       } finally {
@@ -84,7 +89,8 @@ export default function ItemsPage() {
               placeholder="Search items..."
               onSearch={(val) => {
                 setSearch(val);
-                load(val, statusFilter);
+                setPage(1);
+                load(val, statusFilter, 1);
               }}
               className="w-72"
             />
@@ -93,7 +99,8 @@ export default function ItemsPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value as ItemStatus | "");
-                load(search, e.target.value);
+                setPage(1);
+                load(search, e.target.value, 1);
               }}
               className="w-52"
             />
@@ -241,6 +248,9 @@ export default function ItemsPage() {
           emptyMessage="No items found"
           emptyIcon={<Package className="h-12 w-12" />}
           onRowClick={(item) => router.push(`/admin/items/${item.id}`)}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={(p) => { setPage(p); load(search, statusFilter, p); }}
         />
       </div>
 

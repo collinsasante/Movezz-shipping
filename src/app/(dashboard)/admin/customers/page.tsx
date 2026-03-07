@@ -22,14 +22,17 @@ export default function CustomersPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
-  const load = useCallback(async (searchQuery?: string) => {
+  const load = useCallback(async (searchQuery?: string, pageNum: number = 1) => {
     setLoading(true);
     try {
       const res = await axios.get("/api/customers", {
-        params: { search: searchQuery || undefined },
+        params: { search: searchQuery || undefined, page: pageNum, limit: 50 },
       });
       setCustomers(res.data.data);
+      setTotalPages(res.data.totalPages ?? 1);
     } catch {
       error("Failed to load customers");
     } finally {
@@ -43,7 +46,8 @@ export default function CustomersPage() {
 
   const handleSearch = (val: string) => {
     setSearch(val);
-    load(val);
+    setPage(1);
+    load(val, 1);
   };
 
   const copyMark = async (mark: string, id: string) => {
@@ -194,6 +198,9 @@ export default function CustomersPage() {
           emptyMessage="No customers found"
           emptyIcon={<Users className="h-12 w-12" />}
           onRowClick={(c) => router.push(`/admin/customers/${c.id}`)}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={(p) => { setPage(p); load(search, p); }}
         />
       </div>
     </div>

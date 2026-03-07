@@ -30,18 +30,23 @@ export default function OrdersPage() {
   const [markingPaid, setMarkingPaid] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const load = useCallback(
-    async (searchQuery?: string, statusF?: string) => {
+    async (searchQuery?: string, statusF?: string, pageNum: number = 1) => {
       setLoading(true);
       try {
         const res = await axios.get("/api/orders", {
           params: {
             search: searchQuery || undefined,
             status: statusF || undefined,
+            page: pageNum,
+            limit: 50,
           },
         });
         setOrders(res.data.data);
+        setTotalPages(res.data.totalPages ?? 1);
       } catch {
         error("Failed to load orders");
       } finally {
@@ -72,7 +77,7 @@ export default function OrdersPage() {
     try {
       await axios.patch(`/api/orders/${orderId}`, { status: "Paid" });
       success("Order marked as paid!", orderRef);
-      load(search, statusFilter);
+      load(search, statusFilter, page);
     } catch {
       error("Failed to update order");
     } finally {
@@ -91,7 +96,8 @@ export default function OrdersPage() {
               placeholder="Search orders..."
               onSearch={(val) => {
                 setSearch(val);
-                load(val, statusFilter);
+                setPage(1);
+                load(val, statusFilter, 1);
               }}
               className="w-64"
             />
@@ -100,7 +106,8 @@ export default function OrdersPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value as OrderStatus | "");
-                load(search, e.target.value);
+                setPage(1);
+                load(search, e.target.value, 1);
               }}
               className="w-36"
             />
@@ -232,6 +239,9 @@ export default function OrdersPage() {
           emptyMessage="No orders found"
           emptyIcon={<ShoppingCart className="h-12 w-12" />}
           onRowClick={(o) => router.push(`/admin/orders/${o.id}`)}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={(p) => { setPage(p); load(search, statusFilter, p); }}
         />
       </div>
     </div>

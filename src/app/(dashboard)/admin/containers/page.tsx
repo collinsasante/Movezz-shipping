@@ -20,15 +20,18 @@ export default function ContainersPage() {
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const load = useCallback(
-    async (search?: string) => {
+    async (search?: string, pageNum: number = 1) => {
       setLoading(true);
       try {
         const res = await axios.get("/api/containers", {
-          params: { search: search || undefined },
+          params: { search: search || undefined, page: pageNum, limit: 50 },
         });
         setContainers(res.data.data);
+        setTotalPages(res.data.totalPages ?? 1);
       } catch {
         error("Failed to load containers");
       } finally {
@@ -62,7 +65,7 @@ export default function ContainersPage() {
         <div className="flex items-center justify-between gap-4">
           <SearchBar
             placeholder="Search containers..."
-            onSearch={load}
+            onSearch={(val) => { setPage(1); load(val, 1); }}
             className="w-72"
           />
           <Button onClick={() => router.push("/admin/containers/new")}>
@@ -177,6 +180,9 @@ export default function ContainersPage() {
           emptyMessage="No containers found"
           emptyIcon={<ContainerIcon className="h-12 w-12" />}
           onRowClick={(c) => router.push(`/admin/containers/${c.id}`)}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={(p) => { setPage(p); load(undefined, p); }}
         />
       </div>
     </div>

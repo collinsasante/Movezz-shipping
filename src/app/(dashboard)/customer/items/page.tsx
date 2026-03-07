@@ -37,18 +37,23 @@ export default function CustomerItemsPage() {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [selectedHistory, setSelectedHistory] = useState<StatusHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const load = useCallback(
-    async (search?: string, status?: string) => {
+    async (search?: string, status?: string, pageNum: number = 1) => {
       setLoading(true);
       try {
         const res = await axios.get("/api/items", {
           params: {
             search: search || undefined,
             status: status || undefined,
+            page: pageNum,
+            limit: 50,
           },
         });
         setItems(res.data.data);
+        setTotalPages(res.data.totalPages ?? 1);
       } catch {
         error("Failed to load items");
       } finally {
@@ -92,7 +97,7 @@ export default function CustomerItemsPage() {
           <div className="flex items-center gap-3">
             <SearchBar
               placeholder="Search items..."
-              onSearch={(val) => load(val, statusFilter)}
+              onSearch={(val) => { setPage(1); load(val, statusFilter, 1); }}
               className="w-64"
             />
             <Select
@@ -100,7 +105,8 @@ export default function CustomerItemsPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value as ItemStatus | "");
-                load("", e.target.value);
+                setPage(1);
+                load("", e.target.value, 1);
               }}
               className="w-52"
             />
@@ -173,6 +179,9 @@ export default function CustomerItemsPage() {
             emptyIcon={<Package className="h-12 w-12" />}
             onRowClick={selectItem}
             rowClassName={(item) => selectedItem?.id === item.id ? "bg-brand-50" : ""}
+            page={page}
+            totalPages={totalPages}
+            onPageChange={(p) => { setPage(p); load(undefined, statusFilter, p); }}
           />
         </div>
 

@@ -41,9 +41,15 @@ export async function GET(request: NextRequest) {
       params.customerId = user.customerId;
     }
 
-    const orders = await ordersApi.list(params);
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
+    const limit = 50;
 
-    return Response.json({ success: true, data: orders });
+    const allOrders = await ordersApi.list(params);
+    const total = allOrders.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const data = allOrders.slice((page - 1) * limit, page * limit);
+
+    return Response.json({ success: true, data, total, totalPages, page });
   } catch (err) {
     console.error("[GET /orders] Error:", err);
     return serverErrorResponse("Failed to fetch orders");
