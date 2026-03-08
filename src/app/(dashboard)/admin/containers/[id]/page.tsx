@@ -33,7 +33,6 @@ import {
   Weight,
   Box,
   Calendar,
-  ArrowLeft,
 } from "lucide-react";
 import axios from "axios";
 
