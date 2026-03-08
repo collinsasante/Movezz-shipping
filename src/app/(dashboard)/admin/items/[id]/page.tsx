@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { StatusUpdateModal } from "@/components/shared/StatusUpdateModal";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import type { Item } from "@/types";
+import type { Item, StatusHistory } from "@/types";
 import {
   ArrowLeft,
   Package,
@@ -56,6 +56,7 @@ export default function AdminItemDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [item, setItem] = useState<ItemDetail | null>(null);
+  const [history, setHistory] = useState<StatusHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusModal, setStatusModal] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
@@ -78,8 +79,12 @@ export default function AdminItemDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await axios.get(`/api/items/${id}`);
-      setItem(res.data.data);
+      const [itemRes, historyRes] = await Promise.all([
+        axios.get(`/api/items/${id}`),
+        axios.get(`/api/items/${id}/history`),
+      ]);
+      setItem(itemRes.data.data);
+      setHistory(historyRes.data.data ?? []);
     } catch {
       error("Failed to load item");
     } finally {
@@ -293,7 +298,7 @@ export default function AdminItemDetailPage() {
                       <img
                         src={photo.thumbnails?.small?.url ?? photo.url}
                         alt={photo.filename ?? `Photo ${i + 1}`}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        className="w-full h-full object-cover"
                       />
                     </button>
                   ))}
@@ -381,7 +386,7 @@ export default function AdminItemDetailPage() {
             {/* Tracking Timeline */}
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
               <h3 className="font-semibold text-gray-900 mb-4">Tracking</h3>
-              <TrackingTimeline currentStatus={item.status} history={[]} />
+              <TrackingTimeline currentStatus={item.status} history={history} />
             </div>
           </div>
         </div>

@@ -67,6 +67,7 @@ export default function NewItemPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [splitView, setSplitView] = useState(false);
+  const [splitPhotoIdx, setSplitPhotoIdx] = useState(0);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const [form, setForm] = useState({
@@ -117,16 +118,22 @@ export default function NewItemPage() {
     photoPreviews.forEach((p) => URL.revokeObjectURL(p));
     setPhotoPreviews(newPreviews);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    // Auto-activate split view on desktop when first photo added
+    if (photoFiles.length === 0 && newFiles.length > 0) setSplitView(true);
+    setSplitPhotoIdx(newFiles.length - 1);
   };
 
   const removePhoto = (index: number) => {
     URL.revokeObjectURL(photoPreviews[index]);
+    const newPreviews = photoPreviews.filter((_, i) => i !== index);
     setPhotoFiles((prev) => prev.filter((_, i) => i !== index));
-    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
+    setPhotoPreviews(newPreviews);
     if (lightboxIdx !== null) {
       if (index === lightboxIdx) setLightboxIdx(null);
       else if (index < lightboxIdx) setLightboxIdx(lightboxIdx - 1);
     }
+    setSplitPhotoIdx((prev) => Math.min(prev, Math.max(0, newPreviews.length - 1)));
+    if (newPreviews.length === 0) setSplitView(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -265,6 +272,7 @@ export default function NewItemPage() {
                 />
                 <Input
                   label="Tracking Number (optional)"
+                  placeholder="Enter tracking number"
                   value={form.trackingNumber}
                   onChange={(e) => setForm({ ...form, trackingNumber: e.target.value })}
                 />
@@ -418,23 +426,68 @@ export default function NewItemPage() {
 
         {/* Split view photo panel (desktop only) */}
         {splitView && photoPreviews.length > 0 && (
-          <div className="hidden lg:flex lg:w-[400px] xl:w-[480px] shrink-0 border-l border-gray-200 flex-col bg-gray-50 overflow-y-auto">
-            <div className="p-4 border-b border-gray-200 bg-white">
-              <p className="text-sm font-semibold text-gray-700">Photo Preview</p>
-              <p className="text-xs text-gray-400">{photoPreviews.length} photo{photoPreviews.length !== 1 ? "s" : ""} · click to enlarge</p>
+          <div className="hidden lg:flex lg:w-[480px] xl:w-[560px] shrink-0 border-l border-gray-200 flex-col bg-gray-950 overflow-hidden">
+            {/* Large photo */}
+            <div className="relative flex-1 min-h-0 flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photoPreviews[splitPhotoIdx]}
+                alt={`Photo ${splitPhotoIdx + 1}`}
+                className="w-full h-full object-contain"
+                style={{ maxHeight: "calc(100vh - 140px)" }}
+              />
+              {/* Remove button */}
+              <button
+                type="button"
+                onClick={() => removePhoto(splitPhotoIdx)}
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              {/* Prev / Next */}
+              {photoPreviews.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSplitPhotoIdx((splitPhotoIdx - 1 + photoPreviews.length) % photoPreviews.length)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitPhotoIdx((splitPhotoIdx + 1) % photoPreviews.length)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </>
+              )}
             </div>
-            <div className="p-4 grid grid-cols-2 gap-3">
+            {/* Thumbnail strip */}
+            <div className="flex gap-2 p-3 bg-gray-900 overflow-x-auto shrink-0">
               {photoPreviews.map((src, i) => (
                 <button
                   key={i}
                   type="button"
-                  onClick={() => setLightboxIdx(i)}
-                  className="aspect-square rounded-xl overflow-hidden border border-gray-200 focus:outline-none focus:ring-2 focus:ring-brand-500 hover:opacity-90 transition-opacity"
+                  onClick={() => setSplitPhotoIdx(i)}
+                  className={`shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 transition-colors ${i === splitPhotoIdx ? "border-brand-400" : "border-transparent opacity-60 hover:opacity-100"}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />
+                  <img src={src} alt={`Thumb ${i + 1}`} className="w-full h-full object-cover" />
                 </button>
               ))}
+            </div>
+            {/* Counter + form-only toggle */}
+            <div className="flex items-center justify-between px-3 py-2 bg-gray-900 border-t border-gray-800">
+              <span className="text-xs text-gray-400">{splitPhotoIdx + 1} / {photoPreviews.length}</span>
+              <button
+                type="button"
+                onClick={() => setSplitView(false)}
+                className="text-xs text-gray-400 hover:text-white transition-colors"
+              >
+                Form only
+              </button>
             </div>
           </div>
         )}

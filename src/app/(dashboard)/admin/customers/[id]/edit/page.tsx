@@ -11,23 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { ArrowLeft } from "lucide-react";
 import axios from "axios";
-
-const COUNTRY_CODES = [
-  { code: "+1", label: "+1 (US/Canada)" },
-  { code: "+44", label: "+44 (UK)" },
-  { code: "+86", label: "+86 (China)" },
-  { code: "+233", label: "+233 (Ghana)" },
-  { code: "+234", label: "+234 (Nigeria)" },
-  { code: "+254", label: "+254 (Kenya)" },
-  { code: "+27", label: "+27 (S. Africa)" },
-  { code: "+49", label: "+49 (Germany)" },
-  { code: "+33", label: "+33 (France)" },
-  { code: "+971", label: "+971 (UAE)" },
-  { code: "+91", label: "+91 (India)" },
-  { code: "+61", label: "+61 (Australia)" },
-  { code: "+82", label: "+82 (South Korea)" },
-  { code: "+81", label: "+81 (Japan)" },
-];
+import { COUNTRY_CODES } from "@/lib/countryCodes";
 
 function parsePhone(phone: string): { code: string; local: string } {
   if (!phone) return { code: "+233", local: "" };

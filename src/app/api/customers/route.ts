@@ -15,6 +15,7 @@ const CreateCustomerSchema = z.object({
   phone: z.string().min(7, "Phone number is required").max(30),
   email: z.string().email("Invalid email address").max(254),
   notes: z.string().max(2000).optional(),
+  shippingAddress: z.string().max(500).optional(),
 });
 
 function generateTempPassword(): string {
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, phone, email, notes } = parsed.data;
+    const { name, phone, email, notes, shippingAddress } = parsed.data;
 
     // Check for duplicate phone
     const existingByPhone = await customersApi.getByPhone(phone);
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
     let customer: Awaited<ReturnType<typeof customersApi.create>>;
     try {
       customer = await customersApi.create(
-        { name, phone, email, notes },
+        { name, phone, email, notes, shippingAddress },
         user.email
       );
     } catch (atErr: unknown) {

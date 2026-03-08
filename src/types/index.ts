@@ -56,6 +56,7 @@ export interface CreateCustomerInput {
   phone: string;
   email: string;
   notes?: string;
+  shippingAddress?: string;
 }
 
 export interface UpdateCustomerInput {

@@ -363,7 +363,7 @@ export const customersApi = {
     createdByEmail: string
   ): Promise<Customer> {
     const shippingMark = generateShippingMark(input.name, input.phone);
-    const shippingAddress = generateShippingAddress(shippingMark);
+    const shippingAddress = input.shippingAddress || generateShippingAddress(shippingMark);
 
     // Get current count for potential future use
     const record = await createRecord(TABLES.CUSTOMERS, {

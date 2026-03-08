@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Input } from "@/components/ui/input";
@@ -9,25 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { generateShippingMark } from "@/lib/utils";
+import { COUNTRY_CODES } from "@/lib/countryCodes";
 import { ArrowLeft, Tag } from "lucide-react";
 import axios from "axios";
 
-const COUNTRY_CODES = [
-  { code: "+1", label: "+1 (US/Canada)" },
-  { code: "+44", label: "+44 (UK)" },
-  { code: "+86", label: "+86 (China)" },
-  { code: "+233", label: "+233 (Ghana)" },
-  { code: "+234", label: "+234 (Nigeria)" },
-  { code: "+254", label: "+254 (Kenya)" },
-  { code: "+27", label: "+27 (S. Africa)" },
-  { code: "+49", label: "+49 (Germany)" },
-  { code: "+33", label: "+33 (France)" },
-  { code: "+971", label: "+971 (UAE)" },
-  { code: "+91", label: "+91 (India)" },
-  { code: "+61", label: "+61 (Australia)" },
-  { code: "+82", label: "+82 (South Korea)" },
-  { code: "+81", label: "+81 (Japan)" },
-];
+const COMPANY_KEY = "pakk_company_settings";
 
 export default function NewCustomerPage() {
   const router = useRouter();
@@ -39,11 +25,26 @@ export default function NewCustomerPage() {
 
   const [phoneCode, setPhoneCode] = useState("+1");
   const [phoneLocal, setPhoneLocal] = useState("");
+  const [defaultAddress, setDefaultAddress] = useState("Pakkmaxx Warehouse, Accra, Ghana");
   const [form, setForm] = useState({
     name: "",
     email: "",
     notes: "",
+    shippingAddress: "",
   });
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(COMPANY_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.address) {
+          setDefaultAddress(parsed.address);
+          setForm((prev) => ({ ...prev, shippingAddress: parsed.address }));
+        }
+      }
+    } catch {}
+  }, []);
 
   const fullPhone = `${phoneCode}${phoneLocal}`;
   const preview = form.name && phoneLocal
@@ -54,7 +55,7 @@ export default function NewCustomerPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await axios.post("/api/customers", { ...form, phone: fullPhone });
+      const res = await axios.post("/api/customers", { ...form, phone: fullPhone, shippingAddress: form.shippingAddress || undefined });
       setEmailSent(res.data.data.emailSent ?? false);
       setCreatedMark(res.data.data.customer?.shippingMark ?? preview);
       setCreated(true);
@@ -129,6 +130,12 @@ export default function NewCustomerPage() {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
+              />
+              <Input
+                label="Shipping Address"
+                value={form.shippingAddress}
+                onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })}
+                hint={`Default: ${defaultAddress}`}
               />
               <Textarea
                 label="Notes (optional)"

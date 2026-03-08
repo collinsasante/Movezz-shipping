@@ -27,10 +27,21 @@ const DATE_OPTIONS = [
   { value: "week", label: "This week" },
   { value: "month", label: "This month" },
   { value: "year", label: "This year" },
+  { value: "custom", label: "Custom range" },
 ];
 
-function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined, range: string): T[] {
+function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined, range: string, from?: string, to?: string): T[] {
   if (!range) return items;
+  if (range === "custom") {
+    if (!from && !to) return items;
+    return items.filter((item) => {
+      const d = new Date(getDate(item) ?? "");
+      if (isNaN(d.getTime())) return false;
+      if (from && d < new Date(from)) return false;
+      if (to) { const t = new Date(to); t.setHours(23, 59, 59, 999); if (d > t) return false; }
+      return true;
+    });
+  }
   const now = new Date();
   const cutoff = new Date();
   if (range === "today") cutoff.setHours(0, 0, 0, 0);
@@ -59,6 +70,8 @@ export default function ItemsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [dateRange, setDateRange] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const load = useCallback(
     async (searchQuery?: string, statusF?: string, pageNum: number = 1) => {
@@ -131,8 +144,15 @@ export default function ItemsPage() {
               options={DATE_OPTIONS}
               value={dateRange}
               onChange={(e) => { setDateRange(e.target.value); setPage(1); }}
-              className="w-full sm:w-36"
+              className="w-full sm:w-40"
             />
+            {dateRange === "custom" && (
+              <div className="flex items-center gap-1">
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <span className="text-gray-400 text-sm px-0.5">–</span>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+            )}
           </div>
           <Button onClick={() => router.push("/admin/items/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
@@ -271,7 +291,7 @@ export default function ItemsPage() {
               ),
             },
           ]}
-          data={applyDateFilter(items, (i) => i.dateReceived, dateRange)}
+          data={applyDateFilter(items, (i) => i.dateReceived, dateRange, dateFrom, dateTo)}
           keyExtractor={(item) => item.id}
           loading={loading}
           emptyMessage="No items found"
