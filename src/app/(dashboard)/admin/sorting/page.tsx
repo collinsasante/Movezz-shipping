@@ -114,7 +114,7 @@ export default function SortingPage() {
 
       <div className="flex-1 p-6 space-y-4 overflow-y-auto">
         {/* Summary chips */}
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-100 rounded-xl px-4 py-2.5">
             <SortAsc className="h-4 w-4 text-yellow-600" />
             <span className="text-sm font-semibold text-yellow-800">
@@ -152,7 +152,7 @@ export default function SortingPage() {
         <SearchBar
           placeholder="Search items..."
           onSearch={load}
-          className="w-72"
+          className="w-full sm:w-72"
         />
 
         {/* Sorting tab — grouped by container */}
@@ -194,8 +194,8 @@ export default function SortingPage() {
                     {isOpen && (
                       <div className="border-t border-gray-100 divide-y divide-gray-50">
                         {group.items.map((item) => (
-                          <div key={item.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50">
-                            <div className="flex items-center gap-4 min-w-0">
+                          <div key={item.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 py-3 gap-2 hover:bg-gray-50">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
                               <span className="font-mono text-xs font-bold text-gray-700 shrink-0">
                                 {item.itemRef}
                               </span>
@@ -212,7 +212,7 @@ export default function SortingPage() {
                               <span className="text-xs text-gray-400 shrink-0">{item.weight} kg</span>
                               <StatusBadge status={item.status} />
                             </div>
-                            <div className="flex items-center gap-2 shrink-0 ml-4">
+                            <div className="flex items-center gap-2 shrink-0">
                               <Button
                                 size="sm"
                                 variant="success"

@@ -62,13 +62,13 @@ export default function ContainersPage() {
       <Header title="Containers" subtitle="Manage shipment containers" />
 
       <div className="flex-1 p-6 space-y-4">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <SearchBar
             placeholder="Search containers..."
             onSearch={(val) => { setPage(1); load(val, 1); }}
-            className="w-72"
+            className="w-full sm:w-72"
           />
-          <Button onClick={() => router.push("/admin/containers/new")}>
+          <Button onClick={() => router.push("/admin/containers/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Container
           </Button>

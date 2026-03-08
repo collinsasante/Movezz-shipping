@@ -90,8 +90,8 @@ export default function OrdersPage() {
       <Header title="Invoices" subtitle="All customer invoices and payments" />
 
       <div className="flex-1 p-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search orders..."
               onSearch={(val) => {
@@ -99,7 +99,7 @@ export default function OrdersPage() {
                 setPage(1);
                 load(val, statusFilter, 1);
               }}
-              className="w-64"
+              className="w-full sm:w-64"
             />
             <Select
               options={STATUS_OPTIONS}
@@ -109,10 +109,10 @@ export default function OrdersPage() {
                 setPage(1);
                 load(search, e.target.value, 1);
               }}
-              className="w-36"
+              className="w-full sm:w-36"
             />
           </div>
-          <Button onClick={() => router.push("/admin/orders/new")}>
+          <Button onClick={() => router.push("/admin/orders/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Invoice
           </Button>

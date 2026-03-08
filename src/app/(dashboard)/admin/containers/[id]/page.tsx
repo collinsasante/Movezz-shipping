@@ -33,6 +33,7 @@ import {
   Weight,
   Box,
   Calendar,
+  ArrowLeft,
 } from "lucide-react";
 import axios from "axios";
 
@@ -316,9 +317,9 @@ export default function ContainerDetailPage() {
               </Button>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 relative">
               {/* Items table */}
-              <div className={selectedItem ? "flex-1 min-w-0" : "w-full"}>
+              <div className="w-full sm:flex-1 sm:min-w-0">
                 <DataTable
                   columns={[
                     {
@@ -381,17 +382,25 @@ export default function ContainerDetailPage() {
                 />
               </div>
 
-              {/* Item detail panel */}
+              {/* Item detail panel — full screen on mobile, side panel on sm+ */}
               {selectedItem && (
-                <div className="w-72 shrink-0 border border-gray-200 rounded-xl bg-white overflow-y-auto">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                    <div>
-                      <p className="font-mono font-bold text-sm text-gray-900">{selectedItem.itemRef}</p>
-                      <StatusBadge status={selectedItem.status} />
+                <div className="fixed inset-0 z-50 bg-white overflow-y-auto sm:relative sm:inset-auto sm:z-auto sm:w-72 sm:shrink-0 sm:border sm:border-gray-200 sm:rounded-xl">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 sticky top-0 bg-white z-10">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedItem(null)}
+                        className="sm:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+                      >
+                        <ArrowLeft className="h-5 w-5" />
+                      </button>
+                      <div>
+                        <p className="font-mono font-bold text-sm text-gray-900">{selectedItem.itemRef}</p>
+                        <StatusBadge status={selectedItem.status} />
+                      </div>
                     </div>
                     <button
                       onClick={() => setSelectedItem(null)}
-                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
+                      className="hidden sm:block p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"
                     >
                       <X className="h-4 w-4" />
                     </button>

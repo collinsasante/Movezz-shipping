@@ -76,13 +76,13 @@ export default function CustomersPage() {
 
       <div className="flex-1 p-6 space-y-4">
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <SearchBar
             placeholder="Search by name, email, shipping mark..."
             onSearch={handleSearch}
-            className="w-80"
+            className="w-full sm:w-80"
           />
-          <Button onClick={() => router.push("/admin/customers/new")}>
+          <Button onClick={() => router.push("/admin/customers/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Customer
           </Button>

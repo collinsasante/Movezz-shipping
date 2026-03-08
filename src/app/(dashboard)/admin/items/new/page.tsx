@@ -182,7 +182,7 @@ export default function NewItemPage() {
     <div className="flex flex-col h-full">
       <Header title="Log Item" subtitle="Record a new package at the warehouse" />
 
-      <div className="flex-1 p-6 max-w-2xl overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 max-w-2xl mx-auto w-full overflow-y-auto">
         <button
           onClick={() => router.back()}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
@@ -214,7 +214,7 @@ export default function NewItemPage() {
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={3}
               />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Select
                   label="Freight Type"
                   options={[
@@ -263,7 +263,7 @@ export default function NewItemPage() {
             <CardContent>
               {/* Previews */}
               {photoPreviews.length > 0 && (
-                <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                   {photoPreviews.map((src, i) => (
                     <div key={i} className="relative group aspect-square">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -335,7 +335,7 @@ export default function NewItemPage() {
                   setForm({ ...form, dimensionUnit: e.target.value as "cm" | "inches" })
                 }
               />
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Input
                   label={`Length (${form.dimensionUnit})`}
                   type="number"

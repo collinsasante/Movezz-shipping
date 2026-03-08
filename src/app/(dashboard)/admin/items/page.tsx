@@ -83,8 +83,8 @@ export default function ItemsPage() {
       <Header title="Items" subtitle="All packages in the system" />
 
       <div className="flex-1 p-6 space-y-4">
-        <div className="flex flex-wrap items-center gap-3 justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search items..."
               onSearch={(val) => {
@@ -92,7 +92,7 @@ export default function ItemsPage() {
                 setPage(1);
                 load(val, statusFilter, 1);
               }}
-              className="w-72"
+              className="w-full sm:w-72"
             />
             <Select
               options={STATUS_OPTIONS}
@@ -102,10 +102,10 @@ export default function ItemsPage() {
                 setPage(1);
                 load(search, e.target.value, 1);
               }}
-              className="w-52"
+              className="w-full sm:w-52"
             />
           </div>
-          <Button onClick={() => router.push("/admin/items/new")}>
+          <Button onClick={() => router.push("/admin/items/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             Receive Item
           </Button>

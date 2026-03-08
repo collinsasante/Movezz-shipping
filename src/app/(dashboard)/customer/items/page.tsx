@@ -94,11 +94,11 @@ export default function CustomerItemsPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Items list */}
         <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search items..."
               onSearch={(val) => { setPage(1); load(val, statusFilter, 1); }}
-              className="w-64"
+              className="w-full sm:w-64"
             />
             <Select
               options={STATUS_OPTIONS}
@@ -108,7 +108,7 @@ export default function CustomerItemsPage() {
                 setPage(1);
                 load("", e.target.value, 1);
               }}
-              className="w-52"
+              className="w-full sm:w-52"
             />
           </div>
 
