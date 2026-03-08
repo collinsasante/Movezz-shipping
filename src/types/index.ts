@@ -108,6 +108,7 @@ export interface Item {
   orderId?: string;
   orderRef?: string;
   isMissing: boolean;
+  quantity?: number;
   notes?: string;
   createdAt: string;
   createdBy?: string;
@@ -125,6 +126,7 @@ export interface CreateItemInput {
   dateReceived: string;
   trackingNumber?: string;
   customerId: string;
+  quantity?: number;
   notes?: string;
 }
 

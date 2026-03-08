@@ -13,6 +13,28 @@ import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
 
+const DATE_OPTIONS = [
+  { value: "", label: "All time" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "year", label: "This year" },
+];
+
+function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined, range: string): T[] {
+  if (!range) return items;
+  const now = new Date();
+  const cutoff = new Date();
+  if (range === "today") cutoff.setHours(0, 0, 0, 0);
+  else if (range === "week") cutoff.setDate(cutoff.getDate() - 7);
+  else if (range === "month") cutoff.setMonth(cutoff.getMonth() - 1);
+  else if (range === "year") cutoff.setFullYear(cutoff.getFullYear() - 1);
+  return items.filter((item) => {
+    const d = new Date(getDate(item) ?? "");
+    return !isNaN(d.getTime()) && d >= cutoff && d <= now;
+  });
+}
+
 export default function CustomersPage() {
   const router = useRouter();
   const { error, success } = useToast();
@@ -24,6 +46,7 @@ export default function CustomersPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [dateRange, setDateRange] = useState("");
 
   const load = useCallback(async (searchQuery?: string, pageNum: number = 1) => {
     setLoading(true);
@@ -77,11 +100,20 @@ export default function CustomersPage() {
       <div className="flex-1 p-6 space-y-4">
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SearchBar
-            placeholder="Search by name, email, shipping mark..."
-            onSearch={handleSearch}
-            className="w-full sm:w-80"
-          />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <SearchBar
+              placeholder="Search by name, email, shipping mark..."
+              onSearch={handleSearch}
+              className="w-full sm:w-72"
+            />
+            <select
+              value={dateRange}
+              onChange={(e) => { setDateRange(e.target.value); setPage(1); }}
+              className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 w-full sm:w-36"
+            >
+              {DATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
           <Button onClick={() => router.push("/admin/customers/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
             New Customer
@@ -192,7 +224,7 @@ export default function CustomersPage() {
               ),
             },
           ]}
-          data={customers}
+          data={applyDateFilter(customers, (c) => c.createdAt, dateRange)}
           keyExtractor={(c) => c.id}
           loading={loading}
           emptyMessage="No customers found"

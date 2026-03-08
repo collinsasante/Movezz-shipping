@@ -1,6 +1,6 @@
 "use client";
 
-const WA_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "233000000000";
+const WA_NUMBER = "233538806059";
 
 export function WhatsAppButton() {
   return (

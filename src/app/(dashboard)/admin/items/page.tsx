@@ -21,6 +21,28 @@ const STATUS_OPTIONS = [
   ...ITEM_STATUS_STEPS.map((s) => ({ value: s, label: s })),
 ];
 
+const DATE_OPTIONS = [
+  { value: "", label: "All time" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "year", label: "This year" },
+];
+
+function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined, range: string): T[] {
+  if (!range) return items;
+  const now = new Date();
+  const cutoff = new Date();
+  if (range === "today") cutoff.setHours(0, 0, 0, 0);
+  else if (range === "week") cutoff.setDate(cutoff.getDate() - 7);
+  else if (range === "month") cutoff.setMonth(cutoff.getMonth() - 1);
+  else if (range === "year") cutoff.setFullYear(cutoff.getFullYear() - 1);
+  return items.filter((item) => {
+    const d = new Date(getDate(item) ?? "");
+    return !isNaN(d.getTime()) && d >= cutoff && d <= now;
+  });
+}
+
 export default function ItemsPage() {
   const router = useRouter();
   const { error, success } = useToast();
@@ -36,6 +58,7 @@ export default function ItemsPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [dateRange, setDateRange] = useState("");
 
   const load = useCallback(
     async (searchQuery?: string, statusF?: string, pageNum: number = 1) => {
@@ -103,6 +126,12 @@ export default function ItemsPage() {
                 load(search, e.target.value, 1);
               }}
               className="w-full sm:w-52"
+            />
+            <Select
+              options={DATE_OPTIONS}
+              value={dateRange}
+              onChange={(e) => { setDateRange(e.target.value); setPage(1); }}
+              className="w-full sm:w-36"
             />
           </div>
           <Button onClick={() => router.push("/admin/items/new")} className="w-full sm:w-auto">
@@ -242,7 +271,7 @@ export default function ItemsPage() {
               ),
             },
           ]}
-          data={items}
+          data={applyDateFilter(items, (i) => i.dateReceived, dateRange)}
           keyExtractor={(item) => item.id}
           loading={loading}
           emptyMessage="No items found"

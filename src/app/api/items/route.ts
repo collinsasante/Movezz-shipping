@@ -20,6 +20,7 @@ const CreateItemSchema = z.object({
   dateReceived: z.string().max(50),
   trackingNumber: z.string().max(100).optional(),
   customerId: z.string().min(1, "Customer ID is required").max(50),
+  quantity: z.number().int().positive().max(10000).optional(),
   notes: z.string().max(2000).optional(),
   photoUrls: z.array(z.string().url().max(500)).max(20).optional(),
 });

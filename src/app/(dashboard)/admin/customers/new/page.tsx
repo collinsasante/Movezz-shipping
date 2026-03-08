@@ -12,6 +12,23 @@ import { generateShippingMark } from "@/lib/utils";
 import { ArrowLeft, Tag } from "lucide-react";
 import axios from "axios";
 
+const COUNTRY_CODES = [
+  { code: "+1", label: "+1 (US/Canada)" },
+  { code: "+44", label: "+44 (UK)" },
+  { code: "+86", label: "+86 (China)" },
+  { code: "+233", label: "+233 (Ghana)" },
+  { code: "+234", label: "+234 (Nigeria)" },
+  { code: "+254", label: "+254 (Kenya)" },
+  { code: "+27", label: "+27 (S. Africa)" },
+  { code: "+49", label: "+49 (Germany)" },
+  { code: "+33", label: "+33 (France)" },
+  { code: "+971", label: "+971 (UAE)" },
+  { code: "+91", label: "+91 (India)" },
+  { code: "+61", label: "+61 (Australia)" },
+  { code: "+82", label: "+82 (South Korea)" },
+  { code: "+81", label: "+81 (Japan)" },
+];
+
 export default function NewCustomerPage() {
   const router = useRouter();
   const { error } = useToast();
@@ -20,22 +37,24 @@ export default function NewCustomerPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [createdMark, setCreatedMark] = useState("");
 
+  const [phoneCode, setPhoneCode] = useState("+1");
+  const [phoneLocal, setPhoneLocal] = useState("");
   const [form, setForm] = useState({
     name: "",
-    phone: "",
     email: "",
     notes: "",
   });
 
-  const preview = form.name && form.phone
-    ? generateShippingMark(form.name, form.phone)
+  const fullPhone = `${phoneCode}${phoneLocal}`;
+  const preview = form.name && phoneLocal
+    ? generateShippingMark(form.name, fullPhone)
     : "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await axios.post("/api/customers", form);
+      const res = await axios.post("/api/customers", { ...form, phone: fullPhone });
       setEmailSent(res.data.data.emailSent ?? false);
       setCreatedMark(res.data.data.customer?.shippingMark ?? preview);
       setCreated(true);
@@ -75,24 +94,42 @@ export default function NewCustomerPage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required
               />
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="WhatsApp Phone Number"
-                  placeholder="+1 555 123 4567"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  required
-                  hint="Include country code (e.g. +86 for China)"
-                />
-                <Input
-                  label="Email Address"
-                  type="email"
-                  placeholder="customer@example.com"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
+
+              {/* Phone with country code */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  WhatsApp Phone Number
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={phoneCode}
+                    onChange={(e) => setPhoneCode(e.target.value)}
+                    className="h-10 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500 shrink-0"
+                  >
+                    {COUNTRY_CODES.map((cc) => (
+                      <option key={cc.code} value={cc.code}>{cc.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    placeholder="555 123 4567"
+                    value={phoneLocal}
+                    onChange={(e) => setPhoneLocal(e.target.value)}
+                    required
+                    className="flex-1 h-10 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Select your country code then enter the number</p>
               </div>
+
+              <Input
+                label="Email Address"
+                type="email"
+                placeholder="customer@example.com"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
               <Textarea
                 label="Notes (optional)"
                 placeholder="Any special notes about this customer..."
@@ -128,11 +165,7 @@ export default function NewCustomerPage() {
           )}
 
           <div className="flex gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.back()}
-            >
+            <Button type="button" variant="outline" onClick={() => router.back()}>
               Cancel
             </Button>
             <Button type="submit" loading={loading} className="flex-1">
@@ -160,7 +193,7 @@ export default function NewCustomerPage() {
                 </p>
               ) : (
                 <p className="text-sm text-amber-600 mt-2">
-                  Email could not be sent. Ask the customer to use "Forgot password" on the login page.
+                  Email could not be sent. Ask the customer to use &quot;Forgot password&quot; on the login page.
                 </p>
               )}
             </div>

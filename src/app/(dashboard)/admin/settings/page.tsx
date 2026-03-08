@@ -42,7 +42,7 @@ export default function AdminSettingsPage() {
   // Company settings (localStorage)
   const [company, setCompany] = useState<CompanySettings>({
     name: "Pakkmaxx",
-    address: "",
+    address: "PAKKMAXX-9899-IRENE, Pakkmaxx Warehouse, Accra, Ghana",
     phone: "",
     email: "",
   });

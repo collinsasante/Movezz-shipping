@@ -19,6 +19,28 @@ const STATUS_OPTIONS = [
   ...ITEM_STATUS_STEPS.map((s) => ({ value: s, label: s })),
 ];
 
+const DATE_OPTIONS = [
+  { value: "", label: "All time" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "year", label: "This year" },
+];
+
+function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined, range: string): T[] {
+  if (!range) return items;
+  const now = new Date();
+  const cutoff = new Date();
+  if (range === "today") cutoff.setHours(0, 0, 0, 0);
+  else if (range === "week") cutoff.setDate(cutoff.getDate() - 7);
+  else if (range === "month") cutoff.setMonth(cutoff.getMonth() - 1);
+  else if (range === "year") cutoff.setFullYear(cutoff.getFullYear() - 1);
+  return items.filter((item) => {
+    const d = new Date(getDate(item) ?? "");
+    return !isNaN(d.getTime()) && d >= cutoff && d <= now;
+  });
+}
+
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
@@ -39,6 +61,7 @@ export default function CustomerItemsPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [dateRange, setDateRange] = useState("");
 
   const load = useCallback(
     async (search?: string, status?: string, pageNum: number = 1) => {
@@ -110,6 +133,13 @@ export default function CustomerItemsPage() {
               }}
               className="w-full sm:w-52"
             />
+            <select
+              value={dateRange}
+              onChange={(e) => { setDateRange(e.target.value); setPage(1); }}
+              className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 w-full sm:w-36"
+            >
+              {DATE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
 
           <DataTable
@@ -172,7 +202,7 @@ export default function CustomerItemsPage() {
                 ),
               },
             ]}
-            data={items}
+            data={applyDateFilter(items, (i) => i.dateReceived, dateRange)}
             keyExtractor={(item) => item.id}
             loading={loading}
             emptyMessage="No items found"

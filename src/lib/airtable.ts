@@ -198,6 +198,7 @@ function mapItem(record: AirtableRecord<FieldSet>): Item {
     orderId: ((f["Order"] as string[]) ?? [])[0] ?? undefined,
     orderRef: (f["OrderRef"] as string) ?? undefined,
     isMissing: (f["IsMissing"] as boolean) ?? false,
+    quantity: (f["Quantity"] as number) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     createdBy: (f["CreatedBy"] as string) ?? undefined,
@@ -454,7 +455,7 @@ export const itemsApi = {
         ? `AND(${formulas.join(",")})`
         : formulas[0] ?? "";
 
-    const records = await getAllRecords(TABLES.ITEMS, formula || undefined);
+    const records = await getAllRecords(TABLES.ITEMS, formula || undefined, [{ field: "DateReceived", direction: "desc" }]);
     let items = records.map(mapItem);
 
     // JS filters for linked record fields
@@ -539,6 +540,7 @@ export const itemsApi = {
     if (input.width) fields["Width"] = input.width;
     if (input.height) fields["Height"] = input.height;
     if (input.trackingNumber) fields["TrackingNumber"] = input.trackingNumber;
+    if (input.quantity) fields["Quantity"] = input.quantity;
     if (input.photoUrls && input.photoUrls.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;

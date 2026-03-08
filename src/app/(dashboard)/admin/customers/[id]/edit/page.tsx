@@ -12,6 +12,34 @@ import { useToast } from "@/components/ui/toast";
 import { ArrowLeft } from "lucide-react";
 import axios from "axios";
 
+const COUNTRY_CODES = [
+  { code: "+1", label: "+1 (US/Canada)" },
+  { code: "+44", label: "+44 (UK)" },
+  { code: "+86", label: "+86 (China)" },
+  { code: "+233", label: "+233 (Ghana)" },
+  { code: "+234", label: "+234 (Nigeria)" },
+  { code: "+254", label: "+254 (Kenya)" },
+  { code: "+27", label: "+27 (S. Africa)" },
+  { code: "+49", label: "+49 (Germany)" },
+  { code: "+33", label: "+33 (France)" },
+  { code: "+971", label: "+971 (UAE)" },
+  { code: "+91", label: "+91 (India)" },
+  { code: "+61", label: "+61 (Australia)" },
+  { code: "+82", label: "+82 (South Korea)" },
+  { code: "+81", label: "+81 (Japan)" },
+];
+
+function parsePhone(phone: string): { code: string; local: string } {
+  if (!phone) return { code: "+233", local: "" };
+  const sorted = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+  for (const cc of sorted) {
+    if (phone.startsWith(cc.code)) {
+      return { code: cc.code, local: phone.slice(cc.code.length).trim() };
+    }
+  }
+  return { code: "+233", local: phone.replace(/^\+/, "") };
+}
+
 export default function EditCustomerPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -19,9 +47,10 @@ export default function EditCustomerPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const [phoneCode, setPhoneCode] = useState("+233");
+  const [phoneLocal, setPhoneLocal] = useState("");
   const [form, setForm] = useState({
     name: "",
-    phone: "",
     email: "",
     notes: "",
     status: "active" as "active" | "inactive",
@@ -35,12 +64,14 @@ export default function EditCustomerPage() {
         const c = res.data.data;
         setForm({
           name: c.name ?? "",
-          phone: c.phone ?? "",
           email: c.email ?? "",
           notes: c.notes ?? "",
           status: c.status ?? "active",
           shippingType: c.shippingType ?? "",
         });
+        const parsed = parsePhone(c.phone ?? "");
+        setPhoneCode(parsed.code);
+        setPhoneLocal(parsed.local);
       } catch {
         error("Failed to load customer");
       } finally {
@@ -54,7 +85,11 @@ export default function EditCustomerPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { ...form, shippingType: form.shippingType || undefined };
+      const payload = {
+        ...form,
+        phone: `${phoneCode}${phoneLocal}`,
+        shippingType: form.shippingType || undefined,
+      };
       await axios.patch(`/api/customers/${id}`, payload);
       success("Customer updated");
       router.push(`/admin/customers/${id}`);
@@ -102,33 +137,48 @@ export default function EditCustomerPage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required
               />
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="WhatsApp Phone Number"
-                  placeholder="+1 555 123 4567"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  required
-                  hint="Include country code (e.g. +86 for China)"
-                />
-                <Input
-                  label="Email Address"
-                  type="email"
-                  placeholder="customer@example.com"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
+
+              {/* Phone with country code */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  WhatsApp Phone Number
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={phoneCode}
+                    onChange={(e) => setPhoneCode(e.target.value)}
+                    className="h-10 rounded-lg border border-gray-200 bg-white px-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500 shrink-0"
+                  >
+                    {COUNTRY_CODES.map((cc) => (
+                      <option key={cc.code} value={cc.code}>{cc.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    placeholder="555 123 4567"
+                    value={phoneLocal}
+                    onChange={(e) => setPhoneLocal(e.target.value)}
+                    required
+                    className="flex-1 h-10 px-3 rounded-lg border border-gray-200 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-400">Select your country code then enter the number</p>
               </div>
+
+              <Input
+                label="Email Address"
+                type="email"
+                placeholder="customer@example.com"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
               <div className="grid grid-cols-2 gap-4">
                 <Select
                   label="Status"
                   value={form.status}
                   onChange={(e) =>
-                    setForm({
-                      ...form,
-                      status: e.target.value as "active" | "inactive",
-                    })
+                    setForm({ ...form, status: e.target.value as "active" | "inactive" })
                   }
                   options={[
                     { value: "active", label: "Active" },
@@ -139,10 +189,7 @@ export default function EditCustomerPage() {
                   label="Shipping Type"
                   value={form.shippingType}
                   onChange={(e) =>
-                    setForm({
-                      ...form,
-                      shippingType: e.target.value as "air" | "sea" | "",
-                    })
+                    setForm({ ...form, shippingType: e.target.value as "air" | "sea" | "" })
                   }
                   options={[
                     { value: "", label: "Not set" },
@@ -161,11 +208,7 @@ export default function EditCustomerPage() {
           </Card>
 
           <div className="flex gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => router.back()}
-            >
+            <Button type="button" variant="outline" onClick={() => router.back()}>
               Cancel
             </Button>
             <Button type="submit" loading={saving} className="flex-1">

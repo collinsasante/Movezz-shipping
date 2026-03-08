@@ -97,6 +97,8 @@ export function getStatusColor(status: ItemStatus | string): string {
     // Customer
     active: "bg-green-100 text-green-800 border-green-200",
     inactive: "bg-red-100 text-red-800 border-red-200",
+    Active: "bg-green-100 text-green-800 border-green-200",
+    Inactive: "bg-red-100 text-red-800 border-red-200",
   };
   return map[status] ?? "bg-gray-100 text-gray-600 border-gray-200";
 }

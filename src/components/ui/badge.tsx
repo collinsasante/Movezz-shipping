@@ -22,5 +22,6 @@ export function Badge({ className, status, children, ...props }: BadgeProps) {
 }
 
 export function StatusBadge({ status }: { status: string }) {
-  return <Badge status={status}>{status}</Badge>;
+  const display = status.charAt(0).toUpperCase() + status.slice(1);
+  return <Badge status={status}>{display}</Badge>;
 }
