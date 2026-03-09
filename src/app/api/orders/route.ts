@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
             item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
             quantity: 1,
             price: Math.round(pricePerItem * 100) / 100,
-            item_type: "service",
+            item_type: "product",
           };
         }),
       });

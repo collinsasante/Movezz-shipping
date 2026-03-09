@@ -46,10 +46,10 @@ export async function POST(
             item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
             quantity: 1,
             price: Math.round(pricePerItem * 100) / 100,
-            item_type: "service",
+            item_type: "product",
           };
         })
-      : [{ item_name: `Freight — ${order.orderRef}`, quantity: 1, price: Math.round(order.invoiceAmount * 100) / 100, item_type: "service" }];
+      : [{ item_name: `Freight — ${order.orderRef}`, quantity: 1, price: Math.round(order.invoiceAmount * 100) / 100, item_type: "product" }];
 
     const keepupResult = await createKeepupSale({
       customerName: customer?.name,
