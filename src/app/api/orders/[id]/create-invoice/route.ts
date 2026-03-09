@@ -67,7 +67,8 @@ export async function POST(
       message: "Invoice created in Keepup",
     });
   } catch (err) {
-    console.error("[POST /orders/[id]/create-invoice] Error:", err);
-    return serverErrorResponse("Failed to create Keepup invoice");
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[POST /orders/[id]/create-invoice] Error:", msg);
+    return Response.json({ success: false, error: msg }, { status: 500 });
   }
 }
