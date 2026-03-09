@@ -32,27 +32,31 @@ export async function POST(
       ? order.invoiceAmount / validItems.length
       : order.invoiceAmount;
 
+    const lineItems = validItems.length > 0
+      ? validItems.map((item) => {
+          const qty = item!.quantity ?? 1;
+          let cbmNote = "";
+          if (item!.length && item!.width && item!.height) {
+            const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
+            const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
+            cbmNote = ` [CBM: ${cbm.toFixed(4)} m³]`;
+          }
+          const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
+          return {
+            item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
+            quantity: 1,
+            price: Math.round(pricePerItem * 100) / 100,
+            item_type: "service",
+          };
+        })
+      : [{ item_name: `Freight — ${order.orderRef}`, quantity: 1, price: Math.round(order.invoiceAmount * 100) / 100, item_type: "service" }];
+
     const keepupResult = await createKeepupSale({
       customerName: customer?.name,
       customerEmail: customer?.email,
       customerPhone: customer?.phone,
       invoiceDate: order.invoiceDate,
-      items: validItems.map((item) => {
-        const qty = item!.quantity ?? 1;
-        let cbmNote = "";
-        if (item!.length && item!.width && item!.height) {
-          const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
-          const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
-          cbmNote = ` [CBM: ${cbm.toFixed(4)} m³]`;
-        }
-        const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
-        return {
-          item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
-          quantity: 1,
-          price: Math.round(pricePerItem * 100) / 100,
-          item_type: "service",
-        };
-      }),
+      items: lineItems,
     });
 
     await ordersApi.storeKeepupIds(order.id, keepupResult.saleId, keepupResult.link);
