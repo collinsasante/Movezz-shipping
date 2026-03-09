@@ -100,6 +100,16 @@ export default function ItemsPage() {
     load();
   }, [load]);
 
+  const dedupedItems = (() => {
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      if (!item.trackingNumber) return true;
+      if (seen.has(item.trackingNumber)) return false;
+      seen.add(item.trackingNumber);
+      return true;
+    });
+  })();
+
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
@@ -291,7 +301,7 @@ export default function ItemsPage() {
               ),
             },
           ]}
-          data={applyDateFilter(items, (i) => i.dateReceived, dateRange, dateFrom, dateTo)}
+          data={applyDateFilter(dedupedItems, (i) => i.dateReceived, dateRange, dateFrom, dateTo)}
           keyExtractor={(item) => item.id}
           loading={loading}
           emptyMessage="No items found"

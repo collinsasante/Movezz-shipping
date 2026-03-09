@@ -15,10 +15,26 @@ import {
   Clock,
   MapPin,
   Box,
+  CalendarDays,
 } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
+
+type Period = "all" | "today" | "week" | "month";
+
+function filterByPeriod<T>(items: T[], getDate: (i: T) => string, period: Period): T[] {
+  if (period === "all") return items;
+  const now = new Date();
+  const cutoff = new Date();
+  if (period === "today") cutoff.setHours(0, 0, 0, 0);
+  else if (period === "week") cutoff.setDate(cutoff.getDate() - 7);
+  else if (period === "month") cutoff.setMonth(cutoff.getMonth() - 1);
+  return items.filter((i) => {
+    const d = new Date(getDate(i));
+    return !isNaN(d.getTime()) && d >= cutoff && d <= now;
+  });
+}
 
 export default function CustomerDashboardPage() {
   const { appUser } = useAuth();
@@ -27,6 +43,7 @@ export default function CustomerDashboardPage() {
   const [stats, setStats] = useState<CustomerDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [period, setPeriod] = useState<Period>("all");
 
   useEffect(() => {
     const load = async () => {
@@ -51,16 +68,19 @@ export default function CustomerDashboardPage() {
         .reduce((sum, [, count]) => sum + count, 0)
     : 0;
 
-  // Deduplicate recentItems by tracking number (keep first per tracking number)
+  // Deduplicate recentItems by tracking number, then apply period filter
   const deduplicatedItems = (() => {
     const seen = new Set<string>();
-    return (stats?.recentItems ?? []).filter((item) => {
+    const deduped = (stats?.recentItems ?? []).filter((item) => {
       if (!item.trackingNumber) return true;
       if (seen.has(item.trackingNumber)) return false;
       seen.add(item.trackingNumber);
       return true;
     });
+    return filterByPeriod(deduped, (i) => i.dateReceived, period);
   })();
+
+  const filteredOrders = filterByPeriod(stats?.recentOrders ?? [], (o) => o.invoiceDate, period);
 
   return (
     <div className="flex flex-col h-full">
@@ -117,6 +137,22 @@ export default function CustomerDashboardPage() {
             iconBg="bg-teal-50"
             href="/customer/items"
           />
+        </div>
+
+        {/* Period filter */}
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-gray-400" />
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
+            {(["all", "today", "week", "month"] as Period[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 font-medium transition-colors capitalize ${period === p ? "bg-brand-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+              >
+                {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : "This month"}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -234,7 +270,7 @@ export default function CustomerDashboardPage() {
                   View all →
                 </a>
               </div>
-              {stats?.recentOrders?.map((order) => (
+              {filteredOrders.map((order) => (
                 <div
                   key={order.id}
                   className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl"

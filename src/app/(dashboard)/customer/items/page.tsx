@@ -130,6 +130,16 @@ export default function CustomerItemsPage() {
     axios.get("/api/warehouses").then((res) => setWarehouses(res.data.data)).catch(() => {});
   }, []);
 
+  const dedupedItems = (() => {
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      if (!item.trackingNumber) return true;
+      if (seen.has(item.trackingNumber)) return false;
+      seen.add(item.trackingNumber);
+      return true;
+    });
+  })();
+
   return (
     <div className="flex flex-col h-full">
       <Header title="My Items" subtitle="All your packages" />
@@ -247,7 +257,7 @@ export default function CustomerItemsPage() {
                 ),
               },
             ]}
-            data={applyDateFilter(items, (i) => i.dateReceived, dateRange, dateFrom, dateTo)}
+            data={applyDateFilter(dedupedItems, (i) => i.dateReceived, dateRange, dateFrom, dateTo)}
             keyExtractor={(item) => item.id}
             loading={loading}
             emptyMessage="No items found"

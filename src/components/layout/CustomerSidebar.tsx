@@ -16,6 +16,7 @@ import {
   CheckCheck,
   Settings,
   X,
+  Calculator,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/customer/items", label: "My Items", icon: Package },
   { href: "/customer/orders", label: "My Invoices", icon: ShoppingCart },
   { href: "/customer/tracking", label: "Tracking", icon: MapPin },
+  { href: "/customer/calculator", label: "Calculator", icon: Calculator },
   { href: "/customer/settings", label: "Settings", icon: Settings },
 ];
 
