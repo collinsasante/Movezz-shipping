@@ -9,7 +9,7 @@ import {
   notFoundResponse,
   badRequestResponse,
 } from "@/lib/auth";
-import { recordKeepupPayment, cancelKeepupSale, updateKeepupSale } from "@/lib/keepup";
+import { recordKeepupPayment, cancelKeepupSale, updateKeepupSale, getKeepupSale } from "@/lib/keepup";
 import { sendPaymentConfirmedEmail, sendPartialPaymentEmail } from "@/lib/email";
 import { z } from "zod";
 
@@ -43,6 +43,19 @@ export async function GET(
         { success: false, error: "Access denied" },
         { status: 403 }
       );
+    }
+
+    // Auto-fetch and store keepupLink if saleId exists but link is missing
+    if (order.keepupSaleId && !order.keepupLink) {
+      try {
+        const saleStatus = await getKeepupSale(order.keepupSaleId);
+        if (saleStatus.shareLink) {
+          await ordersApi.storeKeepupIds(order.id, order.keepupSaleId, saleStatus.shareLink);
+          order.keepupLink = saleStatus.shareLink;
+        }
+      } catch {
+        // Non-fatal
+      }
     }
 
     // Hydrate items — log failures but return partial data

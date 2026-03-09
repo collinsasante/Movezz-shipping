@@ -106,6 +106,7 @@ export interface KeepupSaleStatus {
   totalAmount: number;
   amountPaid: number;
   balanceDue: number;
+  shareLink?: string;
 }
 
 // GET /v2.0/sales/{sale_id} — fetch sale details and payment status
@@ -134,7 +135,8 @@ export async function getKeepupSale(saleId: string): Promise<KeepupSaleStatus> {
     throw new Error("Keepup response missing total_amount — skipping status update");
   }
 
-  return { totalAmount, amountPaid, balanceDue };
+  const shareLink = (d as Record<string, unknown>).share_link as string | undefined;
+  return { totalAmount, amountPaid, balanceDue, shareLink };
 }
 
 // PUT /v2.0/sales/balance/{sale_id} — record a payment
