@@ -98,6 +98,7 @@ export function getStatusColor(status: ItemStatus | string): string {
     Loading: "bg-orange-100 text-orange-800 border-orange-200",
     // Order
     Pending: "bg-amber-100 text-amber-800 border-amber-200",
+    Partial: "bg-orange-100 text-orange-800 border-orange-200",
     Paid: "bg-emerald-100 text-emerald-800 border-emerald-200",
     // Customer
     active: "bg-green-100 text-green-800 border-green-200",

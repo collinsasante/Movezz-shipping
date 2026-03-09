@@ -22,7 +22,7 @@ export type ContainerStatus =
   | "Completed";
 
 // ---- ORDER STATUS ----
-export type OrderStatus = "Pending" | "Paid";
+export type OrderStatus = "Pending" | "Partial" | "Paid";
 
 // ---- CUSTOMER STATUS ----
 export type CustomerStatus = "active" | "inactive";

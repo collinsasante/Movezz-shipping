@@ -17,6 +17,7 @@ import { useToast } from "@/components/ui/toast";
 const STATUS_OPTIONS = [
   { value: "", label: "All Statuses" },
   { value: "Pending", label: "Pending" },
+  { value: "Partial", label: "Partial" },
   { value: "Paid", label: "Paid" },
 ];
 
@@ -92,7 +93,11 @@ export default function OrdersPage() {
     [error]
   );
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // Sync payment statuses from Keepup in the background, then reload
+    axios.post("/api/orders/keepup-sync").then(() => load()).catch(() => {/* silent */});
+  }, [load]);
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);

@@ -104,6 +104,34 @@ export async function createKeepupSale(
   };
 }
 
+export interface KeepupSaleStatus {
+  totalAmount: number;
+  amountPaid: number;
+  balanceDue: number;
+}
+
+// GET /v2.0/sales/{sale_id} — fetch sale details and payment status
+export async function getKeepupSale(saleId: string): Promise<KeepupSaleStatus> {
+  const res = await fetch(`${BASE}/sales/${saleId}`, {
+    headers: authHeaders(),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      (data as { error?: string }).error ?? `Keepup fetch error ${res.status}`
+    );
+  }
+
+  // Response may be nested under data or at root
+  const d = (data as Record<string, unknown>).data ?? data;
+  return {
+    totalAmount: parseFloat(String((d as Record<string, unknown>).total_amount ?? "0")) || 0,
+    amountPaid: parseFloat(String((d as Record<string, unknown>).amount_paid ?? "0")) || 0,
+    balanceDue: parseFloat(String((d as Record<string, unknown>).balance_due ?? "0")) || 0,
+  };
+}
+
 // PUT /v2.0/sales/balance/{sale_id} — record a payment
 export async function recordKeepupPayment(
   saleId: string,
