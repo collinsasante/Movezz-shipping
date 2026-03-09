@@ -1137,6 +1137,8 @@ export const usersApi = {
       ...user,
       customerName: user.customerName ?? customer.name,
       shippingMark: customer.shippingMark,
+      shippingAddress: customer.shippingAddress,
+      package: customer.package,
     };
   },
 

@@ -19,12 +19,14 @@ import {
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 
-type Period = "all" | "today" | "week" | "month";
+type Period = "all" | "today" | "week" | "month" | "custom";
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const { error } = useToast();
   const [period, setPeriod] = useState<Period>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -41,6 +43,16 @@ export default function AdminDashboardPage() {
   const pendingOrders = (() => {
     const orders = stats?.pendingOrders ?? [];
     if (period === "all") return orders;
+    if (period === "custom") {
+      if (!customFrom && !customTo) return orders;
+      return orders.filter((o) => {
+        const d = new Date(o.invoiceDate);
+        if (isNaN(d.getTime())) return false;
+        if (customFrom && d < new Date(customFrom)) return false;
+        if (customTo) { const t = new Date(customTo); t.setHours(23, 59, 59, 999); if (d > t) return false; }
+        return true;
+      });
+    }
     const now = new Date();
     const cutoff = new Date();
     if (period === "today") cutoff.setHours(0, 0, 0, 0);
@@ -61,19 +73,26 @@ export default function AdminDashboardPage() {
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
         {/* Period filter */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CalendarDays className="h-4 w-4 text-gray-400" />
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
-            {(["all", "today", "week", "month"] as Period[]).map((p) => (
+            {(["all", "today", "week", "month", "custom"] as Period[]).map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
                 className={`px-3 py-1.5 font-medium transition-colors ${period === p ? "bg-brand-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
               >
-                {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : "This month"}
+                {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : p === "month" ? "This month" : "Custom"}
               </button>
             ))}
           </div>
+          {period === "custom" && (
+            <div className="flex items-center gap-1">
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <span className="text-gray-400 text-xs">–</span>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

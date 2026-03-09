@@ -147,21 +147,45 @@ export default function CustomerItemsPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Items list */}
         <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-          {/* Warehouse shipping info */}
-          {(warehouses.length > 0 || appUser?.shippingMark) && (
-            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
-              {warehouses.map((w) => (
-                <div key={w.id} className="flex items-start gap-2">
-                  <MapPin className="h-4 w-4 text-brand-600 mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-brand-700">{w.name}</p>
-                    <p className="text-xs text-brand-600">{w.address}{w.phone ? ` · ${w.phone}` : ""}</p>
-                  </div>
+          {/* Shipping info panel */}
+          {(warehouses.length > 0 || appUser?.shippingMark || appUser?.shippingAddress) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Send packages HERE */}
+              {(warehouses.length > 0 || appUser?.shippingMark) && (
+                <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
+                  <p className="text-xs font-bold text-brand-700 uppercase tracking-wide">Send packages to:</p>
+                  {warehouses.map((w) => (
+                    <div key={w.id} className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-brand-600 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-brand-700">{w.name}</p>
+                        <p className="text-xs text-brand-600">{w.address}{w.phone ? ` · ${w.phone}` : ""}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {appUser?.shippingMark && (
+                    <div className="pt-1 border-t border-brand-100">
+                      <p className="text-xs text-brand-600">Mark packages: <code className="font-mono font-bold text-brand-900">{appUser.shippingMark}</code></p>
+                    </div>
+                  )}
                 </div>
-              ))}
-              {appUser?.shippingMark && (
-                <div className="pt-1 border-t border-brand-100">
-                  <p className="text-xs text-brand-600">Your shipping mark: <code className="font-mono font-bold text-brand-900">{appUser.shippingMark}</code></p>
+              )}
+              {/* Customer delivery address */}
+              {appUser?.shippingAddress && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Your delivery address:</p>
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
+                    <p className="text-xs text-gray-700">{appUser.shippingAddress}</p>
+                  </div>
+                  <a href="/customer/settings" className="text-xs text-brand-600 hover:underline">Edit address →</a>
+                </div>
+              )}
+              {!appUser?.shippingAddress && (
+                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-4 flex items-center justify-center">
+                  <a href="/customer/settings" className="text-xs text-gray-400 hover:text-brand-600 transition-colors">
+                    + Add your delivery address
+                  </a>
                 </div>
               )}
             </div>

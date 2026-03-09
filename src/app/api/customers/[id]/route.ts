@@ -69,19 +69,37 @@ export async function GET(
   }
 }
 
+// Fields a customer is allowed to update on their own profile
+const CustomerSelfUpdateSchema = z.object({
+  name: z.string().min(2).max(200).optional(),
+  phone: z.string().min(7).max(30).optional(),
+  notes: z.string().max(2000).optional(),
+  shippingAddress: z.string().max(500).optional(),
+  package: z.enum(["standard", "discounted", "premium"]).optional(),
+});
+
 // PATCH /api/customers/[id]
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authResult = await requireAuth(request, ["super_admin"]);
+  const authResult = await requireAuth(request, ["super_admin", "customer"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
 
   try {
     const { id } = await params;
+
+    // Customers can only update their own record; admins can update any
+    if (user.role === "customer" && user.customerId !== id) {
+      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+    }
+
     const body = await request.json();
-    const parsed = UpdateCustomerSchema.safeParse(body);
+
+    // Customers use a restricted schema (no status/email changes)
+    const schema = user.role === "customer" ? CustomerSelfUpdateSchema : UpdateCustomerSchema;
+    const parsed = schema.safeParse(body);
 
     if (!parsed.success) {
       return badRequestResponse(

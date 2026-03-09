@@ -21,10 +21,20 @@ import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
 
-type Period = "all" | "today" | "week" | "month";
+type Period = "all" | "today" | "week" | "month" | "custom";
 
-function filterByPeriod<T>(items: T[], getDate: (i: T) => string, period: Period): T[] {
+function filterByPeriod<T>(items: T[], getDate: (i: T) => string, period: Period, customFrom?: string, customTo?: string): T[] {
   if (period === "all") return items;
+  if (period === "custom") {
+    if (!customFrom && !customTo) return items;
+    return items.filter((i) => {
+      const d = new Date(getDate(i));
+      if (isNaN(d.getTime())) return false;
+      if (customFrom && d < new Date(customFrom)) return false;
+      if (customTo) { const t = new Date(customTo); t.setHours(23, 59, 59, 999); if (d > t) return false; }
+      return true;
+    });
+  }
   const now = new Date();
   const cutoff = new Date();
   if (period === "today") cutoff.setHours(0, 0, 0, 0);
@@ -44,6 +54,8 @@ export default function CustomerDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [period, setPeriod] = useState<Period>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -77,10 +89,10 @@ export default function CustomerDashboardPage() {
       seen.add(item.trackingNumber);
       return true;
     });
-    return filterByPeriod(deduped, (i) => i.dateReceived, period);
+    return filterByPeriod(deduped, (i) => i.dateReceived, period, customFrom, customTo);
   })();
 
-  const filteredOrders = filterByPeriod(stats?.recentOrders ?? [], (o) => o.invoiceDate, period);
+  const filteredOrders = filterByPeriod(stats?.recentOrders ?? [], (o) => o.invoiceDate, period, customFrom, customTo);
 
   return (
     <div className="flex flex-col h-full">
@@ -140,19 +152,26 @@ export default function CustomerDashboardPage() {
         </div>
 
         {/* Period filter */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <CalendarDays className="h-4 w-4 text-gray-400" />
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
-            {(["all", "today", "week", "month"] as Period[]).map((p) => (
+            {(["all", "today", "week", "month", "custom"] as Period[]).map((p) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
                 className={`px-3 py-1.5 font-medium transition-colors capitalize ${period === p ? "bg-brand-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
               >
-                {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : "This month"}
+                {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : p === "month" ? "This month" : "Custom"}
               </button>
             ))}
           </div>
+          {period === "custom" && (
+            <div className="flex items-center gap-1">
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <span className="text-gray-400 text-xs">–</span>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

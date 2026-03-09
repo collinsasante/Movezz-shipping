@@ -15,6 +15,15 @@ import type { Warehouse as WarehouseType } from "@/types";
 
 const RATES_KEY = "pakk_exchange_rates";
 const COMPANY_KEY = "pakk_company_settings";
+const PACKAGES_RATES_KEY = "pakk_package_rates";
+
+interface PackageRate { sea: number; air: number; }
+interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; }
+const DEFAULT_PKG_RATES: PackageRates = {
+  standard: { sea: 350, air: 8 },
+  discounted: { sea: 280, air: 6 },
+  premium: { sea: 450, air: 12 },
+};
 
 const PACKAGE_OPTIONS: { value: CustomerPackage | ""; label: string }[] = [
   { value: "", label: "No package" },
@@ -51,6 +60,7 @@ export default function AdminSettingsPage() {
   // Exchange rate settings
   const [defaultRate, setDefaultRate] = useState("12.5");
   const [shippingRatePerCbm, setShippingRatePerCbm] = useState("200");
+  const [pkgRates, setPkgRates] = useState<PackageRates>(DEFAULT_PKG_RATES);
 
   // Warehouses
   const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
@@ -78,6 +88,10 @@ export default function AdminSettingsPage() {
     if (savedCompany) {
       try { setCompany(JSON.parse(savedCompany)); } catch {}
     }
+    const savedPkgRates = localStorage.getItem(PACKAGES_RATES_KEY);
+    if (savedPkgRates) {
+      try { setPkgRates(JSON.parse(savedPkgRates)); } catch {}
+    }
   }, []);
 
   const saveCompany = () => {
@@ -98,6 +112,11 @@ export default function AdminSettingsPage() {
     }
     localStorage.setItem(RATES_KEY, JSON.stringify({ usdToGhs, shippingRatePerCbm: ratePerCbm }));
     success("Rates saved", `1 USD = ${usdToGhs} GHS · $${ratePerCbm}/CBM`);
+  };
+
+  const savePackageRates = () => {
+    localStorage.setItem(PACKAGES_RATES_KEY, JSON.stringify(pkgRates));
+    success("Package rates saved");
   };
 
   const loadCustomers = useCallback(async (search?: string) => {
@@ -263,38 +282,40 @@ export default function AdminSettingsPage() {
 
         {/* Exchange Rate Settings */}
         {activeTab === "exchange" && (
-          <div className="max-w-xl space-y-5">
+          <div className="max-w-2xl space-y-5">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <DollarSign className="h-5 w-5 text-brand-600" />
-                  Default Exchange Rate
+                  Currency & Default Rates
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-gray-500">
-                  Set the default USD → GHS exchange rate used for all invoices.
+                  Set the default USD → GHS exchange rate and base shipping rate.
                 </p>
-                <Input
-                  label="USD → GHS Rate"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="e.g. 15.50"
-                  value={defaultRate}
-                  onChange={(e) => setDefaultRate(e.target.value)}
-                  hint="How many GHS per 1 USD"
-                />
-                <Input
-                  label="Shipping Rate (USD per CBM)"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="e.g. 200"
-                  value={shippingRatePerCbm}
-                  onChange={(e) => setShippingRatePerCbm(e.target.value)}
-                  hint="Cost in USD for 1 cubic metre"
-                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="USD → GHS Rate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 15.50"
+                    value={defaultRate}
+                    onChange={(e) => setDefaultRate(e.target.value)}
+                    hint="How many GHS per 1 USD"
+                  />
+                  <Input
+                    label="Default Sea Rate (USD/CBM)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 350"
+                    value={shippingRatePerCbm}
+                    onChange={(e) => setShippingRatePerCbm(e.target.value)}
+                    hint="Base cost per cubic metre"
+                  />
+                </div>
                 <div className="p-3 bg-brand-50 rounded-xl border border-brand-100">
                   <p className="text-sm text-brand-700">
                     Preview: <span className="font-bold">$100 USD = {(parseFloat(defaultRate) * 100 || 0).toFixed(2)} GHS</span>
@@ -304,7 +325,50 @@ export default function AdminSettingsPage() {
             </Card>
             <Button onClick={saveDefaultRate} className="flex items-center gap-2">
               <Save className="h-4 w-4" />
-              Save Rates
+              Save Default Rates
+            </Button>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5 text-brand-600" />
+                  Package Pricing Tiers
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <p className="text-sm text-gray-500">
+                  Set custom sea and air rates per customer package tier.
+                </p>
+                {(["standard", "discounted", "premium"] as (keyof PackageRates)[]).map((pkg) => (
+                  <div key={pkg} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${PACKAGE_COLORS[pkg]}`}>{pkg}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label="Sea Rate (USD/CBM)"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={String(pkgRates[pkg].sea)}
+                        onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], sea: parseFloat(e.target.value) || 0 } }))}
+                      />
+                      <Input
+                        label="Air Rate (USD/kg)"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={String(pkgRates[pkg].air)}
+                        onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], air: parseFloat(e.target.value) || 0 } }))}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+            <Button onClick={savePackageRates} className="flex items-center gap-2">
+              <Save className="h-4 w-4" />
+              Save Package Rates
             </Button>
           </div>
         )}

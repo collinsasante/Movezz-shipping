@@ -260,6 +260,8 @@ export interface AppUser {
   customerId?: string; // Only for customers
   customerName?: string;
   shippingMark?: string;
+  shippingAddress?: string;
+  package?: CustomerPackage;
   createdAt: string;
   lastLogin?: string;
 }
