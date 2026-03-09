@@ -342,6 +342,88 @@ export interface SortingItem extends Item {
 }
 
 // ============================================================
+// WAREHOUSE
+// ============================================================
+export interface Warehouse {
+  id: string;
+  name: string;
+  address: string;
+  country?: string;
+  phone?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateWarehouseInput {
+  name: string;
+  address: string;
+  country?: string;
+  phone?: string;
+}
+
+// ============================================================
+// SUPPLIER
+// ============================================================
+export type SupplierCategory =
+  | "Electronics"
+  | "Clothing"
+  | "Footwear"
+  | "Beauty"
+  | "Home & Garden"
+  | "Toys"
+  | "Sports"
+  | "Auto Parts"
+  | "Food & Supplements"
+  | "Other";
+
+export type SupplierPlatform =
+  | "1688"
+  | "Alibaba"
+  | "AliExpress"
+  | "Taobao"
+  | "DHgate"
+  | "Pinduoduo"
+  | "WeChat"
+  | "Other";
+
+export interface Supplier {
+  id: string;
+  supplierId: string; // e.g. SUP-0001
+  name: string;
+  category?: SupplierCategory;
+  platform?: SupplierPlatform;
+  platformLink?: string;
+  contact?: string; // phone / WeChat / WhatsApp
+  contactMethod?: string;
+  rating?: number; // 1-5
+  notes?: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface CreateSupplierInput {
+  name: string;
+  category?: SupplierCategory;
+  platform?: SupplierPlatform;
+  platformLink?: string;
+  contact?: string;
+  contactMethod?: string;
+  rating?: number;
+  notes?: string;
+}
+
+export interface UpdateSupplierInput {
+  name?: string;
+  category?: SupplierCategory;
+  platform?: SupplierPlatform;
+  platformLink?: string;
+  contact?: string;
+  contactMethod?: string;
+  rating?: number;
+  notes?: string;
+}
+
+// ============================================================
 // FILTER / SEARCH PARAMS
 // ============================================================
 export interface ItemFilterParams {

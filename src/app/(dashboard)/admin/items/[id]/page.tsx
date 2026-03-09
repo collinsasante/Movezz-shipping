@@ -334,18 +334,25 @@ export default function AdminItemDetailPage() {
                     )}
                   </span>
                 } />
-                <InfoRow icon={Scale} label="Weight" value={`${item.weight} kg`} />
+                <InfoRow icon={Scale} label="Weight" value={item.weight ? `${item.weight} kg` : null} />
+                {(item.quantity ?? 1) > 1 && (
+                  <InfoRow icon={Package} label="Quantity" value={`${item.quantity} pcs`} />
+                )}
                 <InfoRow icon={Package} label="Dimensions" value={dimensions} />
                 <InfoRow icon={Hash} label="Tracking Number" value={item.trackingNumber} />
                 <InfoRow icon={Calendar} label="Date Received" value={formatDateTime(item.dateReceived)} />
                 {item.length && item.width && item.height ? (() => {
                   const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
-                  const cbm = (item.length * item.width * item.height * factor) / 1_000_000;
+                  const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
                   return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
                 })() : null}
                 <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
                 {item.createdBy && (
-                  <InfoRow icon={User} label="Created by" value={item.createdBy} />
+                  <InfoRow icon={User} label="Created by" value={
+                    item.createdBy.includes("@")
+                      ? item.createdBy.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                      : item.createdBy
+                  } />
                 )}
                 {item.notes && (
                   <InfoRow icon={Package} label="Notes" value={item.notes} />

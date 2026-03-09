@@ -114,7 +114,7 @@ export default function NewCustomerPage() {
                 required
               />
               <Input
-                label="Shipping Address"
+                label="Location"
                 value={form.shippingAddress}
                 onChange={(e) => setForm({ ...form, shippingAddress: e.target.value })}
                 hint={`Default: ${defaultAddress}`}

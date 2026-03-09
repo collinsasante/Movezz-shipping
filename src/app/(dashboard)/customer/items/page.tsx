@@ -9,8 +9,9 @@ import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { formatDate } from "@/lib/utils";
 import { ITEM_STATUS_STEPS } from "@/lib/utils";
-import type { Item, ItemStatus, StatusHistory } from "@/types";
-import { Package, X, Hash } from "lucide-react";
+import type { Item, ItemStatus, StatusHistory, Warehouse } from "@/types";
+import { Package, X, Hash, MapPin } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 
@@ -64,6 +65,8 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
 
 export default function CustomerItemsPage() {
   const { error } = useToast();
+  const { appUser } = useAuth();
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ItemStatus | "">("");
@@ -123,6 +126,10 @@ export default function CustomerItemsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    axios.get("/api/warehouses").then((res) => setWarehouses(res.data.data)).catch(() => {});
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       <Header title="My Items" subtitle="All your packages" />
@@ -130,6 +137,25 @@ export default function CustomerItemsPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Items list */}
         <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+          {/* Warehouse shipping info */}
+          {(warehouses.length > 0 || appUser?.shippingMark) && (
+            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
+              {warehouses.map((w) => (
+                <div key={w.id} className="flex items-start gap-2">
+                  <MapPin className="h-4 w-4 text-brand-600 mt-0.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-brand-700">{w.name}</p>
+                    <p className="text-xs text-brand-600">{w.address}{w.phone ? ` · ${w.phone}` : ""}</p>
+                  </div>
+                </div>
+              ))}
+              {appUser?.shippingMark && (
+                <div className="pt-1 border-t border-brand-100">
+                  <p className="text-xs text-brand-600">Your shipping mark: <code className="font-mono font-bold text-brand-900">{appUser.shippingMark}</code></p>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search items..."

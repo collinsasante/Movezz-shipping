@@ -24,6 +24,11 @@ import type {
   CustomerFilterParams,
   ContainerFilterParams,
   OrderFilterParams,
+  Supplier,
+  CreateSupplierInput,
+  UpdateSupplierInput,
+  Warehouse,
+  CreateWarehouseInput,
 } from "@/types";
 import {
   generateShippingMark,
@@ -31,6 +36,7 @@ import {
   generateContainerId,
   generateOrderRef,
   generateItemRef,
+  generateSupplierId,
   toISOString,
   buildWhatsAppMessage,
 } from "./utils";
@@ -82,7 +88,8 @@ export const TABLES = {
   STATUS_HISTORY: "StatusHistory",
   ACTIVITY_LOGS: "ActivityLogs",
   USERS: "Users",
-
+  SUPPLIERS: "Suppliers",
+  WAREHOUSES: "Warehouses",
 } as const;
 
 // ============================================================
@@ -603,7 +610,12 @@ export const itemsApi = {
       }
     }
 
-    await updateRecord(TABLES.ITEMS, id, { Status: newStatus });
+    const statusUpdateFields: FieldSet = { Status: newStatus };
+    // Clear the missing flag whenever an item is actively progressing
+    if (["Arrived in Ghana", "Sorting", "Ready for Pickup", "Completed"].includes(newStatus)) {
+      statusUpdateFields["IsMissing"] = false;
+    }
+    await updateRecord(TABLES.ITEMS, id, statusUpdateFields);
 
     // Log status history (non-fatal)
     statusHistoryApi.log({
@@ -661,6 +673,8 @@ export const itemsApi = {
     markedByEmail: string,
     markedByRole: UserRole
   ): Promise<Item> {
+    // Explicitly clear the missing flag before updating status
+    await updateRecord(TABLES.ITEMS, id, { IsMissing: false });
     return this.updateStatus(
       id,
       "Ready for Pickup",
@@ -1345,6 +1359,141 @@ export const dashboardApi = {
       recentItems: items.slice(0, 5),
       recentOrders: orders.slice(0, 5),
     };
+  },
+};
+
+// ============================================================
+// SUPPLIERS API
+// ============================================================
+function mapSupplier(record: AirtableRecord<FieldSet>): Supplier {
+  const f = record.fields;
+  return {
+    id: record.id,
+    supplierId: (f["SupplierID"] as string) ?? record.id,
+    name: (f["Name"] as string) ?? "",
+    category: (f["Category"] as Supplier["category"]) ?? undefined,
+    platform: (f["Platform"] as Supplier["platform"]) ?? undefined,
+    platformLink: (f["PlatformLink"] as string) ?? undefined,
+    contact: (f["Contact"] as string) ?? undefined,
+    contactMethod: (f["ContactMethod"] as string) ?? undefined,
+    rating: (f["Rating"] as number) ?? undefined,
+    notes: (f["Notes"] as string) ?? undefined,
+    createdAt: (f["CreatedAt"] as string) ?? toISOString(),
+    createdBy: (f["CreatedBy"] as string) ?? undefined,
+  };
+}
+
+export const suppliersApi = {
+  async list(search?: string): Promise<Supplier[]> {
+    let formula: string | undefined;
+    if (search) {
+      const s = escapeFormula(search.toLowerCase());
+      formula = `OR(SEARCH('${s}', LOWER({Name})), SEARCH('${s}', LOWER({Category})), SEARCH('${s}', LOWER({Platform})))`;
+    }
+    const records = await getAllRecords(TABLES.SUPPLIERS, formula, [
+      { field: "CreatedAt", direction: "desc" },
+    ]);
+    return records.map(mapSupplier);
+  },
+
+  async getById(id: string): Promise<Supplier> {
+    const record = await getRecord(TABLES.SUPPLIERS, id);
+    return mapSupplier(record);
+  },
+
+  async create(input: CreateSupplierInput, createdByEmail: string): Promise<Supplier> {
+    const count = await countRecords(TABLES.SUPPLIERS);
+    const supplierId = generateSupplierId(count + 1);
+
+    const fields: FieldSet = {
+      SupplierID: supplierId,
+      Name: input.name,
+      CreatedBy: createdByEmail,
+      CreatedAt: toISOString(),
+    };
+    if (input.category) fields["Category"] = input.category;
+    if (input.platform) fields["Platform"] = input.platform;
+    if (input.platformLink) fields["PlatformLink"] = input.platformLink;
+    if (input.contact) fields["Contact"] = input.contact;
+    if (input.contactMethod) fields["ContactMethod"] = input.contactMethod;
+    if (input.rating !== undefined) fields["Rating"] = input.rating;
+    if (input.notes) fields["Notes"] = input.notes;
+
+    const record = await createRecord(TABLES.SUPPLIERS, fields);
+    return mapSupplier(record);
+  },
+
+  async update(id: string, input: UpdateSupplierInput): Promise<Supplier> {
+    const fields: FieldSet = {};
+    if (input.name !== undefined) fields["Name"] = input.name;
+    if (input.category !== undefined) fields["Category"] = input.category;
+    if (input.platform !== undefined) fields["Platform"] = input.platform;
+    if (input.platformLink !== undefined) fields["PlatformLink"] = input.platformLink;
+    if (input.contact !== undefined) fields["Contact"] = input.contact;
+    if (input.contactMethod !== undefined) fields["ContactMethod"] = input.contactMethod;
+    if (input.rating !== undefined) fields["Rating"] = input.rating;
+    if (input.notes !== undefined) fields["Notes"] = input.notes;
+
+    const record = await updateRecord(TABLES.SUPPLIERS, id, fields);
+    return mapSupplier(record);
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteRecord(TABLES.SUPPLIERS, id);
+  },
+};
+
+// ============================================================
+// WAREHOUSES API
+// ============================================================
+function mapWarehouse(record: AirtableRecord<FieldSet>): Warehouse {
+  const f = record.fields;
+  return {
+    id: record.id,
+    name: (f["Name"] as string) ?? "",
+    address: (f["Address"] as string) ?? "",
+    country: (f["Country"] as string) ?? undefined,
+    phone: (f["Phone"] as string) ?? undefined,
+    isActive: (f["IsActive"] as boolean) ?? true,
+    createdAt: (f["CreatedAt"] as string) ?? toISOString(),
+  };
+}
+
+export const warehousesApi = {
+  async list(): Promise<Warehouse[]> {
+    const records = await getAllRecords(TABLES.WAREHOUSES, undefined, [
+      { field: "CreatedAt", direction: "asc" },
+    ]);
+    return records.map(mapWarehouse);
+  },
+
+  async listActive(): Promise<Warehouse[]> {
+    const records = await getAllRecords(TABLES.WAREHOUSES, `{IsActive} = 1`, [
+      { field: "CreatedAt", direction: "asc" },
+    ]);
+    return records.map(mapWarehouse);
+  },
+
+  async create(input: CreateWarehouseInput): Promise<Warehouse> {
+    const fields: FieldSet = {
+      Name: input.name,
+      Address: input.address,
+      IsActive: true,
+      CreatedAt: toISOString(),
+    };
+    if (input.country) fields["Country"] = input.country;
+    if (input.phone) fields["Phone"] = input.phone;
+    const record = await createRecord(TABLES.WAREHOUSES, fields);
+    return mapWarehouse(record);
+  },
+
+  async toggleActive(id: string, isActive: boolean): Promise<Warehouse> {
+    const record = await updateRecord(TABLES.WAREHOUSES, id, { IsActive: isActive });
+    return mapWarehouse(record);
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteRecord(TABLES.WAREHOUSES, id);
   },
 };
 

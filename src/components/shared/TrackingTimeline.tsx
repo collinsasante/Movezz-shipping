@@ -10,7 +10,7 @@ interface TrackingTimelineProps {
 }
 
 const STATUS_DESCRIPTIONS: Record<ItemStatus, string> = {
-  "Arrived at Transit Warehouse": "Item received at our US warehouse",
+  "Arrived at Transit Warehouse": "Item received at our China warehouse",
   "Shipped to Ghana": "Package loaded into container, en route to Ghana",
   "Arrived in Ghana": "Container arrived at Ghana port",
   Sorting: "Item being sorted at our Ghana warehouse",

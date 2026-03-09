@@ -51,6 +51,17 @@ export default function CustomerDashboardPage() {
         .reduce((sum, [, count]) => sum + count, 0)
     : 0;
 
+  // Deduplicate recentItems by tracking number (keep first per tracking number)
+  const deduplicatedItems = (() => {
+    const seen = new Set<string>();
+    return (stats?.recentItems ?? []).filter((item) => {
+      if (!item.trackingNumber) return true;
+      if (seen.has(item.trackingNumber)) return false;
+      seen.add(item.trackingNumber);
+      return true;
+    });
+  })();
+
   return (
     <div className="flex flex-col h-full">
       <Header
@@ -132,7 +143,7 @@ export default function CustomerDashboardPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {stats?.recentItems.map((item) => (
+                {deduplicatedItems.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
@@ -156,7 +167,7 @@ export default function CustomerDashboardPage() {
                     <StatusBadge status={item.status} />
                   </button>
                 ))}
-                {(!stats?.recentItems || stats.recentItems.length === 0) && (
+                {deduplicatedItems.length === 0 && (
                   <div className="text-center py-12 bg-white rounded-xl border border-gray-100">
                     <Package className="h-8 w-8 text-gray-200 mx-auto mb-2" />
                     <p className="text-sm text-gray-400">No items yet</p>

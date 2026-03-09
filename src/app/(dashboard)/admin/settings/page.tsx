@@ -9,8 +9,9 @@ import { useToast } from "@/components/ui/toast";
 import { SearchBar } from "@/components/shared/SearchBar";
 import { DataTable } from "@/components/shared/DataTable";
 import type { Customer, CustomerPackage } from "@/types";
-import { Settings, DollarSign, Users, Save, RefreshCw, Package } from "lucide-react";
+import { Settings, DollarSign, Users, Save, RefreshCw, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import axios from "axios";
+import type { Warehouse as WarehouseType } from "@/types";
 
 const RATES_KEY = "pakk_exchange_rates";
 const COMPANY_KEY = "pakk_company_settings";
@@ -37,7 +38,7 @@ interface CompanySettings {
 
 export default function AdminSettingsPage() {
   const { success, error } = useToast();
-  const [activeTab, setActiveTab] = useState<"company" | "exchange" | "packages">("company");
+  const [activeTab, setActiveTab] = useState<"company" | "exchange" | "packages" | "warehouses">("company");
 
   // Company settings (localStorage)
   const [company, setCompany] = useState<CompanySettings>({
@@ -50,6 +51,12 @@ export default function AdminSettingsPage() {
   // Exchange rate settings
   const [defaultRate, setDefaultRate] = useState("12.5");
   const [shippingRatePerCbm, setShippingRatePerCbm] = useState("200");
+
+  // Warehouses
+  const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
+  const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+  const [warehouseForm, setWarehouseForm] = useState({ name: "", address: "", country: "", phone: "" });
+  const [savingWarehouse, setSavingWarehouse] = useState(false);
 
   // Per-customer packages
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -113,7 +120,57 @@ export default function AdminSettingsPage() {
 
   useEffect(() => {
     if (activeTab === "packages") loadCustomers();
+    if (activeTab === "warehouses") loadWarehouses();
   }, [activeTab, loadCustomers]);
+
+  const loadWarehouses = async () => {
+    setLoadingWarehouses(true);
+    try {
+      const res = await axios.get("/api/warehouses");
+      setWarehouses(res.data.data);
+    } catch {
+      error("Failed to load warehouses");
+    } finally {
+      setLoadingWarehouses(false);
+    }
+  };
+
+  const addWarehouse = async () => {
+    if (!warehouseForm.name.trim() || !warehouseForm.address.trim()) {
+      error("Name and address are required");
+      return;
+    }
+    setSavingWarehouse(true);
+    try {
+      const res = await axios.post("/api/warehouses", warehouseForm);
+      setWarehouses((prev) => [...prev, res.data.data]);
+      setWarehouseForm({ name: "", address: "", country: "", phone: "" });
+      success("Warehouse added");
+    } catch {
+      error("Failed to add warehouse");
+    } finally {
+      setSavingWarehouse(false);
+    }
+  };
+
+  const deleteWarehouse = async (id: string) => {
+    try {
+      await axios.delete(`/api/warehouses/${id}`);
+      setWarehouses((prev) => prev.filter((w) => w.id !== id));
+      success("Warehouse removed");
+    } catch {
+      error("Failed to remove warehouse");
+    }
+  };
+
+  const toggleWarehouse = async (id: string, isActive: boolean) => {
+    try {
+      const res = await axios.patch(`/api/warehouses/${id}`, { isActive });
+      setWarehouses((prev) => prev.map((w) => w.id === id ? res.data.data : w));
+    } catch {
+      error("Failed to update warehouse");
+    }
+  };
 
   const saveCustomerPackage = async (customerId: string) => {
     const pkg = customerPackages[customerId];
@@ -134,6 +191,7 @@ export default function AdminSettingsPage() {
     { id: "company" as const, label: "Company", icon: Settings },
     { id: "exchange" as const, label: "Exchange Rates", icon: DollarSign },
     { id: "packages" as const, label: "Customer Packages", icon: Package },
+    { id: "warehouses" as const, label: "Warehouses", icon: Warehouse },
   ];
 
   return (
@@ -351,6 +409,95 @@ export default function AdminSettingsPage() {
               emptyMessage="No customers found"
               emptyIcon={<Users className="h-10 w-10" />}
             />
+          </div>
+        )}
+
+        {/* Warehouses */}
+        {activeTab === "warehouses" && (
+          <div className="max-w-2xl space-y-5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Warehouse className="h-5 w-5 text-brand-600" />
+                  Add Warehouse
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Warehouse Name *"
+                    placeholder="e.g. China Warehouse"
+                    value={warehouseForm.name}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
+                  />
+                  <Input
+                    label="Country"
+                    placeholder="e.g. China"
+                    value={warehouseForm.country}
+                    onChange={(e) => setWarehouseForm({ ...warehouseForm, country: e.target.value })}
+                  />
+                </div>
+                <Input
+                  label="Full Address *"
+                  placeholder="e.g. 123 Shipping Rd, Guangzhou, China"
+                  value={warehouseForm.address}
+                  onChange={(e) => setWarehouseForm({ ...warehouseForm, address: e.target.value })}
+                />
+                <Input
+                  label="Phone (optional)"
+                  placeholder="+86..."
+                  value={warehouseForm.phone}
+                  onChange={(e) => setWarehouseForm({ ...warehouseForm, phone: e.target.value })}
+                />
+                <Button onClick={addWarehouse} loading={savingWarehouse} className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Add Warehouse
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Warehouse List</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loadingWarehouses ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-brand-600 border-t-transparent" />
+                  </div>
+                ) : warehouses.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">No warehouses yet. Add one above.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {warehouses.map((w) => (
+                      <div key={w.id} className={`flex items-start gap-3 p-3 rounded-xl border ${w.isActive ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-60"}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">{w.name}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{w.address}</p>
+                          {w.phone && <p className="text-xs text-gray-400 mt-0.5">{w.phone}</p>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => toggleWarehouse(w.id, !w.isActive)}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                            title={w.isActive ? "Deactivate" : "Activate"}
+                          >
+                            {w.isActive ? <ToggleRight className="h-4 w-4 text-green-600" /> : <ToggleLeft className="h-4 w-4" />}
+                          </button>
+                          <button
+                            onClick={() => deleteWarehouse(w.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>

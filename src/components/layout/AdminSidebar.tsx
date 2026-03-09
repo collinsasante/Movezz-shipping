@@ -19,6 +19,9 @@ import {
   ShieldCheck,
   Settings,
   X,
+  Store,
+  BarChart2,
+  Calculator,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -29,6 +32,9 @@ const navItems = [
   { href: "/admin/containers", label: "Containers", icon: Container },
   { href: "/admin/orders", label: "Invoices", icon: ShoppingCart },
   { href: "/admin/sorting", label: "Sorting", icon: SortAsc },
+  { href: "/admin/suppliers", label: "Suppliers", icon: Store },
+  { href: "/admin/reports", label: "Reports", icon: BarChart2 },
+  { href: "/admin/calculator", label: "Calculator", icon: Calculator },
   { href: "/admin/staff", label: "Staff", icon: ShieldCheck },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];

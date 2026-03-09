@@ -22,8 +22,8 @@ function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number 
   return l * w * h * 0.000016387;
 }
 
-function CbmDisplay({ length, width, height, unit }: { length: number; width: number; height: number; unit: "cm" | "inches" }) {
-  const cbm = getCbm(length, width, height, unit);
+function CbmDisplay({ length, width, height, unit, quantity }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number }) {
+  const cbm = getCbm(length, width, height, unit) * Math.max(1, quantity || 1);
   if (!cbm) return null;
 
   let rates = { shippingRatePerCbm: 0, usdToGhs: 0 };
@@ -398,6 +398,7 @@ export default function NewItemPage() {
                   width={parseFloat(form.width) || 0}
                   height={parseFloat(form.height) || 0}
                   unit={form.dimensionUnit}
+                  quantity={parseInt(form.quantity) || 1}
                 />
               </CardContent>
             </Card>

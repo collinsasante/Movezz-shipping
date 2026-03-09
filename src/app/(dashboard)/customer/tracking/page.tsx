@@ -62,7 +62,18 @@ export default function CustomerTrackingPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filteredItems = items.filter(
+  // Deduplicate by tracking number, then apply search
+  const dedupedItems = (() => {
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      if (!item.trackingNumber) return true;
+      if (seen.has(item.trackingNumber)) return false;
+      seen.add(item.trackingNumber);
+      return true;
+    });
+  })();
+
+  const filteredItems = dedupedItems.filter(
     (item) =>
       !search ||
       item.description.toLowerCase().includes(search.toLowerCase()) ||

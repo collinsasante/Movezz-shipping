@@ -40,6 +40,11 @@ export function generateItemRef(sequenceNumber: number): string {
   return `ITM-${padded}`;
 }
 
+export function generateSupplierId(sequenceNumber: number): string {
+  const padded = String(sequenceNumber).padStart(4, "0");
+  return `SUP-${padded}`;
+}
+
 // ---- Date Formatting ----
 export function formatDate(dateStr: string | undefined | null): string {
   if (!dateStr) return "N/A";
