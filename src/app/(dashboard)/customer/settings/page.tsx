@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/context/AuthContext";
-import { User, Lock, Tag, MapPin } from "lucide-react";
+import { User, Lock, Tag, MapPin, Warehouse } from "lucide-react";
 import axios from "axios";
+import type { Warehouse as WarehouseType } from "@/types";
 
 export default function CustomerSettingsPage() {
   const { appUser } = useAuth();
@@ -23,9 +24,21 @@ export default function CustomerSettingsPage() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [preferredWarehouse, setPreferredWarehouse] = useState<WarehouseType | null>(null);
 
   const [resetSent, setResetSent] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+
+  // Load preferred warehouse from localStorage
+  useEffect(() => {
+    const savedId = localStorage.getItem("pakk_preferred_warehouse");
+    if (!savedId) return;
+    axios.get("/api/warehouses").then((res) => {
+      const list: WarehouseType[] = res.data.data;
+      const match = list.find((w) => w.id === savedId);
+      if (match) setPreferredWarehouse(match);
+    }).catch(() => {});
+  }, []);
 
   // Load fresh customer data to get phone + notes
   useEffect(() => {
@@ -113,18 +126,26 @@ export default function CustomerSettingsPage() {
         {activeTab === "profile" && (
           <div className="max-w-xl space-y-5">
             {appUser?.shippingMark && (
-              <div className="bg-brand-50 border border-brand-100 rounded-xl p-4">
+              <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
                     <Tag className="h-5 w-5 text-brand-600" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-medium text-brand-600 mb-0.5">Your Shipping Mark</p>
-                    <code className="text-lg font-black font-mono text-brand-900">{appUser.shippingMark}</code>
+                    <code className="text-sm font-black font-mono text-brand-900 break-all">
+                      {preferredWarehouse ? `${preferredWarehouse.name}, ${appUser.shippingMark}` : appUser.shippingMark}
+                    </code>
                   </div>
                 </div>
-                <p className="text-xs text-brand-700 mt-2">
-                  Use this mark to label all your packages sent to our warehouse.
+                {preferredWarehouse && (
+                  <div className="flex items-start gap-2 text-xs text-brand-700 border-t border-brand-100 pt-2">
+                    <Warehouse className="h-3.5 w-3.5 mt-0.5 shrink-0 text-brand-500" />
+                    <span>{preferredWarehouse.address}{preferredWarehouse.phone ? ` · ${preferredWarehouse.phone}` : ""}</span>
+                  </div>
+                )}
+                <p className="text-xs text-brand-600">
+                  Write this on every package you send. Change your warehouse in <a href="/customer/items" className="underline">My Items</a>.
                 </p>
               </div>
             )}

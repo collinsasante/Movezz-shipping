@@ -10,7 +10,7 @@ import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { formatDate } from "@/lib/utils";
 import { ITEM_STATUS_STEPS } from "@/lib/utils";
 import type { Item, ItemStatus, StatusHistory, Warehouse } from "@/types";
-import { Package, X, Hash, MapPin } from "lucide-react";
+import { Package, X, Hash, MapPin, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
@@ -67,6 +67,9 @@ export default function CustomerItemsPage() {
   const { error } = useToast();
   const { appUser } = useAuth();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null);
+  const [showWarehouseSelector, setShowWarehouseSelector] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ItemStatus | "">("");
@@ -127,7 +130,14 @@ export default function CustomerItemsPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    axios.get("/api/warehouses").then((res) => setWarehouses(res.data.data)).catch(() => {});
+    axios.get("/api/warehouses").then((res) => {
+      const list: Warehouse[] = res.data.data;
+      setWarehouses(list);
+      // Restore saved selection or default to first warehouse
+      const saved = localStorage.getItem("pakk_preferred_warehouse");
+      const match = list.find((w) => w.id === saved);
+      setSelectedWarehouseId(match ? match.id : (list[0]?.id ?? null));
+    }).catch(() => {});
   }, []);
 
   const dedupedItems = (() => {
@@ -147,26 +157,92 @@ export default function CustomerItemsPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Items list */}
         <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-          {/* Shipping info panel */}
-          {(warehouses.length > 0 || appUser?.shippingMark) && (
-            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-bold text-brand-700 uppercase tracking-wide">Send packages to:</p>
-              {warehouses.map((w) => (
-                <div key={w.id} className="flex items-start gap-2">
-                  <MapPin className="h-4 w-4 text-brand-600 mt-0.5 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-brand-700">{w.name}</p>
-                    <p className="text-xs text-brand-600">{w.address}{w.phone ? ` · ${w.phone}` : ""}</p>
+          {/* Shipping mark panel */}
+          {(warehouses.length > 0 || appUser?.shippingMark) && (() => {
+            const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) ?? warehouses[0] ?? null;
+            const fullMark = selectedWarehouse && appUser?.shippingMark
+              ? `${selectedWarehouse.name}, ${appUser.shippingMark}`
+              : appUser?.shippingMark ?? "";
+
+            const copyMark = () => {
+              navigator.clipboard.writeText(fullMark).then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }).catch(() => {});
+            };
+
+            return (
+              <div className="bg-brand-50 border border-brand-100 rounded-xl overflow-hidden">
+                {/* Main shipping mark display */}
+                <div className="p-4">
+                  <p className="text-xs font-bold text-brand-700 uppercase tracking-wide mb-2">Your Shipping Mark</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 font-mono font-bold text-brand-900 text-sm break-all">{fullMark || "—"}</code>
+                    {fullMark && (
+                      <button
+                        onClick={copyMark}
+                        className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-600 transition-colors"
+                        title="Copy"
+                      >
+                        {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
                   </div>
+                  <p className="text-xs text-brand-600 mt-1">Mark this on every package you send to our warehouse.</p>
                 </div>
-              ))}
-              {appUser?.shippingMark && (
-                <div className="pt-1 border-t border-brand-100">
-                  <p className="text-xs text-brand-600">Mark packages: <code className="font-mono font-bold text-brand-900">{appUser.shippingMark}</code></p>
-                </div>
-              )}
-            </div>
-          )}
+
+                {/* Warehouse selector */}
+                {warehouses.length > 0 && (
+                  <div className="border-t border-brand-100">
+                    <button
+                      onClick={() => setShowWarehouseSelector((v) => !v)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-brand-100/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <MapPin className="h-3.5 w-3.5 text-brand-600 shrink-0" />
+                        <span className="text-xs font-medium text-brand-700 truncate">
+                          {selectedWarehouse ? `${selectedWarehouse.name} · ${selectedWarehouse.address}` : "Select warehouse"}
+                        </span>
+                      </div>
+                      {showWarehouseSelector
+                        ? <ChevronUp className="h-3.5 w-3.5 text-brand-500 shrink-0" />
+                        : <ChevronDown className="h-3.5 w-3.5 text-brand-500 shrink-0" />}
+                    </button>
+
+                    {showWarehouseSelector && (
+                      <div className="px-4 pb-3 space-y-1.5">
+                        {warehouses.map((w) => (
+                          <button
+                            key={w.id}
+                            onClick={() => {
+                              setSelectedWarehouseId(w.id);
+                              localStorage.setItem("pakk_preferred_warehouse", w.id);
+                              setShowWarehouseSelector(false);
+                            }}
+                            className={`w-full flex items-start gap-2.5 p-2.5 rounded-lg border text-left transition-colors ${
+                              selectedWarehouseId === w.id
+                                ? "border-brand-400 bg-brand-100"
+                                : "border-brand-200 bg-white hover:bg-brand-50"
+                            }`}
+                          >
+                            <div className={`mt-0.5 w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                              selectedWarehouseId === w.id ? "border-brand-600 bg-brand-600" : "border-gray-300"
+                            }`}>
+                              {selectedWarehouseId === w.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-gray-900">{w.name}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{w.address}{w.phone ? ` · ${w.phone}` : ""}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search items..."
