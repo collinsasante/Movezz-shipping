@@ -22,10 +22,15 @@ export async function POST(
       );
     }
 
+    console.log("[create-invoice] order:", order.id, "invoiceAmount:", order.invoiceAmount, "itemIds:", order.itemIds);
+
     const [customer, items] = await Promise.all([
       customersApi.getById(order.customerId).catch(() => null),
       Promise.all(order.itemIds.map((itemId) => itemsApi.getById(itemId).catch(() => null))),
     ]);
+
+    console.log("[create-invoice] customer:", customer?.name, customer?.email, customer?.phone);
+    console.log("[create-invoice] items fetched:", items.length, "valid:", items.filter(Boolean).length);
 
     const validItems = items.filter(Boolean);
     const pricePerItem = validItems.length > 0
@@ -39,17 +44,20 @@ export async function POST(
           if (item!.length && item!.width && item!.height) {
             const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
             const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
-            cbmNote = ` [CBM: ${cbm.toFixed(4)} m³]`;
+            cbmNote = ` [CBM: ${cbm.toFixed(4)} m3]`;
           }
           const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
+          const rawName = (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote;
           return {
-            item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
+            item_name: rawName.replace(/[^\x20-\x7E]/g, ""),
             quantity: 1,
             price: Math.round(pricePerItem * 100) / 100,
             item_type: "product",
           };
         })
-      : [{ item_name: `Freight — ${order.orderRef}`, quantity: 1, price: Math.round(order.invoiceAmount * 100) / 100, item_type: "product" }];
+      : [{ item_name: `Freight - ${order.orderRef}`, quantity: 1, price: Math.round(order.invoiceAmount * 100) / 100, item_type: "product" }];
+
+    console.log("[create-invoice] lineItems:", JSON.stringify(lineItems));
 
     const keepupResult = await createKeepupSale({
       customerName: customer?.name,

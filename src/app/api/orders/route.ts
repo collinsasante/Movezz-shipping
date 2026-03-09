@@ -98,17 +98,18 @@ export async function POST(request: NextRequest) {
             if (item!.length && item!.width && item!.height) {
               const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
               const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
-              cbmNote = ` [CBM: ${cbm.toFixed(4)} m³]`;
+              cbmNote = ` [CBM: ${cbm.toFixed(4)} m3]`;
             }
             const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
+            const rawName = (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote;
             return {
-              item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
+              item_name: rawName.replace(/[^\x20-\x7E]/g, ""),
               quantity: 1,
               price: Math.round(pricePerItem * 100) / 100,
               item_type: "product",
             };
           })
-        : [{ item_name: `Freight — ${order.orderRef}`, quantity: 1, price: Math.round(parsed.data.invoiceAmount * 100) / 100, item_type: "product" }];
+        : [{ item_name: `Freight - ${order.orderRef}`, quantity: 1, price: Math.round(parsed.data.invoiceAmount * 100) / 100, item_type: "product" }];
 
       console.log("[POST /orders] Keepup payload — customer:", customer?.name, "items:", lineItems.length, "validItems:", validItems.length);
 
