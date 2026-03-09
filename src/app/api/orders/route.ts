@@ -91,28 +91,36 @@ export async function POST(request: NextRequest) {
           ? parsed.data.invoiceAmount / validItems.length
           : parsed.data.invoiceAmount;
 
+      const lineItems = validItems.length > 0
+        ? validItems.map((item) => {
+            const qty = item!.quantity ?? 1;
+            let cbmNote = "";
+            if (item!.length && item!.width && item!.height) {
+              const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
+              const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
+              cbmNote = ` [CBM: ${cbm.toFixed(4)} m³]`;
+            }
+            const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
+            return {
+              item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
+              quantity: 1,
+              price: Math.round(pricePerItem * 100) / 100,
+              item_type: "product",
+            };
+          })
+        : [{ item_name: `Freight — ${order.orderRef}`, quantity: 1, price: Math.round(parsed.data.invoiceAmount * 100) / 100, item_type: "product" }];
+
+      console.log("[POST /orders] Keepup payload — customer:", customer?.name, "items:", lineItems.length, "validItems:", validItems.length);
+
       const keepupResult = await createKeepupSale({
         customerName: customer?.name,
         customerEmail: customer?.email,
         customerPhone: customer?.phone,
         invoiceDate: parsed.data.invoiceDate,
-        items: validItems.map((item) => {
-          const qty = item!.quantity ?? 1;
-          let cbmNote = "";
-          if (item!.length && item!.width && item!.height) {
-            const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
-            const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
-            cbmNote = ` [CBM: ${cbm.toFixed(4)} m³]`;
-          }
-          const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
-          return {
-            item_name: (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote,
-            quantity: 1,
-            price: Math.round(pricePerItem * 100) / 100,
-            item_type: "product",
-          };
-        }),
+        items: lineItems,
       });
+
+      console.log("[POST /orders] Keepup result — saleId:", keepupResult.saleId, "link:", keepupResult.link);
 
       // Store the keepup sale ID back on the order
       await ordersApi.storeKeepupIds(
@@ -120,6 +128,7 @@ export async function POST(request: NextRequest) {
         keepupResult.saleId,
         keepupResult.link
       );
+      console.log("[POST /orders] storeKeepupIds done for order:", order.id, "saleId:", keepupResult.saleId);
       order.keepupSaleId = keepupResult.saleId;
       order.keepupLink = keepupResult.link;
 
@@ -137,7 +146,7 @@ export async function POST(request: NextRequest) {
         }).catch((e) => console.error("[POST /orders] Invoice email failed (non-fatal):", e));
       }
     } catch (keepupErr) {
-      console.error("[POST /orders] Keepup sale creation failed (non-fatal):", keepupErr);
+      console.error("[POST /orders] Keepup sale creation failed (non-fatal):", keepupErr instanceof Error ? keepupErr.message : keepupErr);
     }
 
     return Response.json(
