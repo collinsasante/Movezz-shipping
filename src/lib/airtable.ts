@@ -324,8 +324,10 @@ export const customersApi = {
         ? `AND(${formulas.join(",")})`
         : formulas[0] ?? "";
 
-    const records = await getAllRecords(TABLES.CUSTOMERS, formula || undefined, [{ field: "CreatedAt", direction: "desc" }]);
-    const customers = records.map(mapCustomer);
+    const records = await getAllRecords(TABLES.CUSTOMERS, formula || undefined);
+    const customers = records.map(mapCustomer).sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     if (isUnfiltered) {
       _customerListCache = { data: customers, expiresAt: Date.now() + CUSTOMER_LIST_CACHE_TTL };
@@ -1293,6 +1295,7 @@ export const dashboardApi = {
       itemsByStatus[s] = (itemsByStatus[s] ?? 0) + 1;
     }
 
+    // Return ALL pending orders (not capped) so client can filter by period
     const pendingOrders = allOrders
       .filter((r) => r.fields["Status"] === "Pending")
       .sort(
@@ -1300,7 +1303,6 @@ export const dashboardApi = {
           new Date(b.fields["CreatedAt"] as string).getTime() -
           new Date(a.fields["CreatedAt"] as string).getTime()
       )
-      .slice(0, 8)
       .map(mapOrder);
 
     const totalCbm = allItems.reduce((sum, r) => {
@@ -1358,8 +1360,9 @@ export const dashboardApi = {
       totalOrders: orders.length,
       pendingPayment,
       totalCbm,
-      recentItems: items.slice(0, 5),
-      recentOrders: orders.slice(0, 5),
+      // Return full lists so client can apply period filters to cards
+      recentItems: items,
+      recentOrders: orders,
     };
   },
 };

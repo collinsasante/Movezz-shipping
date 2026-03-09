@@ -15,6 +15,8 @@ import {
   HandCoins,
   Box,
   CalendarDays,
+  Receipt,
+  DollarSign,
 } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
@@ -64,6 +66,8 @@ export default function AdminDashboardPage() {
     });
   })();
 
+  const pendingAmount = pendingOrders.reduce((sum, o) => sum + o.invoiceAmount, 0);
+
   return (
     <div className="flex flex-col h-full">
       <Header
@@ -72,7 +76,7 @@ export default function AdminDashboardPage() {
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {/* Period filter */}
+        {/* Period filter — above cards */}
         <div className="flex flex-wrap items-center gap-2">
           <CalendarDays className="h-4 w-4 text-gray-400" />
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
@@ -158,6 +162,24 @@ export default function AdminDashboardPage() {
             iconColor="text-teal-600"
             iconBg="bg-teal-50"
             href="/admin/items"
+          />
+          <StatCard
+            title="Pending Invoices"
+            value={stats ? pendingOrders.length : "—"}
+            subtitle={period !== "all" ? "In period" : "All unpaid"}
+            icon={Receipt}
+            iconColor="text-orange-600"
+            iconBg="bg-orange-50"
+            href="/admin/orders"
+          />
+          <StatCard
+            title="Outstanding Amount"
+            value={stats ? formatCurrency(pendingAmount) : "—"}
+            subtitle={period !== "all" ? "In period" : "Total unpaid"}
+            icon={DollarSign}
+            iconColor="text-rose-600"
+            iconBg="bg-rose-50"
+            href="/admin/orders"
           />
         </div>
 

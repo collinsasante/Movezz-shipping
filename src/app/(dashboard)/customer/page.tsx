@@ -74,12 +74,6 @@ export default function CustomerDashboardPage() {
     load();
   }, [error]);
 
-  const activeItems = stats
-    ? Object.entries(stats.itemsByStatus)
-        .filter(([s]) => s !== "Completed")
-        .reduce((sum, [, count]) => sum + count, 0)
-    : 0;
-
   // Deduplicate recentItems by tracking number, then apply period filter
   const deduplicatedItems = (() => {
     const seen = new Set<string>();
@@ -94,6 +88,21 @@ export default function CustomerDashboardPage() {
 
   const filteredOrders = filterByPeriod(stats?.recentOrders ?? [], (o) => o.invoiceDate, period, customFrom, customTo);
 
+  // Filtered stat card values
+  const filteredItemCount = deduplicatedItems.length;
+  const filteredOrderCount = filteredOrders.length;
+  const filteredPendingPayment = filteredOrders
+    .filter((o) => o.status === "Pending")
+    .reduce((sum, o) => sum + o.invoiceAmount, 0);
+  const filteredReadyForPickup = deduplicatedItems.filter((i) => i.status === "Ready for Pickup").length;
+  const filteredCbm = deduplicatedItems.reduce((sum, item) => {
+    if (!item.length || !item.width || !item.height) return sum;
+    const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
+    return sum + (item.length * item.width * item.height * factor) / 1_000_000;
+  }, 0);
+  const isFiltered = period !== "all";
+  const activeItems = deduplicatedItems.filter((i) => i.status !== "Completed").length;
+
   return (
     <div className="flex flex-col h-full">
       <Header
@@ -102,56 +111,7 @@ export default function CustomerDashboardPage() {
       />
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <StatCard
-            title="Total Items"
-            value={stats?.totalItems ?? "—"}
-            subtitle={`${activeItems} active`}
-            icon={Package}
-            iconColor="text-blue-600"
-            iconBg="bg-blue-50"
-            href="/customer/items"
-          />
-          <StatCard
-            title="Total Orders"
-            value={stats?.totalOrders ?? "—"}
-            subtitle="All time"
-            icon={ShoppingCart}
-            iconColor="text-purple-600"
-            iconBg="bg-purple-50"
-            href="/customer/orders"
-          />
-          <StatCard
-            title="Pending Payment"
-            value={stats ? formatCurrency(stats.pendingPayment) : "—"}
-            subtitle="Outstanding balance"
-            icon={DollarSign}
-            iconColor="text-amber-600"
-            iconBg="bg-amber-50"
-            href="/customer/orders"
-          />
-          <StatCard
-            title="Ready for Pickup"
-            value={stats?.itemsByStatus?.["Ready for Pickup"] ?? "0"}
-            subtitle="Available now"
-            icon={MapPin}
-            iconColor="text-green-600"
-            iconBg="bg-green-50"
-            href="/customer/items"
-          />
-          <StatCard
-            title="Total CBM"
-            value={stats ? `${stats.totalCbm.toFixed(2)} m³` : "—"}
-            subtitle="Your shipments"
-            icon={Box}
-            iconColor="text-teal-600"
-            iconBg="bg-teal-50"
-            href="/customer/items"
-          />
-        </div>
-
-        {/* Period filter */}
+        {/* Period filter — above cards so it affects them */}
         <div className="flex flex-wrap items-center gap-2">
           <CalendarDays className="h-4 w-4 text-gray-400" />
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
@@ -172,6 +132,55 @@ export default function CustomerDashboardPage() {
               <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
           )}
+        </div>
+
+        {/* Stats — reflect selected period */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <StatCard
+            title="Total Items"
+            value={stats ? filteredItemCount : "—"}
+            subtitle={isFiltered ? `${activeItems} active` : `${activeItems} active`}
+            icon={Package}
+            iconColor="text-blue-600"
+            iconBg="bg-blue-50"
+            href="/customer/items"
+          />
+          <StatCard
+            title="Total Orders"
+            value={stats ? filteredOrderCount : "—"}
+            subtitle={isFiltered ? "In period" : "All time"}
+            icon={ShoppingCart}
+            iconColor="text-purple-600"
+            iconBg="bg-purple-50"
+            href="/customer/orders"
+          />
+          <StatCard
+            title="Pending Payment"
+            value={stats ? formatCurrency(filteredPendingPayment) : "—"}
+            subtitle="Outstanding balance"
+            icon={DollarSign}
+            iconColor="text-amber-600"
+            iconBg="bg-amber-50"
+            href="/customer/orders"
+          />
+          <StatCard
+            title="Ready for Pickup"
+            value={stats ? filteredReadyForPickup : "—"}
+            subtitle="Available now"
+            icon={MapPin}
+            iconColor="text-green-600"
+            iconBg="bg-green-50"
+            href="/customer/items"
+          />
+          <StatCard
+            title="Total CBM"
+            value={stats ? `${filteredCbm.toFixed(2)} m³` : "—"}
+            subtitle={isFiltered ? "In period" : "Your shipments"}
+            icon={Box}
+            iconColor="text-teal-600"
+            iconBg="bg-teal-50"
+            href="/customer/items"
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
