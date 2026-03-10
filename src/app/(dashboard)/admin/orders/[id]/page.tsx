@@ -46,6 +46,7 @@ export default function AdminOrderDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [markingPartial, setMarkingPartial] = useState(false);
 
   // Extra info
   const [customerPhone, setCustomerPhone] = useState<string>("");
@@ -87,6 +88,19 @@ export default function AdminOrderDetailPage() {
       error("Error", msg);
     } finally {
       setCreatingInvoice(false);
+    }
+  };
+
+  const handleMarkPartial = async () => {
+    setMarkingPartial(true);
+    try {
+      await axios.patch(`/api/orders/${id}`, { status: "Partial" });
+      success("Marked as Partial");
+      load();
+    } catch {
+      error("Failed to update status");
+    } finally {
+      setMarkingPartial(false);
     }
   };
 
@@ -169,6 +183,11 @@ export default function AdminOrderDetailPage() {
               Create Invoice
             </Button>
           )}
+          {order.status !== "Partial" && order.status !== "Paid" && (
+            <Button size="sm" variant="outline" onClick={handleMarkPartial} loading={markingPartial}>
+              Mark Partial
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={() => { setPaymentAmount(""); setPaymentModalOpen(true); }}>
             <DollarSign className="h-3.5 w-3.5 mr-1" />
             Record Payment
@@ -205,6 +224,13 @@ export default function AdminOrderDetailPage() {
                     <p className="text-sm text-gray-900">{order.invoiceDate ? formatDate(order.invoiceDate) : "—"}</p>
                   </div>
                 </div>
+
+                {customerPhone && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Customer Phone</label>
+                    <p className="text-sm text-gray-900">{customerPhone}</p>
+                  </div>
+                )}
 
                 {order.notes && (
                   <div>
@@ -286,12 +312,6 @@ export default function AdminOrderDetailPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-400">Created by</span>
                     <span className="text-xs text-gray-700">{order.createdBy}</span>
-                  </div>
-                )}
-                {customerPhone && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-400">Customer Phone</span>
-                    <span className="text-xs text-gray-700">{customerPhone}</span>
                   </div>
                 )}
                 {order.keepupSaleId && (

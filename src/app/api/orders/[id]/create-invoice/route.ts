@@ -47,24 +47,52 @@ export async function POST(
 
     const validItems = items.filter(Boolean);
 
-    // Build item descriptions for the single line item note
-    const itemDesc = validItems.length > 0
-      ? validItems.map((item) => {
-          const trk = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
-          return (item!.description || item!.itemRef) + trk;
-        }).join("; ")
-      : null;
+    // Per-item line items, split proportionally by CBM (or equally if no CBM data)
+    function getItemCbm(item: NonNullable<typeof validItems[0]>): number {
+      if (!item!.length || !item!.width || !item!.height) return 0;
+      const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
+      const qty = item!.quantity ?? 1;
+      return (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
+    }
 
-    const lineName = itemDesc
-      ? `Freight - ${order.orderRef}: ${itemDesc}`
-      : `Freight - ${order.orderRef}`;
+    let lineItems: { item_name: string; quantity: number; price: number; item_type: string }[];
 
-    const lineItems = [{
-      item_name: lineName.replace(/[^\x20-\x7E]/g, "").slice(0, 200),
-      quantity: 1,
-      price: Math.round(order.invoiceAmount * 100) / 100,
-      item_type: "product",
-    }];
+    if (validItems.length === 0) {
+      lineItems = [{
+        item_name: `Freight - ${order.orderRef}`,
+        quantity: 1,
+        price: Math.round(order.invoiceAmount * 100) / 100,
+        item_type: "product",
+      }];
+    } else {
+      const cbms = validItems.map((item) => getItemCbm(item!));
+      const totalCbm = cbms.reduce((s, c) => s + c, 0);
+      const useCbm = totalCbm > 0;
+
+      const prices: number[] = [];
+      let runningSum = 0;
+      for (let i = 0; i < validItems.length; i++) {
+        if (i < validItems.length - 1) {
+          const proportion = useCbm ? cbms[i] / totalCbm : 1 / validItems.length;
+          const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
+          prices.push(p);
+          runningSum += p;
+        } else {
+          prices.push(Math.round((order.invoiceAmount - runningSum) * 100) / 100);
+        }
+      }
+
+      lineItems = validItems.map((item, i) => {
+        const trk = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
+        const name = (item!.description || item!.itemRef) + trk;
+        return {
+          item_name: name.replace(/[^\x20-\x7E]/g, "").slice(0, 200),
+          quantity: 1,
+          price: prices[i],
+          item_type: "product",
+        };
+      });
+    }
 
     console.log("[create-invoice] lineItems:", JSON.stringify(lineItems));
 

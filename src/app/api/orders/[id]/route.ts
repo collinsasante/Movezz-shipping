@@ -68,6 +68,12 @@ export async function GET(
       } catch {
         // non-fatal
       }
+      // Fallback: if Keepup returns 0 but order is already marked Paid/Partial, derive from status
+      if (order.status === "Paid" && (keepupAmountPaid ?? 0) === 0) {
+        keepupTotalAmount = keepupTotalAmount ?? order.invoiceAmount;
+        keepupAmountPaid = order.invoiceAmount;
+        keepupBalanceDue = 0;
+      }
     }
 
     // Hydrate items — log failures but return partial data
