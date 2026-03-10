@@ -63,6 +63,7 @@ export default function CustomerAddressesPage() {
           </div>
         ) : (
           <>
+            <p className="text-sm text-gray-500 mb-2">Select your preferred warehouse location.</p>
             <select
               value={selectedWarehouseId ?? ""}
               onChange={(e) => selectWarehouse(e.target.value)}

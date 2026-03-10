@@ -9,8 +9,8 @@ import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { formatDate } from "@/lib/utils";
 import { ITEM_STATUS_STEPS } from "@/lib/utils";
-import type { Item, ItemStatus, StatusHistory, Warehouse } from "@/types";
-import { Package, X, Hash, Copy, Check } from "lucide-react";
+import type { Item, ItemStatus, StatusHistory } from "@/types";
+import { Package, X, Hash } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
@@ -66,9 +66,6 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
 export default function CustomerItemsPage() {
   const { error } = useToast();
   const { appUser } = useAuth();
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ItemStatus | "">("");
@@ -128,17 +125,6 @@ export default function CustomerItemsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    axios.get("/api/warehouses").then((res) => {
-      const list: Warehouse[] = res.data.data;
-      setWarehouses(list);
-      // Restore saved selection or default to first warehouse
-      const saved = localStorage.getItem("pakk_preferred_warehouse");
-      const match = list.find((w) => w.id === saved);
-      setSelectedWarehouseId(match ? match.id : (list[0]?.id ?? null));
-    }).catch(() => {});
-  }, []);
-
   const dedupedItems = (() => {
     const seen = new Set<string>();
     return items.filter((item) => {
@@ -156,53 +142,6 @@ export default function CustomerItemsPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Items list */}
         <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-          {/* Shipping mark panel */}
-          {(warehouses.length > 0 || appUser?.shippingMark) && (() => {
-            const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) ?? warehouses[0] ?? null;
-            const fullMark = selectedWarehouse && appUser?.shippingMark
-              ? `${selectedWarehouse.name}, ${appUser.shippingMark}`
-              : appUser?.shippingMark ?? "";
-
-            const copyMark = () => {
-              navigator.clipboard.writeText(fullMark).then(() => {
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
-              }).catch(() => {});
-            };
-
-            return (
-              <div className="bg-brand-50 border border-brand-100 rounded-xl overflow-hidden">
-                {/* Shipping mark display */}
-                <div className="p-4">
-                  <p className="text-xs font-bold text-brand-700 uppercase tracking-wide mb-2">Your Shipping Mark</p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 font-mono font-bold text-brand-900 text-sm break-all">{fullMark || "—"}</code>
-                    {fullMark && (
-                      <button
-                        onClick={copyMark}
-                        className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-600 transition-colors"
-                        title="Copy"
-                      >
-                        {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-xs text-brand-600">Mark this on every package you send to our warehouse.</p>
-                    <a href="/customer/addresses" className="text-xs text-brand-700 font-medium hover:underline shrink-0 ml-2">
-                      Change warehouse →
-                    </a>
-                  </div>
-                  {selectedWarehouse && (
-                    <p className="text-xs text-brand-600 mt-0.5">
-                      <a href="/customer/addresses" className="font-medium hover:underline">{selectedWarehouse.name}</a>
-                      {selectedWarehouse.address ? ` · ${selectedWarehouse.address}` : ""}
-                    </p>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search items..."
