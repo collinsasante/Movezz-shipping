@@ -63,6 +63,31 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+const RATES_KEY = "pakk_exchange_rates";
+const PACKAGES_RATES_KEY = "pakk_package_rates";
+
+function calcItemPrice(item: Item, pkg?: string): string | null {
+  try {
+    const rates = JSON.parse(localStorage.getItem(RATES_KEY) ?? "{}");
+    const pkgRates = JSON.parse(localStorage.getItem(PACKAGES_RATES_KEY) ?? "{}");
+    const usdToGhs: number = rates.usdToGhs ?? 12.5;
+    const tier = (pkg ?? "standard") as "standard" | "discounted" | "premium";
+    const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
+
+    if (item.shippingType === "air" && item.weight) {
+      const usd = item.weight * (item.quantity ?? 1) * tierRates.air;
+      return `GHS ${(usd * usdToGhs).toFixed(2)}`;
+    }
+    if (item.length && item.width && item.height) {
+      const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
+      const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
+      const usd = cbm * tierRates.sea;
+      return `GHS ${(usd * usdToGhs).toFixed(2)}`;
+    }
+    return null;
+  } catch { return null; }
+}
+
 export default function CustomerItemsPage() {
   const { error } = useToast();
   const { appUser } = useAuth();
@@ -291,6 +316,7 @@ export default function CustomerItemsPage() {
               {/* Item details */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
+                {(() => { const price = calcItemPrice(selectedItem, appUser?.package); return price ? <DetailRow label="Est. Shipping Cost" value={price} /> : null; })()}
                 {selectedItem.shippingType === "sea" && selectedItem.length && selectedItem.width && selectedItem.height ? (
                   <DetailRow
                     label="CBM"
@@ -303,7 +329,7 @@ export default function CustomerItemsPage() {
                   <DetailRow label="Dimensions" value={`${selectedItem.length} × ${selectedItem.width} × ${selectedItem.height} ${selectedItem.dimensionUnit}`} />
                 )}
                 <DetailRow label="Date Received" value={formatDate(selectedItem.dateReceived)} />
-                {selectedItem.trackingNumber && <DetailRow label="US Tracking #" value={selectedItem.trackingNumber} />}
+                {selectedItem.trackingNumber && <DetailRow label="Tracking Number" value={selectedItem.trackingNumber} />}
                 {selectedItem.containerName && <DetailRow label="Container" value={selectedItem.containerName} />}
                 {selectedItem.orderRef && <DetailRow label="Order" value={selectedItem.orderRef} />}
                 {selectedItem.notes && <DetailRow label="Notes" value={selectedItem.notes} />}

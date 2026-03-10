@@ -46,7 +46,6 @@ export default function AdminOrderDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
-  const [markingPartial, setMarkingPartial] = useState(false);
 
   // Extra info
   const [customerPhone, setCustomerPhone] = useState<string>("");
@@ -88,19 +87,6 @@ export default function AdminOrderDetailPage() {
       error("Error", msg);
     } finally {
       setCreatingInvoice(false);
-    }
-  };
-
-  const handleMarkPartial = async () => {
-    setMarkingPartial(true);
-    try {
-      await axios.patch(`/api/orders/${id}`, { status: "Partial" });
-      success("Marked as Partial");
-      load();
-    } catch {
-      error("Failed to update status");
-    } finally {
-      setMarkingPartial(false);
     }
   };
 
@@ -161,6 +147,28 @@ export default function AdminOrderDetailPage() {
 
   const totalCbm = order.items?.reduce((sum, item) => sum + getCbm(item), 0) ?? 0;
 
+  // Per-item prices split proportionally by CBM (or equally if no CBM)
+  const itemPrices = (() => {
+    const items = order.items ?? [];
+    if (items.length === 0) return new Map<string, number>();
+    const cbms = items.map((item) => getCbm(item));
+    const total = cbms.reduce((s, c) => s + c, 0);
+    const useCbm = total > 0;
+    const prices = new Map<string, number>();
+    let running = 0;
+    items.forEach((item, i) => {
+      if (i < items.length - 1) {
+        const proportion = useCbm ? cbms[i] / total : 1 / items.length;
+        const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
+        prices.set(item.id, p);
+        running += p;
+      } else {
+        prices.set(item.id, Math.round((order.invoiceAmount - running) * 100) / 100);
+      }
+    });
+    return prices;
+  })();
+
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
@@ -181,11 +189,6 @@ export default function AdminOrderDetailPage() {
             <Button size="sm" variant="outline" onClick={handleCreateInvoice} loading={creatingInvoice}>
               <ExternalLink className="h-3.5 w-3.5 mr-1" />
               Create Invoice
-            </Button>
-          )}
-          {order.status !== "Partial" && order.status !== "Paid" && (
-            <Button size="sm" variant="outline" onClick={handleMarkPartial} loading={markingPartial}>
-              Mark Partial
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => { setPaymentAmount(""); setPaymentModalOpen(true); }}>
@@ -280,7 +283,12 @@ export default function AdminOrderDetailPage() {
                             )}
                           </div>
                         </div>
-                        <StatusBadge status={item.status} />
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <StatusBadge status={item.status} />
+                          {itemPrices.get(item.id) != null && (
+                            <span className="text-xs font-semibold text-brand-700">{formatCurrency(itemPrices.get(item.id)!)}</span>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -350,6 +358,13 @@ export default function AdminOrderDetailPage() {
                     Payment confirmed ✓
                   </p>
                 )}
+                <button
+                  onClick={() => { setPaymentAmount(""); setPaymentModalOpen(true); }}
+                  className="inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs w-full mt-1"
+                >
+                  <DollarSign className="h-3.5 w-3.5 mr-1.5" />
+                  Record Payment
+                </button>
               </div>
             </div>
 

@@ -7,9 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/context/AuthContext";
-import { User, Lock, Tag, MapPin, Warehouse } from "lucide-react";
+import { User, Lock, MapPin } from "lucide-react";
 import axios from "axios";
-import type { Warehouse as WarehouseType } from "@/types";
 
 export default function CustomerSettingsPage() {
   const { appUser } = useAuth();
@@ -24,21 +23,8 @@ export default function CustomerSettingsPage() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
-  const [preferredWarehouse, setPreferredWarehouse] = useState<WarehouseType | null>(null);
-
   const [resetSent, setResetSent] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
-
-  // Load preferred warehouse from localStorage
-  useEffect(() => {
-    const savedId = localStorage.getItem("pakk_preferred_warehouse");
-    if (!savedId) return;
-    axios.get("/api/warehouses").then((res) => {
-      const list: WarehouseType[] = res.data.data;
-      const match = list.find((w) => w.id === savedId);
-      if (match) setPreferredWarehouse(match);
-    }).catch(() => {});
-  }, []);
 
   // Load fresh customer data to get phone + notes
   useEffect(() => {
@@ -125,39 +111,6 @@ export default function CustomerSettingsPage() {
         {/* Profile Tab */}
         {activeTab === "profile" && (
           <div className="max-w-xl space-y-5">
-            {appUser?.shippingMark && (
-              <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center shrink-0">
-                    <Tag className="h-5 w-5 text-brand-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-brand-600 mb-0.5">Your Shipping Mark</p>
-                    <code className="text-sm font-black font-mono text-brand-900 break-all">
-                      {preferredWarehouse ? `${preferredWarehouse.name}, ${appUser.shippingMark}` : appUser.shippingMark}
-                    </code>
-                  </div>
-                </div>
-                {preferredWarehouse && (
-                  <div className="bg-white/60 rounded-lg px-3 py-2 border border-brand-100 space-y-1">
-                    <p className="text-xs text-brand-500 font-medium">Write this on your package label:</p>
-                    <code className="text-xs font-mono text-brand-900 break-all block font-bold">
-                      {preferredWarehouse.address} ({appUser.shippingMark})
-                    </code>
-                  </div>
-                )}
-                {preferredWarehouse && (
-                  <div className="flex items-start gap-2 text-xs text-brand-700 border-t border-brand-100 pt-2">
-                    <Warehouse className="h-3.5 w-3.5 mt-0.5 shrink-0 text-brand-500" />
-                    <span>{preferredWarehouse.name} · {preferredWarehouse.address}{preferredWarehouse.phone ? ` · ${preferredWarehouse.phone}` : ""}</span>
-                  </div>
-                )}
-                <p className="text-xs text-brand-600">
-                  Write this on every package you send. Change your warehouse in <a href="/customer/addresses" className="underline">Our Addresses</a>.
-                </p>
-              </div>
-            )}
-
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -189,7 +142,7 @@ export default function CustomerSettingsPage() {
                   />
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gray-400" />Your Delivery Address</span>
+                      <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gray-400" />Location</span>
                     </label>
                     <textarea
                       value={form.shippingAddress}
@@ -242,13 +195,9 @@ export default function CustomerSettingsPage() {
                   <span className="text-gray-500">Email</span>
                   <span className="text-gray-900 font-medium">{appUser?.email}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Account type</span>
-                  <span className="text-gray-900 font-medium capitalize">Customer</span>
-                </div>
                 {appUser?.package && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Package</span>
+                    <span className="text-gray-500">Account type</span>
                     <span className="text-gray-900 font-medium">
                       {appUser.package === "standard" ? "Basic Shipping" : appUser.package === "discounted" ? "Business Shipping" : appUser.package === "premium" ? "Enterprise Logistics" : appUser.package}
                     </span>
