@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import Image from "next/image";
+import axios from "axios";
 
 const navItems = [
   { href: "/customer", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -36,15 +37,25 @@ export function CustomerSidebar() {
   const { appUser, signOut } = useAuth();
   const { open, closeSidebar } = useSidebar();
   const [copied, setCopied] = useState(false);
+  const [warehouseAddress, setWarehouseAddress] = useState<string | null>(null);
 
   const shippingMark = appUser?.shippingMark ?? "";
 
+  useEffect(() => {
+    const savedId = localStorage.getItem("pakk_preferred_warehouse");
+    if (!savedId) return;
+    axios.get("/api/warehouses").then((res) => {
+      const match = res.data.data?.find((w: { id: string; address: string }) => w.id === savedId);
+      if (match) setWarehouseAddress(match.address);
+    }).catch(() => {});
+  }, []);
+
   const copyShippingMark = () => {
-    if (shippingMark) {
-      navigator.clipboard.writeText(shippingMark);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    if (!shippingMark) return;
+    const text = warehouseAddress ? `${warehouseAddress} (${shippingMark})` : shippingMark;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -79,9 +90,14 @@ export function CustomerSidebar() {
       <div className="mx-4 mt-4 p-3 bg-brand-50 border border-brand-100 rounded-xl shrink-0">
         <p className="text-xs text-brand-600 font-medium mb-1">Your Shipping Mark</p>
         <div className="flex items-center justify-between gap-2">
-          <code className="text-xs font-mono font-bold text-brand-800 truncate">
-            {shippingMark || "Loading..."}
-          </code>
+          <div className="min-w-0">
+            {warehouseAddress && (
+              <p className="text-xs text-brand-600 mt-0.5 truncate">{warehouseAddress}</p>
+            )}
+            <code className="text-xs font-mono font-bold text-brand-800 truncate">
+              {shippingMark || "Loading..."}
+            </code>
+          </div>
           {shippingMark && (
             <button
               onClick={copyShippingMark}

@@ -312,17 +312,27 @@ export default function AdminOrderDetailPage() {
                     <span className="text-xs text-gray-700">{customerPhone}</span>
                   </div>
                 )}
-                {paymentLog.length > 0 && (
-                  <div className="border-t border-gray-50 pt-3 space-y-1.5">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Payment Log</p>
-                    {paymentLog.map((entry, i) => (
-                      <div key={i} className="flex justify-between items-center text-xs">
-                        <span className="text-gray-400">{entry.at}</span>
-                        <span className="font-semibold text-green-700">+{formatCurrency(entry.amount)}</span>
+                {paymentLog.length > 0 && (() => {
+                  const totalPaid = paymentLog.reduce((s, e) => s + e.amount, 0);
+                  const balance = (order.invoiceAmount ?? 0) - totalPaid;
+                  return (
+                    <div className="border-t border-gray-50 pt-3 space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Payment Log</p>
+                      {paymentLog.map((entry, i) => (
+                        <div key={i} className="flex justify-between items-center text-xs">
+                          <span className="text-gray-400">{entry.at}</span>
+                          <span className="font-semibold text-green-700">+{formatCurrency(entry.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5 mt-1">
+                        <span className="text-gray-500 font-medium">Balance</span>
+                        <span className={`font-bold ${balance <= 0 ? "text-green-700" : "text-orange-600"}`}>
+                          {formatCurrency(Math.max(0, balance))}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  );
+                })()}
                 {order.status === "Partial" && (
                   <p className="text-xs text-orange-600 bg-orange-50 rounded-lg p-2">
                     Partial payment received. Check Keepup for payment details.

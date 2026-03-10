@@ -273,8 +273,6 @@ export default function CustomerDetailPage() {
                         {customer.shippingMark}
                       </code>
                     </InfoRow>
-                    <InfoRow icon={Package} label="Total Items" value={String(customer.items?.length ?? 0)} />
-                    <InfoRow icon={ShoppingCart} label="Total Orders" value={String(customer.orders?.length ?? 0)} />
                     {customer.shippingType && (
                       <InfoRow icon={Package} label="Shipping Type" value={customer.shippingType === "air" ? "Air Freight" : "Sea Freight"} />
                     )}
