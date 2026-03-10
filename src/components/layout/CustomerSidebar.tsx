@@ -72,7 +72,7 @@ export function CustomerSidebar() {
     >
       {/* Logo */}
       <div className="flex items-center justify-between h-14 lg:h-16 px-5 border-b border-gray-100 shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
           <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
           <span className="font-bold text-lg tracking-tight text-gray-900">Pakkmaxx</span>
         </div>

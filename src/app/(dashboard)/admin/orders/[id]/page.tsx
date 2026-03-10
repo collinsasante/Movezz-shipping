@@ -116,6 +116,12 @@ export default function AdminOrderDetailPage() {
       success("Payment recorded");
       setPaymentModalOpen(false);
       setPaymentAmount("");
+      // Optimistically update payment figures before re-fetch
+      setOrder((prev) => prev ? {
+        ...prev,
+        keepupAmountPaid: (prev.keepupAmountPaid ?? 0) + amount,
+        keepupBalanceDue: Math.max(0, (prev.keepupBalanceDue ?? prev.invoiceAmount) - amount),
+      } : prev);
       load();
     } catch {
       error("Failed to record payment");
