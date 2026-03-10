@@ -101,7 +101,7 @@ export function CustomerSidebar() {
           {shippingMark && (
             <button
               onClick={copyShippingMark}
-              className="shrink-0 p-1 rounded hover:bg-brand-100 transition-colors"
+              className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-600 transition-colors"
               title="Copy shipping mark"
             >
               {copied ? (

@@ -312,21 +312,19 @@ export default function AdminOrderDetailPage() {
                     <span className="text-xs text-gray-700">{customerPhone}</span>
                   </div>
                 )}
-                {order.keepupSaleId && order.keepupAmountPaid != null && (
+                {order.keepupSaleId && (
                   <div className="border-t border-gray-50 pt-3 space-y-1.5">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Payment Info</p>
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-gray-400">Amount Paid</span>
-                      <span className="font-semibold text-green-700">{formatCurrency(order.keepupAmountPaid)}</span>
+                      <span className="font-semibold text-green-700">{formatCurrency(order.keepupAmountPaid ?? 0)}</span>
                     </div>
-                    {order.keepupBalanceDue != null && (
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-gray-500 font-medium">Balance Due</span>
-                        <span className={`font-bold ${order.keepupBalanceDue <= 0 ? "text-green-700" : "text-orange-600"}`}>
-                          {formatCurrency(Math.max(0, order.keepupBalanceDue))}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-500 font-medium">Balance Due</span>
+                      <span className={`font-bold ${(order.keepupBalanceDue ?? 0) <= 0 ? "text-green-700" : "text-orange-600"}`}>
+                        {formatCurrency(Math.max(0, order.keepupBalanceDue ?? (order.invoiceAmount - (order.keepupAmountPaid ?? 0))))}
+                      </span>
+                    </div>
                   </div>
                 )}
                 {order.status === "Partial" && (
