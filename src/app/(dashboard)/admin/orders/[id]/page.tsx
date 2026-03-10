@@ -191,10 +191,6 @@ export default function AdminOrderDetailPage() {
               Create Invoice
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => { setPaymentAmount(""); setPaymentModalOpen(true); }}>
-            <DollarSign className="h-3.5 w-3.5 mr-1" />
-            Record Payment
-          </Button>
         </div>
       </div>
 

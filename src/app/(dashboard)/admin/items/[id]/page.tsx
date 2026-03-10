@@ -24,6 +24,7 @@ import {
   Loader2,
   Trash2,
   Edit2,
+  DollarSign,
 } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
@@ -356,6 +357,27 @@ export default function AdminItemDetailPage() {
                   const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
                   return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
                 })() : null}
+                {(() => {
+                  try {
+                    const rates = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}");
+                    const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
+                    const usdToGhs = rates.usdToGhs ?? 12.5;
+                    // Use the customer's package tier if available
+                    const tier = (item as Item & { customerPackage?: string }).customerPackage as "standard" | "discounted" | "premium" ?? "standard";
+                    const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
+                    if (item.shippingType === "air" && item.weight) {
+                      const usd = item.weight * (item.quantity ?? 1) * tierRates.air;
+                      return <InfoRow icon={DollarSign} label="Est. Price" value={`GHS ${(usd * usdToGhs).toFixed(2)}`} />;
+                    }
+                    if (item.length && item.width && item.height) {
+                      const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
+                      const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
+                      const usd = cbm * tierRates.sea;
+                      return <InfoRow icon={DollarSign} label="Est. Price" value={`GHS ${(usd * usdToGhs).toFixed(2)}`} />;
+                    }
+                  } catch { /* ignore */ }
+                  return null;
+                })()}
                 <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
                 {item.createdBy && (
                   <InfoRow icon={User} label="Created by" value={
