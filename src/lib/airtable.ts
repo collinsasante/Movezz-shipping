@@ -813,6 +813,10 @@ export const ordersApi = {
     if (link) fields["KeepupLink"] = link;
     await updateRecord(TABLES.ORDERS, id, fields);
   },
+
+  async clearKeepupIds(id: string): Promise<void> {
+    await updateRecord(TABLES.ORDERS, id, { KeepupSaleId: "", KeepupLink: "" });
+  },
 };
 
 // ============================================================

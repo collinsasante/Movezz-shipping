@@ -46,6 +46,8 @@ export default function AdminOrderDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [cancelingInvoice, setCancelingInvoice] = useState(false);
+  const [confirmCancelInvoice, setConfirmCancelInvoice] = useState(false);
 
   // Extra info
   const [customerPhone, setCustomerPhone] = useState<string>("");
@@ -129,6 +131,21 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const handleCancelInvoice = async () => {
+    setCancelingInvoice(true);
+    try {
+      await axios.delete(`/api/orders/${id}/create-invoice`);
+      success("Invoice cancelled");
+      setConfirmCancelInvoice(false);
+      load();
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error ?? "Failed to cancel invoice" : "Failed to cancel invoice";
+      error("Error", msg);
+    } finally {
+      setCancelingInvoice(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -185,7 +202,7 @@ export default function AdminOrderDetailPage() {
         <StatusBadge status={order.status} />
 
         <div className="ml-auto flex items-center gap-2">
-          {!order.keepupSaleId && (
+          {!order.keepupSaleId && order.status !== "Paid" && (
             <Button size="sm" variant="outline" onClick={handleCreateInvoice} loading={creatingInvoice}>
               <ExternalLink className="h-3.5 w-3.5 mr-1" />
               Create Invoice
@@ -384,19 +401,19 @@ export default function AdminOrderDetailPage() {
                         Open Invoice
                       </a>
                     )}
-                    {confirmDelete ? (
+                    {confirmCancelInvoice ? (
                       <>
-                        <span className="text-xs text-red-600 self-center">Cancel?</span>
+                        <span className="text-xs text-red-600 self-center">Cancel invoice?</span>
                         <button
                           className="inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border bg-background hover:text-accent-foreground h-8 rounded-md px-3 text-xs border-red-300 text-red-600 hover:bg-red-50"
-                          disabled={deleting}
-                          onClick={handleDelete}
+                          disabled={cancelingInvoice}
+                          onClick={handleCancelInvoice}
                         >
-                          {deleting ? "Cancelling..." : "Confirm"}
+                          {cancelingInvoice ? "Cancelling..." : "Confirm"}
                         </button>
                         <button
                           className="inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 rounded-md px-3 text-xs"
-                          onClick={() => setConfirmDelete(false)}
+                          onClick={() => setConfirmCancelInvoice(false)}
                         >
                           Back
                         </button>
@@ -404,7 +421,7 @@ export default function AdminOrderDetailPage() {
                     ) : (
                       <button
                         className="inline-flex items-center justify-center whitespace-nowrap font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border bg-background hover:text-accent-foreground h-8 rounded-md px-3 text-xs border-red-300 text-red-600 hover:bg-red-50"
-                        onClick={() => setConfirmDelete(true)}
+                        onClick={() => setConfirmCancelInvoice(true)}
                       >
                         Cancel Invoice
                       </button>

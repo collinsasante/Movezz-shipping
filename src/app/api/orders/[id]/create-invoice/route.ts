@@ -1,8 +1,9 @@
 // POST /api/orders/[id]/create-invoice — create Keepup invoice for an existing order
+// DELETE /api/orders/[id]/create-invoice — cancel Keepup invoice and clear from order
 import { NextRequest } from "next/server";
 import { ordersApi, customersApi, itemsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
-import { createKeepupSale } from "@/lib/keepup";
+import { createKeepupSale, cancelKeepupSale } from "@/lib/keepup";
 
 export async function POST(
   request: NextRequest,
@@ -18,6 +19,13 @@ export async function POST(
     if (order.keepupSaleId) {
       return Response.json(
         { success: false, error: "Invoice already exists in Keepup" },
+        { status: 400 }
+      );
+    }
+
+    if (order.status === "Paid") {
+      return Response.json(
+        { success: false, error: "Cannot create invoice for a paid order" },
         { status: 400 }
       );
     }
@@ -114,6 +122,32 @@ export async function POST(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[POST /orders/[id]/create-invoice] Error:", msg);
+    return Response.json({ success: false, error: msg }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuth(request, ["super_admin"]);
+  if (authResult instanceof Response) return authResult;
+
+  try {
+    const { id } = await params;
+    const order = await ordersApi.getById(id);
+
+    if (!order.keepupSaleId) {
+      return Response.json({ success: false, error: "No Keepup invoice to cancel" }, { status: 400 });
+    }
+
+    await cancelKeepupSale(order.keepupSaleId);
+    await ordersApi.clearKeepupIds(order.id);
+
+    return Response.json({ success: true, message: "Invoice cancelled" });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[DELETE /orders/[id]/create-invoice] Error:", msg);
     return Response.json({ success: false, error: msg }, { status: 500 });
   }
 }
