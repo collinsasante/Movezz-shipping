@@ -16,6 +16,8 @@ import {
   X,
   Calculator,
   Warehouse,
+  Copy,
+  CheckCheck,
 } from "lucide-react";
 import Image from "next/image";
 import axios from "axios";
@@ -41,24 +43,26 @@ export function CustomerSidebar() {
   const pathname = usePathname();
   const { appUser, signOut } = useAuth();
   const { open, closeSidebar } = useSidebar();
-  const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+  const [warehouseAddress, setWarehouseAddress] = useState<string | null>(null);
+
+  const shippingMark = appUser?.shippingMark ?? "";
 
   useEffect(() => {
+    const savedId = localStorage.getItem("pakk_preferred_warehouse");
+    if (!savedId) return;
     axios.get("/api/warehouses").then((res) => {
-      const list: { id: string; name: string }[] = res.data.data ?? [];
-      setWarehouses(list);
-      const saved = localStorage.getItem("pakk_preferred_warehouse");
-      const match = list.find((w) => w.id === saved);
-      const defaultId = match ? match.id : (list[0]?.id ?? "");
-      setSelectedWarehouseId(defaultId);
-      if (!saved && defaultId) localStorage.setItem("pakk_preferred_warehouse", defaultId);
+      const match = res.data.data?.find((w: { id: string; address: string }) => w.id === savedId);
+      if (match) setWarehouseAddress(match.address);
     }).catch(() => {});
   }, []);
 
-  const selectWarehouse = (id: string) => {
-    setSelectedWarehouseId(id);
-    localStorage.setItem("pakk_preferred_warehouse", id);
+  const copyShippingMark = () => {
+    if (!shippingMark) return;
+    const text = warehouseAddress ? `${warehouseAddress} (${shippingMark})` : shippingMark;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const accountType = appUser?.package ? (PACKAGE_LABELS[appUser.package] ?? "Customer") : "Customer";
@@ -87,24 +91,32 @@ export function CustomerSidebar() {
         </button>
       </div>
 
-      {/* Warehouse dropdown */}
-      {warehouses.length > 0 && (
-        <div className="mx-4 mt-3 shrink-0">
-          <p className="flex items-center gap-1.5 text-xs text-gray-500 font-medium mb-1.5">
-            <MapPin className="h-3 w-3" />
-            Your location
-          </p>
-          <select
-            value={selectedWarehouseId}
-            onChange={(e) => selectWarehouse(e.target.value)}
-            className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
-          >
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+      {/* Shipping Mark Card */}
+      <div className="mx-4 mt-4 p-3 bg-brand-50 border border-brand-100 rounded-xl shrink-0">
+        <p className="text-xs text-brand-600 font-medium mb-1">Your Shipping Mark</p>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">
+              {warehouseAddress
+                ? `${warehouseAddress} (${shippingMark})`
+                : (shippingMark || "Loading...")}
+            </code>
+          </div>
+          {shippingMark && (
+            <button
+              onClick={copyShippingMark}
+              className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-600 transition-colors"
+              title="Copy shipping mark"
+            >
+              {copied ? (
+                <CheckCheck className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 text-brand-500" />
+              )}
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Nav items */}
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
