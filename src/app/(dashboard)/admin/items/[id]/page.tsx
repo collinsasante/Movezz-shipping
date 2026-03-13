@@ -78,6 +78,8 @@ export default function AdminItemDetailPage() {
     notes: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [customerPackage, setCustomerPackage] = useState<string>("standard");
+  const [shippingEstimate, setShippingEstimate] = useState<{ amount: string; rateStr: string; tier: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +99,12 @@ export default function AdminItemDetailPage() {
       }
       const historyData = historyRes.data.data ?? [];
       setHistory(historyData);
+      // Fetch customer package tier for pricing estimate
+      if (loadedItem.customerId) {
+        axios.get(`/api/customers/${loadedItem.customerId}`).then((r) => {
+          setCustomerPackage(r.data.data?.package ?? "standard");
+        }).catch(() => {});
+      }
     } catch {
       error("Failed to load item");
     } finally {
@@ -105,6 +113,53 @@ export default function AdminItemDetailPage() {
   }, [id, error]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Compute live shipping estimate from localStorage rates
+  useEffect(() => {
+    if (!item) return;
+    try {
+      const { usdToGhs } = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}") as { usdToGhs?: number };
+      const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}") as Record<string, { sea?: number; air?: number }>;
+      const specialRatesRaw = JSON.parse(localStorage.getItem("pakk_special_rates") ?? "[]") as { id: string; name: string; sea: number; air: number }[];
+      if (!usdToGhs) { setShippingEstimate(null); return; }
+      // Special rates take priority if item customer matches a special rate by name
+      const tierRates = pkgRates[customerPackage] ?? pkgRates.standard ?? { sea: 0, air: 0 };
+      const qty = item.quantity ?? 1;
+      let costUsd = 0;
+      let rateStr = "";
+      if (item.shippingType === "air" && item.weight) {
+        const rate = tierRates.air ?? 0;
+        costUsd = item.weight * qty * rate;
+        rateStr = `$${rate}/kg`;
+      } else if (item.length && item.width && item.height) {
+        const factor = item.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
+        const cbm = item.length * item.width * item.height * factor * qty;
+        const rate = tierRates.sea ?? 0;
+        costUsd = cbm * rate;
+        rateStr = `$${rate}/m³`;
+      }
+      // Check if there's a matching special named rate
+      if (specialRatesRaw.length > 0) {
+        const specialMatch = specialRatesRaw.find((r) => r.name.toLowerCase() === customerPackage.toLowerCase());
+        if (specialMatch) {
+          if (item.shippingType === "air" && item.weight) {
+            costUsd = item.weight * qty * specialMatch.air;
+            rateStr = `$${specialMatch.air}/kg (${specialMatch.name})`;
+          } else if (item.length && item.width && item.height) {
+            const factor = item.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
+            const cbm = item.length * item.width * item.height * factor * qty;
+            costUsd = cbm * specialMatch.sea;
+            rateStr = `$${specialMatch.sea}/m³ (${specialMatch.name})`;
+          }
+        }
+      }
+      if (costUsd > 0) {
+        setShippingEstimate({ amount: (costUsd * usdToGhs).toFixed(2), rateStr, tier: customerPackage });
+      } else {
+        setShippingEstimate(null);
+      }
+    } catch { setShippingEstimate(null); }
+  }, [item, customerPackage]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -267,10 +322,115 @@ export default function AdminItemDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left column: Photos + Details */}
-          <div className="lg:col-span-2 space-y-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left column: Item Details + Assignments */}
+          <div className="space-y-5">
 
+            {/* Item Details */}
+            <div className="bg-white rounded-2xl border border-gray-100 p-5">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-2">
+                <Package className="h-4 w-4 text-brand-600" />
+                Item Details
+              </h3>
+              <div className="divide-y divide-gray-50">
+                <InfoRow icon={Hash} label="Item Reference" value={item.itemRef} />
+                <div className="flex items-start gap-3 py-3 border-b border-gray-50">
+                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400 font-medium">Customer</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <p className="text-sm text-gray-900 font-medium">{item.customerName ?? "—"}</p>
+                      {item.customerShippingMark && (
+                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">
+                          {item.customerShippingMark}
+                        </code>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <InfoRow icon={Scale} label="Weight" value={item.weight ? `${item.weight} kg` : null} />
+                {item.quantity && (
+                  <InfoRow icon={Package} label="Quantity" value={`${item.quantity} pcs`} />
+                )}
+                <InfoRow icon={Package} label="Dimensions" value={dimensions} />
+                <InfoRow icon={Hash} label="Tracking Number" value={item.trackingNumber} />
+                <InfoRow icon={Calendar} label="Date Received" value={formatDateTime(item.dateReceived)} />
+                {item.length && item.width && item.height ? (() => {
+                  const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
+                  const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
+                  return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
+                })() : null}
+                {item.estPrice != null && (
+                  <InfoRow icon={DollarSign} label="Est. Item Price" value={`GH₵ ${item.estPrice.toFixed(2)}`} />
+                )}
+                {item.estShippingPrice != null && (
+                  <InfoRow icon={DollarSign} label="Est. Shipping Cost" value={`GH₵ ${item.estShippingPrice.toFixed(2)}`} />
+                )}
+                {/* Live shipping estimate from package/special rates */}
+                {shippingEstimate && (
+                  <div className="py-3">
+                    <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 space-y-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-brand-700 font-medium">Live Est. Shipping ({shippingEstimate.tier})</span>
+                        <span className="font-bold text-brand-900">GH₵ {shippingEstimate.amount}</span>
+                      </div>
+                      {shippingEstimate.rateStr && (
+                        <p className="text-xs text-brand-500">Rate: {shippingEstimate.rateStr}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {item.isSpecialItem && (
+                  <InfoRow icon={Package} label="Special Item" value="Yes" />
+                )}
+                <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
+                {item.createdBy && (
+                  <InfoRow icon={User} label="Created by" value={
+                    item.createdBy.includes("@")
+                      ? item.createdBy.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+                      : item.createdBy
+                  } />
+                )}
+                {item.notes && (
+                  <InfoRow icon={Package} label="Notes" value={item.notes} />
+                )}
+              </div>
+            </div>
+
+            {/* Assignments */}
+            {(item.containerId || item.orderId) && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-5">
+                <h3 className="font-semibold text-gray-900 mb-2">Assignments</h3>
+                <div className="divide-y divide-gray-50">
+                  {item.containerId && (
+                    <InfoRow icon={Container} label="Container" value={
+                      <button
+                        onClick={() => router.push(`/admin/containers/${item.containerId}`)}
+                        className="text-brand-600 hover:underline"
+                      >
+                        {containerDisplayName ?? item.containerName ?? "View Container"}
+                      </button>
+                    } />
+                  )}
+                  {item.orderId && (
+                    <InfoRow icon={ShoppingCart} label="Order" value={
+                      <button
+                        onClick={() => router.push(`/admin/orders/${item.orderId}`)}
+                        className="text-brand-600 hover:underline"
+                      >
+                        {item.orderRef ?? "View Order"}
+                      </button>
+                    } />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right column: Photos + Tracking */}
+          <div className="space-y-5">
             {/* Photos */}
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
@@ -327,97 +487,6 @@ export default function AdminItemDetailPage() {
               )}
             </div>
 
-            {/* Item Details */}
-            <div className="bg-white rounded-2xl border border-gray-100 p-5">
-              <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-2">
-                <Package className="h-4 w-4 text-brand-600" />
-                Item Details
-              </h3>
-              <div className="divide-y divide-gray-50">
-                <InfoRow icon={Hash} label="Item Reference" value={item.itemRef} />
-                <div className="flex items-start gap-3 py-3 border-b border-gray-50">
-                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
-                    <User className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-400 font-medium">Customer</p>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                      <p className="text-sm text-gray-900 font-medium">{item.customerName ?? "—"}</p>
-                      {item.customerShippingMark && (
-                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">
-                          {item.customerShippingMark}
-                        </code>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <InfoRow icon={Scale} label="Weight" value={item.weight ? `${item.weight} kg` : null} />
-                {item.quantity && (
-                  <InfoRow icon={Package} label="Quantity" value={`${item.quantity} pcs`} />
-                )}
-                <InfoRow icon={Package} label="Dimensions" value={dimensions} />
-                <InfoRow icon={Hash} label="Tracking Number" value={item.trackingNumber} />
-                <InfoRow icon={Calendar} label="Date Received" value={formatDateTime(item.dateReceived)} />
-                {item.length && item.width && item.height ? (() => {
-                  const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
-                  const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
-                  return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
-                })() : null}
-                {item.estPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Item Price" value={`GH₵ ${item.estPrice.toFixed(2)}`} />
-                )}
-                {item.estShippingPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Shipping Cost" value={`GH₵ ${item.estShippingPrice.toFixed(2)}`} />
-                )}
-                {item.isSpecialItem && (
-                  <InfoRow icon={Package} label="Special Item" value="Yes" />
-                )}
-                <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
-                {item.createdBy && (
-                  <InfoRow icon={User} label="Created by" value={
-                    item.createdBy.includes("@")
-                      ? item.createdBy.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-                      : item.createdBy
-                  } />
-                )}
-                {item.notes && (
-                  <InfoRow icon={Package} label="Notes" value={item.notes} />
-                )}
-              </div>
-            </div>
-
-            {/* Assignments */}
-            {(item.containerId || item.orderId) && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-5">
-                <h3 className="font-semibold text-gray-900 mb-2">Assignments</h3>
-                <div className="divide-y divide-gray-50">
-                  {item.containerId && (
-                    <InfoRow icon={Container} label="Container" value={
-                      <button
-                        onClick={() => router.push(`/admin/containers/${item.containerId}`)}
-                        className="text-brand-600 hover:underline"
-                      >
-                        {containerDisplayName ?? item.containerName ?? "View Container"}
-                      </button>
-                    } />
-                  )}
-                  {item.orderId && (
-                    <InfoRow icon={ShoppingCart} label="Order" value={
-                      <button
-                        onClick={() => router.push(`/admin/orders/${item.orderId}`)}
-                        className="text-brand-600 hover:underline"
-                      >
-                        {item.orderRef ?? "View Order"}
-                      </button>
-                    } />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right column: Tracking */}
-          <div className="space-y-5">
             {/* Tracking Timeline */}
             <div className="bg-white rounded-2xl border border-gray-100 p-5">
               <h3 className="font-semibold text-gray-900 mb-4">Tracking</h3>
