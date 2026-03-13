@@ -24,9 +24,9 @@ import axios from "axios";
 import type { CustomerPackage } from "@/types";
 
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
-  standard: "Basic Shipping",
-  discounted: "Business Shipping",
-  premium: "Enterprise Shipping",
+  basic: "Basic",
+  business: "Business",
+  enterprise: "Enterprise",
   special: "Special",
 };
 

@@ -43,7 +43,7 @@ export default function CustomerDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "standard" | "discounted" | "premium" | "special" | "" });
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "basic" | "business" | "enterprise" | "special" | "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
@@ -238,12 +238,12 @@ export default function CustomerDetailPage() {
                   <Select
                     label="Package"
                     value={editForm.package}
-                    onChange={(e) => setEditForm({ ...editForm, package: e.target.value as "standard" | "discounted" | "premium" | "special" | "" })}
+                    onChange={(e) => setEditForm({ ...editForm, package: e.target.value as "basic" | "business" | "enterprise" | "special" | "" })}
                     options={[
                       { value: "", label: "No package" },
-                      { value: "standard", label: "Basic Shipping" },
-                      { value: "discounted", label: "Business Shipping" },
-                      { value: "premium", label: "Enterprise Shipping" },
+                      { value: "basic", label: "Basic" },
+                      { value: "business", label: "Business" },
+                      { value: "enterprise", label: "Enterprise" },
                       { value: "special", label: "Special" },
                     ]}
                   />
@@ -280,11 +280,12 @@ export default function CustomerDetailPage() {
                     {customer.package && (
                       <InfoRow icon={Package} label="Package">
                         <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize inline-block mt-0.5 ${
-                          customer.package === "premium" ? "bg-amber-50 text-amber-700" :
-                          customer.package === "discounted" ? "bg-blue-50 text-blue-700" :
+                          customer.package === "enterprise" ? "bg-amber-50 text-amber-700" :
+                          customer.package === "business" ? "bg-blue-50 text-blue-700" :
+                          customer.package === "special" ? "bg-purple-50 text-purple-700" :
                           "bg-gray-100 text-gray-700"
                         }`}>
-                          {customer.package === "standard" ? "Basic Shipping" : customer.package === "discounted" ? "Business Shipping" : customer.package === "premium" ? "Enterprise Shipping" : customer.package === "special" ? "Special" : customer.package}
+                          {customer.package === "basic" ? "Basic" : customer.package === "business" ? "Business" : customer.package === "enterprise" ? "Enterprise" : customer.package === "special" ? "Special" : customer.package}
                         </span>
                       </InfoRow>
                     )}

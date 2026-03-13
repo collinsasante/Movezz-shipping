@@ -11,18 +11,18 @@ type Tab = "estimator" | "cbm";
 type DimUnit = "cm" | "inches";
 
 interface PackageRate { sea: number; air: number; }
-interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; special?: PackageRate; }
+interface PackageRates { basic: PackageRate; business: PackageRate; enterprise: PackageRate; special?: PackageRate; }
 
 const DEFAULT_PKG_RATES: PackageRates = {
-  standard: { sea: 350, air: 8 },
-  discounted: { sea: 280, air: 6 },
-  premium: { sea: 450, air: 12 },
+  basic: { sea: 350, air: 8 },
+  business: { sea: 280, air: 6 },
+  enterprise: { sea: 450, air: 12 },
 };
 
 const PACKAGE_META: Record<CustomerPackage, { label: string; color: string }> = {
-  standard: { label: "Basic Shipping", color: "bg-gray-100 text-gray-700" },
-  discounted: { label: "Business Shipping", color: "bg-blue-50 text-blue-700" },
-  premium: { label: "Enterprise Shipping", color: "bg-amber-50 text-amber-700" },
+  basic: { label: "Basic", color: "bg-gray-100 text-gray-700" },
+  business: { label: "Business", color: "bg-blue-50 text-blue-700" },
+  enterprise: { label: "Enterprise", color: "bg-amber-50 text-amber-700" },
   special: { label: "Special", color: "bg-purple-50 text-purple-700" },
 };
 

@@ -207,7 +207,7 @@ function mapCustomer(record: AirtableRecord<FieldSet>): Customer {
     firebaseUid: (f["FirebaseUID"] as string) ?? undefined,
     status: ((f["Status"] as string) ?? "active") as Customer["status"],
     shippingType: ((f["ShippingType"] as string) ?? undefined) as Customer["shippingType"],
-    package: ((f["CustomerPackage"] as string) ?? undefined) as Customer["package"],
+    package: (({ standard: "basic", discounted: "business", premium: "enterprise" } as Record<string, string>)[(f["CustomerPackage"] as string)] ?? (f["CustomerPackage"] as string) ?? undefined) as Customer["package"],
     exchangeRate: (f["ExchangeRate"] as number) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),

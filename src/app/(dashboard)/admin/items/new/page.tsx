@@ -25,13 +25,13 @@ function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number 
 }
 
 function CbmDisplay({ length, width, height, unit, quantity, weight, shippingType, specialRate }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number; weight: number; shippingType: "air" | "sea"; specialRate?: SpecialRate }) {
-  let pkgRates: { standard?: { sea?: number; air?: number }; shippingRatePerCbm?: number } = {};
+  let pkgRates: { basic?: { sea?: number; air?: number }; shippingRatePerCbm?: number } = {};
   try {
     pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
   } catch {}
 
-  const stdRates = pkgRates.standard ?? { sea: 0, air: 0 };
-  const rateLabel = specialRate ? specialRate.name : "Standard";
+  const stdRates = pkgRates.basic ?? { sea: 0, air: 0 };
+  const rateLabel = specialRate ? specialRate.name : "Basic";
 
   // Air: weight-based
   if (shippingType === "air") {
@@ -162,7 +162,7 @@ export default function NewItemPage() {
     try {
       const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
       const customer = customers.find((c) => c.id === form.customerId);
-      const tier = (customer?.package ?? "standard") as "standard" | "discounted" | "premium" | "special";
+      const tier = (customer?.package ?? "basic") as "basic" | "business" | "enterprise" | "special";
       const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
       const qty = Math.max(1, parseInt(form.quantity) || 1);
       let costGhs = 0;

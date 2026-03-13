@@ -30,7 +30,7 @@ export type CustomerStatus = "active" | "inactive";
 // ============================================================
 // CUSTOMER
 // ============================================================
-export type CustomerPackage = "standard" | "discounted" | "premium" | "special";
+export type CustomerPackage = "basic" | "business" | "enterprise" | "special";
 
 export interface Customer {
   id: string; // Airtable record ID

@@ -51,7 +51,7 @@ export default function AdminOrderDetailPage() {
 
   // Extra info
   const [customerPhone, setCustomerPhone] = useState<string>("");
-  const [customerPackage, setCustomerPackage] = useState<string>("standard");
+  const [customerPackage, setCustomerPackage] = useState<string>("basic");
 
   // Keepup payment data — persisted separately so values survive re-fetches where Keepup returns null
   const [keepupPaid, setKeepupPaid] = useState<number | null>(null);

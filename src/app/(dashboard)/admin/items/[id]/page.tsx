@@ -78,7 +78,7 @@ export default function AdminItemDetailPage() {
     notes: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
-  const [customerPackage, setCustomerPackage] = useState<string>("standard");
+  const [customerPackage, setCustomerPackage] = useState<string>("basic");
   const [pkgEstimate, setPkgEstimate] = useState<{ amount: string; rateStr: string; label: string } | null>(null);
   const [specialEstimate, setSpecialEstimate] = useState<{ amount: string; rateStr: string; label: string } | null>(null);
 
@@ -103,7 +103,7 @@ export default function AdminItemDetailPage() {
       // Fetch customer package tier for pricing estimate
       if (loadedItem.customerId) {
         axios.get(`/api/customers/${loadedItem.customerId}`).then((r) => {
-          setCustomerPackage(r.data.data?.package ?? "standard");
+          setCustomerPackage(r.data.data?.package ?? "basic");
         }).catch(() => {});
       }
     } catch {
@@ -119,7 +119,7 @@ export default function AdminItemDetailPage() {
   useEffect(() => {
     if (!item) return;
     try {
-      const BUILTIN_TIERS = new Set(["standard", "discounted", "premium", "special"]);
+      const BUILTIN_TIERS = new Set(["basic", "business", "enterprise", "special"]);
       const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}") as Record<string, { sea?: number; air?: number }>;
       const specialRatesRaw = JSON.parse(localStorage.getItem("pakk_special_rates") ?? "[]") as { id: string; name: string; sea: number; air: number }[];
       const qty = item.quantity ?? 1;
@@ -135,13 +135,13 @@ export default function AdminItemDetailPage() {
         return { costGhs: 0, rateStr: "" };
       }
 
-      // 1. Package tier estimate — use builtin tier, fallback to standard
+      // 1. Package tier estimate — use builtin tier, fallback to basic
       const isBuiltin = BUILTIN_TIERS.has(customerPackage.toLowerCase());
-      const tierKey = isBuiltin ? customerPackage : "standard";
+      const tierKey = isBuiltin ? customerPackage : "basic";
       const tierRates = pkgRates[tierKey] ?? { sea: 0, air: 0 };
       const tierLabel = isBuiltin
         ? customerPackage.charAt(0).toUpperCase() + customerPackage.slice(1)
-        : "Standard";
+        : "Basic";
       const { costGhs: pkgCost, rateStr: pkgRateStr } = calcCost(tierRates.sea ?? 0, tierRates.air ?? 0);
       setPkgEstimate(pkgCost > 0 ? { amount: pkgCost.toFixed(2), rateStr: pkgRateStr, label: tierLabel } : null);
 

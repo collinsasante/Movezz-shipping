@@ -11,7 +11,6 @@ import { formatDate } from "@/lib/utils";
 import { ITEM_STATUS_STEPS } from "@/lib/utils";
 import type { Item, ItemStatus, StatusHistory } from "@/types";
 import { Package, X, Hash } from "lucide-react";
-import { useAuth } from "@/context/AuthContext";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 
@@ -63,35 +62,9 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
-const RATES_KEY = "pakk_exchange_rates";
-const PACKAGES_RATES_KEY = "pakk_package_rates";
-
-function calcItemPrice(item: Item, pkg?: string): string | null {
-  try {
-    const rates = JSON.parse(localStorage.getItem(RATES_KEY) ?? "{}");
-    const pkgRates = JSON.parse(localStorage.getItem(PACKAGES_RATES_KEY) ?? "{}");
-    const usdToGhs: number = rates.usdToGhs ?? 12.5;
-    const tier = (pkg ?? "standard") as "standard" | "discounted" | "premium" | "special";
-    const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
-    if (item.shippingType === "air" && item.weight) {
-      const usd = item.weight * (item.quantity ?? 1) * tierRates.air;
-      const ghs = usd * usdToGhs;
-      return `GHS ${ghs.toFixed(2)}`;
-    }
-    if (item.length && item.width && item.height) {
-      const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
-      const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
-      const usd = cbm * tierRates.sea;
-      const ghs = usd * usdToGhs;
-      return `GHS ${ghs.toFixed(2)}`;
-    }
-    return null;
-  } catch { return null; }
-}
 
 export default function CustomerItemsPage() {
   const { error } = useToast();
-  const { appUser } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ItemStatus | "">("");
@@ -321,8 +294,7 @@ export default function CustomerItemsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
                 {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
                 {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`GH₵ ${selectedItem.estPrice.toFixed(2)}`} />}
-                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`GH₵ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
-                {(() => { const price = calcItemPrice(selectedItem, appUser?.package); return price ? <DetailRow label="Est. Shipping Cost" value={price} /> : null; })()}
+                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Cost" value={`GH₵ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
                 {selectedItem.shippingType === "sea" && selectedItem.length && selectedItem.width && selectedItem.height ? (
                   <DetailRow
                     label="CBM"

@@ -18,33 +18,33 @@ const SPECIAL_RATES_KEY = "pakk_special_rates";
 interface SpecialRate { id: string; name: string; sea: number; air: number; }
 
 interface PackageRate { sea: number; air: number; }
-interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; special: PackageRate; }
+interface PackageRates { basic: PackageRate; business: PackageRate; enterprise: PackageRate; special: PackageRate; }
 const DEFAULT_PKG_RATES: PackageRates = {
-  standard: { sea: 350, air: 8 },
-  discounted: { sea: 280, air: 6 },
-  premium: { sea: 450, air: 12 },
+  basic: { sea: 350, air: 8 },
+  business: { sea: 280, air: 6 },
+  enterprise: { sea: 450, air: 12 },
   special: { sea: 500, air: 15 },
 };
 
 const PACKAGE_OPTIONS: { value: CustomerPackage | ""; label: string }[] = [
   { value: "", label: "No package" },
-  { value: "standard", label: "Basic Shipping" },
-  { value: "discounted", label: "Business Shipping" },
-  { value: "premium", label: "Enterprise Shipping" },
+  { value: "basic", label: "Basic" },
+  { value: "business", label: "Business" },
+  { value: "enterprise", label: "Enterprise" },
   { value: "special", label: "Special" },
 ];
 
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
-  standard: "Basic Shipping",
-  discounted: "Business Shipping",
-  premium: "Enterprise Shipping",
+  basic: "Basic",
+  business: "Business",
+  enterprise: "Enterprise",
   special: "Special",
 };
 
 const PACKAGE_COLORS: Record<CustomerPackage, string> = {
-  standard: "bg-gray-100 text-gray-700",
-  discounted: "bg-blue-50 text-blue-700",
-  premium: "bg-amber-50 text-amber-700",
+  basic: "bg-gray-100 text-gray-700",
+  business: "bg-blue-50 text-blue-700",
+  enterprise: "bg-amber-50 text-amber-700",
   special: "bg-purple-50 text-purple-700",
 };
 
@@ -274,7 +274,7 @@ export default function AdminSettingsPage() {
                 <p className="text-sm text-gray-500">
                   Set custom sea and air rates per customer package tier.
                 </p>
-                {(["standard", "discounted", "premium", "special"] as (keyof PackageRates)[]).map((pkg) => (
+                {(["basic", "business", "enterprise", "special"] as (keyof PackageRates)[]).map((pkg) => (
                   <div key={pkg} className="space-y-2">
                     <div className="flex items-center gap-2">
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${PACKAGE_COLORS[pkg]}`}>{PACKAGE_LABELS[pkg]}</span>
