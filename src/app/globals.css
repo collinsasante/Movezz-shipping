@@ -37,6 +37,21 @@
 }
 
 @layer utilities {
+  /* Hide scrollbar while keeping scroll functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Safe area bottom padding for bottom nav on iOS */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+
   .animate-in {
     animation: animate-in 0.2s ease-out;
   }

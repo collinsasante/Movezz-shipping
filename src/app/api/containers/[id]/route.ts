@@ -45,10 +45,7 @@ export async function GET(
       ? (
           await Promise.all(
             container.itemIds.map((itemId) =>
-              itemsApi.getById(itemId).catch((err) => {
-                console.error(`[containers/${id}] Failed to fetch item ${itemId}:`, err);
-                return null;
-              })
+              itemsApi.getById(itemId).catch(() => null)
             )
           )
         ).filter(Boolean)
@@ -58,8 +55,7 @@ export async function GET(
       success: true,
       data: { ...container, items },
     });
-  } catch (err) {
-    console.error("[GET /containers/[id]] Error:", err);
+  } catch {
     return notFoundResponse("Container not found");
   }
 }
@@ -90,8 +86,7 @@ export async function PATCH(
       data: container,
       message: "Container updated",
     });
-  } catch (err) {
-    console.error("[PATCH /containers/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to update container");
   }
 }
@@ -109,8 +104,7 @@ export async function DELETE(
     const { id } = await params;
     await containersApi.delete(id);
     return Response.json({ success: true, message: "Container deleted" });
-  } catch (err) {
-    console.error("[DELETE /containers/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to delete container");
   }
 }

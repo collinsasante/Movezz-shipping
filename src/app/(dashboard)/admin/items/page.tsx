@@ -128,7 +128,7 @@ export default function ItemsPage() {
     <div className="flex flex-col h-full">
       <Header title="Items" subtitle="All packages in the system" />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-4 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
@@ -166,7 +166,7 @@ export default function ItemsPage() {
           </div>
           <Button onClick={() => router.push("/admin/items/new")} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
-            Receive Item
+            Add Item
           </Button>
         </div>
 

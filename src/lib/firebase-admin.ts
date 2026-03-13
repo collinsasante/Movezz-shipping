@@ -17,7 +17,7 @@ function getCfEnv(): Record<string, string | undefined> {
 
 function getEnvVar(key: string): string {
   const val = process.env[key] ?? getCfEnv()[key] ?? "";
-  if (!val) console.error(`[firebase-admin] env var missing: ${key}`);
+  if (!val) { /* env var missing: ${key} */ }
   return val;
 }
 

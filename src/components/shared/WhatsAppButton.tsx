@@ -8,7 +8,7 @@ export function WhatsAppButton() {
       href={`https://wa.me/${WA_NUMBER}`}
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#25D366] hover:bg-[#1ebe57] text-white text-sm font-semibold px-4 py-3 rounded-full shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
+      className="fixed bottom-20 lg:bottom-6 right-4 lg:right-6 z-50 flex items-center gap-2 bg-[#25D366] hover:bg-[#1ebe57] text-white text-sm font-semibold px-4 py-3 rounded-full shadow-lg transition-all hover:shadow-xl hover:scale-105 active:scale-95"
       aria-label="Chat on WhatsApp"
     >
       {/* WhatsApp SVG icon */}

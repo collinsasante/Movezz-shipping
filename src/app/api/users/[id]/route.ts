@@ -20,16 +20,13 @@ export async function DELETE(
     const firebaseUid: string | undefined = body.firebaseUid;
 
     if (firebaseUid) {
-      await deleteFirebaseUser(firebaseUid).catch((e) =>
-        console.error("[DELETE /users] deleteFirebaseUser failed (non-fatal):", e)
-      );
+      await deleteFirebaseUser(firebaseUid).catch(() => {});
     }
 
     await usersApi.delete(id);
 
     return Response.json({ success: true, message: "Account deleted" });
-  } catch (err) {
-    console.error("[DELETE /users/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to delete account");
   }
 }

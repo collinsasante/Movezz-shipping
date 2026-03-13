@@ -34,8 +34,7 @@ export async function GET(request: NextRequest) {
   try {
     const users = await usersApi.listAll();
     return Response.json({ success: true, data: users });
-  } catch (err) {
-    console.error("[GET /users] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch users");
   }
 }
@@ -65,7 +64,6 @@ export async function POST(request: NextRequest) {
       firebaseUid = firebaseUser.uid;
     } catch (fbErr: unknown) {
       const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-      console.error("[POST /users] createFirebaseUser failed:", msg);
       if (msg.includes("already in use") || msg.includes("email-already-exists") || msg.includes("email-already-in-use")) {
         return badRequestResponse("A user with this email already exists");
       }
@@ -77,18 +75,15 @@ export async function POST(request: NextRequest) {
     try {
       appUser = await usersApi.create(firebaseUid, email, role);
     } catch (atErr: unknown) {
-      console.error("[POST /users] airtable_create failed, rolling back Firebase user:", atErr);
-      await deleteFirebaseUser(firebaseUid).catch((e) =>
-        console.error("[POST /users] rollback deleteFirebaseUser failed:", e)
-      );
+      await deleteFirebaseUser(firebaseUid).catch(() => {});
       throw atErr;
     }
 
     // 3. Set Firebase custom claims (non-fatal)
     try {
       await setCustomClaims(firebaseUid, { role });
-    } catch (claimsErr) {
-      console.error("[POST /users] setCustomClaims failed (non-fatal):", claimsErr);
+    } catch {
+      // setCustomClaims failed (non-fatal)
     }
 
     // 4. Send password-setup email (non-fatal)
@@ -96,8 +91,8 @@ export async function POST(request: NextRequest) {
     try {
       await sendPasswordResetEmail(email);
       emailSent = true;
-    } catch (emailErr) {
-      console.error("[POST /users] sendPasswordResetEmail failed (non-fatal):", emailErr);
+    } catch {
+      // sendPasswordResetEmail failed (non-fatal)
     }
 
     return Response.json(
@@ -110,7 +105,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /users] Error:", msg);
     return Response.json(
       {
         success: false,

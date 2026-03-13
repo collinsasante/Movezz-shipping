@@ -44,7 +44,6 @@ export async function POST(
     });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /containers/[id]/items] Error:", errMsg);
     return serverErrorResponse(`Failed to add item: ${errMsg}`);
   }
 }
@@ -78,8 +77,7 @@ export async function DELETE(
       data: container,
       message: "Item removed from container",
     });
-  } catch (err) {
-    console.error("[DELETE /containers/[id]/items] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to remove item from container");
   }
 }

@@ -44,8 +44,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const supplier = await suppliersApi.update(id, parsed.data as Parameters<typeof suppliersApi.update>[1]);
     return Response.json({ success: true, data: supplier });
-  } catch (err) {
-    console.error("[PATCH /suppliers/:id]", err);
+  } catch {
     return serverErrorResponse("Failed to update supplier");
   }
 }
@@ -58,8 +57,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     await suppliersApi.delete(id);
     return Response.json({ success: true });
-  } catch (err) {
-    console.error("[DELETE /suppliers/:id]", err);
+  } catch {
     return serverErrorResponse("Failed to delete supplier");
   }
 }

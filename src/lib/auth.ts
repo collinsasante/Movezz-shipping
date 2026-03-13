@@ -19,8 +19,8 @@ try {
       if (val.expiresAt <= now) authCache.delete(key);
     }
   }, 60 * 1000);
-} catch (e) {
-  console.warn("[auth] setInterval not available in this runtime:", e);
+} catch {
+  // setInterval not available in this runtime
 }
 
 // ---- Extract and verify token from request ----
@@ -49,11 +49,10 @@ export async function getAuthUser(
     authCache.set(token, { user, expiresAt: Date.now() + AUTH_CACHE_TTL });
 
     // Update last login (fire-and-forget, only on cache miss)
-    usersApi.updateLastLogin(user.id).catch(console.error);
+    usersApi.updateLastLogin(user.id).catch(() => {});
 
     return user;
-  } catch (err) {
-    console.error("Auth verification failed:", err);
+  } catch {
     return null;
   }
 }

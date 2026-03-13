@@ -33,8 +33,7 @@ export async function POST(request: NextRequest) {
         folder,
       },
     });
-  } catch (err) {
-    console.error("[POST /upload/sign] Error:", err);
+  } catch {
     return Response.json({ success: false, error: "Failed to sign upload" }, { status: 500 });
   }
 }

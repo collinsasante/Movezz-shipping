@@ -41,7 +41,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAppUser(res.data.data.user);
       }
     } catch (err) {
-      console.error("Failed to fetch app user:", err);
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const code = err.response?.data?.code;
@@ -99,8 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(null);
       setAppUser(null);
       window.location.href = "/login";
-    } catch (err) {
-      console.error("Sign out error:", err);
+    } catch {
+      // sign out error
     }
   }, []);
 

@@ -95,7 +95,7 @@ export default function ContainerDetailPage() {
       setDialogItems(
         all
           .filter((item) => !container?.items?.some((ci) => ci.id === item.id))
-          .filter((item) => item.status !== "Ready for Pickup" && item.status !== "Completed")
+          .filter((item) => !["Ready for Pickup", "Completed", "Arrived in Ghana", "Sorting"].includes(item.status))
       );
     } catch {
       setDialogItems([]);

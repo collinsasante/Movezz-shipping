@@ -58,8 +58,7 @@ export async function GET(request: NextRequest) {
     }
 
     return Response.json({ success: true, data: logs });
-  } catch (err) {
-    console.error("[GET /activity-logs] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch activity logs");
   }
 }

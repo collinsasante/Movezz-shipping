@@ -34,8 +34,7 @@ export async function GET(request: NextRequest) {
         missingCount: missingItems.length,
       },
     });
-  } catch (err) {
-    console.error("[GET /sorting] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch sorting items");
   }
 }
@@ -84,7 +83,6 @@ export async function POST(request: NextRequest) {
     }
   } catch (err: unknown) {
     if (err instanceof BusinessError) return badRequestResponse(err.message);
-    console.error("[POST /sorting] Error:", err);
     return serverErrorResponse("Sorting action failed");
   }
 }

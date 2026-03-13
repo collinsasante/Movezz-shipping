@@ -51,8 +51,7 @@ export async function GET(request: NextRequest) {
     const data = allOrders.slice((page - 1) * limit, page * limit);
 
     return Response.json({ success: true, data, total, totalPages, page });
-  } catch (err) {
-    console.error("[GET /orders] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch orders");
   }
 }
@@ -111,14 +110,6 @@ export async function POST(request: NextRequest) {
           })
         : [{ item_name: `Freight - ${order.orderRef}`, quantity: 1, price: Math.round(parsed.data.invoiceAmount * 100) / 100, item_type: "product" }];
 
-      console.log("[POST /orders] ===== DATA CONSISTENCY CHECK =====");
-      console.log("[POST /orders] customer name:", customer?.name, "email:", customer?.email, "phone:", customer?.phone);
-      console.log("[POST /orders] invoiceAmount (app):", parsed.data.invoiceAmount, "GHS");
-      console.log("[POST /orders] invoiceDate:", parsed.data.invoiceDate);
-      console.log("[POST /orders] validItems:", validItems.length, "pricePerItem:", pricePerItem);
-      lineItems.forEach((li, i) => console.log(`[POST /orders]   lineItem[${i}]: "${li.item_name}" x${li.quantity} @ ${li.price}`));
-      console.log("[POST /orders] ================================");
-
       const keepupResult = await createKeepupSale({
         customerName: customer?.name,
         customerEmail: customer?.email,
@@ -127,15 +118,12 @@ export async function POST(request: NextRequest) {
         items: lineItems,
       });
 
-      console.log("[POST /orders] Keepup result — saleId:", keepupResult.saleId, "link:", keepupResult.link);
-
       // Store the keepup sale ID back on the order
       await ordersApi.storeKeepupIds(
         order.id,
         keepupResult.saleId,
         keepupResult.link
       );
-      console.log("[POST /orders] storeKeepupIds done for order:", order.id, "saleId:", keepupResult.saleId);
       order.keepupSaleId = keepupResult.saleId;
       order.keepupLink = keepupResult.link;
 
@@ -150,10 +138,10 @@ export async function POST(request: NextRequest) {
           itemCount: parsed.data.itemIds.length,
           keepupLink: order.keepupLink,
           notes: parsed.data.notes,
-        }).catch((e) => console.error("[POST /orders] Invoice email failed (non-fatal):", e));
+        }).catch(() => {});
       }
-    } catch (keepupErr) {
-      console.error("[POST /orders] Keepup sale creation failed (non-fatal):", keepupErr instanceof Error ? keepupErr.message : keepupErr);
+    } catch {
+      // Keepup sale creation failed (non-fatal)
     }
 
     return Response.json(
@@ -164,8 +152,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (err) {
-    console.error("[POST /orders] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to create order");
   }
 }

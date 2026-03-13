@@ -32,8 +32,8 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center p-8 bg-gray-50">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-2.5 mb-8">
-          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={36} height={36} className="rounded-lg" />
-          <span className="text-sm font-semibold text-gray-700 tracking-tight">Pakkmaxx</span>
+          <Image src="/logowithouttext.png" alt="PAKKmax" width={36} height={36} className="rounded-lg" />
+          <span className="text-sm font-semibold text-gray-700 tracking-tight">PAKKmax</span>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">

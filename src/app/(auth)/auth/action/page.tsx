@@ -273,7 +273,7 @@ function ActionContent() {
       >
         <div className="relative z-10 flex items-center gap-3">
           <div className="h-px w-8 bg-white/25" />
-          <span className="text-xs font-semibold tracking-widest text-white/40 uppercase">Pakkmaxx</span>
+          <span className="text-xs font-semibold tracking-widest text-white/40 uppercase">PAKKmax</span>
         </div>
         <div className="relative z-10">
           <h1 className="text-4xl font-black text-white leading-[1.15] mb-4">
@@ -289,8 +289,8 @@ function ActionContent() {
       <div className="flex-1 flex flex-col">
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-10 pt-8">
-          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={36} height={36} className="rounded-lg" />
-          <span className="text-sm font-semibold text-gray-700 tracking-tight">Pakkmaxx</span>
+          <Image src="/logowithouttext.png" alt="PAKKmax" width={36} height={36} className="rounded-lg" />
+          <span className="text-sm font-semibold text-gray-700 tracking-tight">PAKKmax</span>
         </div>
 
         {/* Content */}

@@ -93,8 +93,8 @@ function LoginForm() {
     <div className="flex flex-col h-screen">
       {/* Brand at top */}
       <div className="flex items-center gap-2.5 px-10 pt-8">
-        <Image src="/logowithouttext.png" alt="Pakkmaxx" width={28} height={28} className="rounded" />
-        <span className="text-sm font-semibold text-gray-700 tracking-tight">Pakkmaxx</span>
+        <Image src="/logowithouttext.png" alt="PAKKmax" width={28} height={28} className="rounded" />
+        <span className="text-sm font-semibold text-gray-700 tracking-tight">PAKKmax</span>
       </div>
 
       {/* Form — vertically centred */}
@@ -182,7 +182,7 @@ function LoginForm() {
       {/* Bottom link */}
       <p className="text-center text-sm text-gray-400 pb-8">
         Need access?{" "}
-        <span className="text-gray-700 font-medium">Contact your Pakkmaxx administrator.</span>
+        <span className="text-gray-700 font-medium">Contact your PAKKmax administrator.</span>
       </p>
     </div>
   );

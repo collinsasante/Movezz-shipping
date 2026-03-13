@@ -56,7 +56,7 @@ function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
-    <div className="flex justify-between py-2 border-b border-gray-50 last:border-0">
+    <div className="flex justify-between py-1.5">
       <span className="text-xs text-gray-500">{label}</span>
       <span className="text-xs font-medium text-gray-800 text-right max-w-[60%] break-words">{value}</span>
     </div>
@@ -71,14 +71,11 @@ function calcItemPrice(item: Item, pkg?: string): string | null {
     const rates = JSON.parse(localStorage.getItem(RATES_KEY) ?? "{}");
     const pkgRates = JSON.parse(localStorage.getItem(PACKAGES_RATES_KEY) ?? "{}");
     const usdToGhs: number = rates.usdToGhs ?? 12.5;
-    const tier = (pkg ?? "standard") as "standard" | "discounted" | "premium";
+    const tier = (pkg ?? "standard") as "standard" | "discounted" | "premium" | "special";
     const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
-    console.log(`[calcItemPrice] ${item.itemRef} | tier=${tier} | shippingType=${item.shippingType} | weight=${item.weight} | dims=${item.length}x${item.width}x${item.height}${item.dimensionUnit} | usdToGhs=${usdToGhs} | tierRates=`, tierRates);
-
     if (item.shippingType === "air" && item.weight) {
       const usd = item.weight * (item.quantity ?? 1) * tierRates.air;
       const ghs = usd * usdToGhs;
-      console.log(`[calcItemPrice] ${item.itemRef} AIR → weight=${item.weight} × airRate=${tierRates.air} × usdToGhs=${usdToGhs} = GHS ${ghs.toFixed(2)}`);
       return `GHS ${ghs.toFixed(2)}`;
     }
     if (item.length && item.width && item.height) {
@@ -86,12 +83,10 @@ function calcItemPrice(item: Item, pkg?: string): string | null {
       const cbm = (item.length * item.width * item.height * factor * (item.quantity ?? 1)) / 1_000_000;
       const usd = cbm * tierRates.sea;
       const ghs = usd * usdToGhs;
-      console.log(`[calcItemPrice] ${item.itemRef} SEA → cbm=${cbm.toFixed(6)} × seaRate=${tierRates.sea} × usdToGhs=${usdToGhs} = GHS ${ghs.toFixed(2)}`);
       return `GHS ${ghs.toFixed(2)}`;
     }
-    console.log(`[calcItemPrice] ${item.itemRef} → no price (no matching dims or weight)`);
     return null;
-  } catch (e) { console.error("[calcItemPrice] error:", e); return null; }
+  } catch { return null; }
 }
 
 export default function CustomerItemsPage() {
@@ -172,7 +167,7 @@ export default function CustomerItemsPage() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Items list */}
-        <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+        <div className="flex-1 p-4 sm:p-6 space-y-4 overflow-y-auto">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
               placeholder="Search items..."
@@ -314,14 +309,19 @@ export default function CustomerItemsPage() {
               )}
 
               {/* Description */}
-              <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Description</p>
-                <p className="text-sm text-gray-800">{selectedItem.description}</p>
-              </div>
+              {selectedItem.description && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Description</p>
+                  <p className="text-sm text-gray-800">{selectedItem.description}</p>
+                </div>
+              )}
 
               {/* Item details */}
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
+                {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
+                {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`GH₵ ${selectedItem.estPrice.toFixed(2)}`} />}
+                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`GH₵ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
                 {(() => { const price = calcItemPrice(selectedItem, appUser?.package); return price ? <DetailRow label="Est. Shipping Cost" value={price} /> : null; })()}
                 {selectedItem.shippingType === "sea" && selectedItem.length && selectedItem.width && selectedItem.height ? (
                   <DetailRow
@@ -337,7 +337,7 @@ export default function CustomerItemsPage() {
                 <DetailRow label="Date Received" value={formatDate(selectedItem.dateReceived)} />
                 {selectedItem.trackingNumber && <DetailRow label="Tracking Number" value={selectedItem.trackingNumber} />}
                 {selectedItem.containerName && <DetailRow label="Container" value={selectedItem.containerName} />}
-                {selectedItem.orderRef && <DetailRow label="Order" value={selectedItem.orderRef} />}
+                {selectedItem.orderRef && <DetailRow label="Invoice" value={selectedItem.orderRef} />}
                 {selectedItem.notes && <DetailRow label="Notes" value={selectedItem.notes} />}
               </div>
 

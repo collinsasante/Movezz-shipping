@@ -83,7 +83,7 @@ export async function PATCH(
           description: item.description ?? "",
           status,
           trackingNumber: item.trackingNumber,
-        }).catch((e) => console.error("[status] Item email failed:", e));
+        }).catch(() => {});
       }).catch(() => {/* non-fatal */});
     }
 
@@ -96,7 +96,6 @@ export async function PATCH(
     if (err instanceof BusinessError) {
       return badRequestResponse(err.message);
     }
-    console.error("[PATCH /items/[id]/status] Error:", err);
     return serverErrorResponse("Failed to update item status");
   }
 }

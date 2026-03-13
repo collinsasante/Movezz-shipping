@@ -89,17 +89,6 @@ export async function createKeepupSale(
   if (params.customerEmail && params.customerEmail.includes("@")) body.customer_email = params.customerEmail;
   if (normalizedPhone) body.phone_number = normalizedPhone;
 
-  console.log("[keepup] createKeepupSale — app data check:");
-  console.log("  customerName:", params.customerName);
-  console.log("  customerEmail:", params.customerEmail);
-  console.log("  customerPhone raw:", params.customerPhone, "→ normalized:", normalizedPhone);
-  console.log("  invoiceDate:", params.invoiceDate, "→ issue_date:", issueDate);
-  console.log("  items count:", params.items.length);
-  params.items.forEach((item, i) => {
-    console.log(`  item[${i}]: name="${item.item_name}" qty=${item.quantity} price=${item.price} type=${item.item_type}`);
-  });
-  console.log("[keepup] createKeepupSale request body:", JSON.stringify(body, null, 2));
-
   const res = await fetch(`${BASE}/sales/add`, {
     method: "POST",
     headers: authHeaders(),
@@ -107,7 +96,6 @@ export async function createKeepupSale(
   });
 
   const data = await res.json().catch(() => ({}));
-  console.log("[keepup] createKeepupSale response status:", res.status, "body:", JSON.stringify(data, null, 2));
 
   if (!res.ok) {
     throw new Error(
@@ -116,7 +104,6 @@ export async function createKeepupSale(
   }
 
   const d = (data as { data?: { sale_id?: number | string; share_link?: string; link?: string }; sale_id?: number | string; share_link?: string; link?: string }).data ?? data;
-  console.log("[keepup] parsed saleId:", d.sale_id, "link:", d.share_link ?? d.link);
   return {
     saleId: String(d.sale_id ?? ""),
     link: d.share_link ?? d.link ?? undefined,
@@ -158,16 +145,18 @@ export async function getKeepupSale(saleId: string): Promise<KeepupSaleStatus> {
 
   // Response may be nested under data or at root
   const d = (data as Record<string, unknown>).data ?? data;
-  const totalAmount = parseFloat(String((d as Record<string, unknown>).total_amount ?? "")) || null;
-  const amountPaid = parseFloat(String((d as Record<string, unknown>).amount_paid ?? "")) || 0;
-  const balanceDue = parseFloat(String((d as Record<string, unknown>).balance_due ?? "")) || 0;
+  const r = d as Record<string, unknown>;
+  const totalAmount = parseFloat(String(r.total_amount ?? r.amount ?? r.grand_total ?? "")) || null;
+  const rawAmountPaid = parseFloat(String(r.amount_paid ?? r.amount_received ?? r.paid_amount ?? r.paid ?? ""));
+  const amountPaid = isNaN(rawAmountPaid) ? 0 : rawAmountPaid;
+  const rawBalanceDue = parseFloat(String(r.balance_due ?? r.balance ?? r.amount_due ?? r.remaining ?? ""));
+  const balanceDue = isNaN(rawBalanceDue) ? (totalAmount !== null ? totalAmount - amountPaid : 0) : rawBalanceDue;
 
   const shareLink = (d as Record<string, unknown>).share_link as string | undefined;
 
   // Guard: if we couldn't parse a total_amount, the response is unexpected — throw so
   // the caller doesn't falsely mark orders as Paid
   if (totalAmount === null) {
-    console.warn("[keepup] getKeepupSale: unexpected response shape, cannot determine payment status", JSON.stringify(d));
     throw new Error("Keepup response missing total_amount — skipping status update");
   }
 

@@ -20,7 +20,7 @@ export function generateShippingMark(name: string, phone: string): string {
 // ---- Shipping Address Generator ----
 // A unique readable address based on shipping mark
 export function generateShippingAddress(shippingMark: string): string {
-  return `${shippingMark}, Pakkmaxx Warehouse, Accra, Ghana`;
+  return `${shippingMark}, PAKKmax Warehouse, Accra, Ghana`;
 }
 
 // ---- Auto ID Generators ----
@@ -129,7 +129,7 @@ export function buildWhatsAppMessage(
   orderRef: string,
   newStatus: ItemStatus | string
 ): string {
-  return `Hello ${customerName}, your package ${orderRef} is now *${newStatus}*. Thank you for choosing Pakkmaxx! 📦`;
+  return `Hello ${customerName}, your package ${orderRef} is now *${newStatus}*. Thank you for choosing PAKKmax! 📦`;
 }
 
 // ---- Phone Number Normalizer ----

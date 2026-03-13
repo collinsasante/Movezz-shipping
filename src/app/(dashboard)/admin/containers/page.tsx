@@ -98,7 +98,7 @@ export default function ContainersPage() {
     <div className="flex flex-col h-full">
       <Header title="Containers" subtitle="Manage shipment containers" />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-4 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar

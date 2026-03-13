@@ -12,8 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const warehouses = await warehousesApi.list();
     return Response.json({ success: true, data: warehouses });
-  } catch (err) {
-    console.error("[GET /warehouses]", err);
+  } catch {
     return serverErrorResponse("Failed to fetch warehouses");
   }
 }
@@ -34,8 +33,7 @@ export async function POST(request: NextRequest) {
       phone: body.phone?.trim() || undefined,
     });
     return Response.json({ success: true, data: warehouse }, { status: 201 });
-  } catch (err) {
-    console.error("[POST /warehouses]", err);
+  } catch {
     return serverErrorResponse("Failed to create warehouse");
   }
 }

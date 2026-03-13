@@ -79,7 +79,9 @@ export default function CustomerAddressesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900">{selectedWarehouse.name}</p>
-                    <p className="text-sm text-gray-600 mt-0.5 break-all">{selectedWarehouse.address}</p>
+                    <p className="text-sm text-gray-600 mt-0.5 break-all">
+                      {selectedWarehouse.address}{appUser?.shippingMark ? ` (${appUser.shippingMark})` : ""}
+                    </p>
                     {selectedWarehouse.phone && <p className="text-xs text-gray-500 mt-0.5">{selectedWarehouse.phone}</p>}
                   </div>
                   <button

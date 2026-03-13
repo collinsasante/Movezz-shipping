@@ -1,18 +1,44 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CustomerSidebar } from "@/components/layout/CustomerSidebar";
+import { AdminBottomNav } from "@/components/layout/AdminBottomNav";
+import { CustomerBottomNav } from "@/components/layout/CustomerBottomNav";
 import { WhatsAppButton } from "@/components/shared/WhatsAppButton";
-import { Loader2 } from "lucide-react";
+import { Loader2, Copy, CheckCheck } from "lucide-react";
+import axios from "axios";
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const { appUser, loading } = useAuth();
   const pathname = usePathname();
   const { open, closeSidebar } = useSidebar();
+  const [copied, setCopied] = useState(false);
+  const [warehouseAddress, setWarehouseAddress] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (appUser?.role !== "customer") return;
+    const savedId = localStorage.getItem("pakk_preferred_warehouse");
+    if (!savedId) return;
+    axios.get("/api/warehouses").then((res) => {
+      const match = res.data.data?.find((w: { id: string; address: string }) => w.id === savedId);
+      if (match) setWarehouseAddress(match.address);
+    }).catch(() => {});
+  }, [appUser?.role]);
+
+  const shippingMark = appUser?.shippingMark ?? "";
+  const fullAddress = warehouseAddress ? `${warehouseAddress} (${shippingMark})` : shippingMark;
+
+  const copyMark = () => {
+    if (!shippingMark) return;
+    navigator.clipboard.writeText(fullAddress).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  };
 
   if (loading) {
     return (
@@ -71,10 +97,32 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       )}
       {appUser.role === "customer" && <CustomerSidebar />}
 
-      {/* Main content */}
+      {/* Main content — pb-16 on mobile to clear bottom nav */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        {/* Mobile-only shipping mark bar for customers */}
+        {appUser.role === "customer" && shippingMark && (
+          <div className="lg:hidden shrink-0 bg-brand-50 border-b border-brand-100 px-4 py-2 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] text-brand-600 font-semibold uppercase tracking-wide leading-none mb-0.5">Your Shipping Address</p>
+              <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">{fullAddress}</code>
+            </div>
+            <button
+              onClick={copyMark}
+              className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-500 transition-colors"
+              aria-label="Copy shipping address"
+            >
+              {copied ? <CheckCheck className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto pb-16 lg:pb-0">{children}</div>
       </main>
+
+      {/* Bottom navigation — mobile only */}
+      {(appUser.role === "super_admin" || appUser.role === "warehouse_staff") && (
+        <AdminBottomNav />
+      )}
+      {appUser.role === "customer" && <CustomerBottomNav />}
 
       {appUser.role === "customer" && <WhatsAppButton />}
     </div>

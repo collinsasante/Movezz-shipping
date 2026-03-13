@@ -33,7 +33,6 @@ export async function POST(request: NextRequest) {
       appUser = await usersApi.getByFirebaseUid(decoded.uid);
     } catch (dbErr) {
       const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
-      console.error("[verify] step=airtable_read error:", msg);
       return Response.json(
         {
           success: false,
@@ -52,7 +51,6 @@ export async function POST(request: NextRequest) {
         userCount = await usersApi.countAll();
       } catch (countErr) {
         const msg = countErr instanceof Error ? countErr.message : String(countErr);
-        console.error("[verify] step=count_users error:", msg);
         return Response.json(
           {
             success: false,
@@ -67,10 +65,8 @@ export async function POST(request: NextRequest) {
       if (userCount === 0) {
         try {
           appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "super_admin");
-          console.log(`[verify] Bootstrap — first super_admin created: ${decoded.email}`);
         } catch (createErr) {
           const msg = createErr instanceof Error ? createErr.message : String(createErr);
-          console.error("[verify] step=create_user error:", msg);
           return Response.json(
             {
               success: false,
@@ -89,10 +85,8 @@ export async function POST(request: NextRequest) {
             appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "customer", existingCustomer.id);
             // Link Firebase UID to customer record (non-fatal)
             customersApi.linkFirebaseUid(existingCustomer.id, decoded.uid).catch(() => {});
-            console.log(`[verify] Auto-registered customer: ${decoded.email}`);
           } catch (createErr) {
             const msg = createErr instanceof Error ? createErr.message : String(createErr);
-            console.error("[verify] step=auto_create_customer error:", msg);
             return Response.json(
               { success: false, error: "Failed to set up your account.", detail: msg, step: "auto_create_customer" },
               { status: 500 }
@@ -115,9 +109,7 @@ export async function POST(request: NextRequest) {
     appUser = await usersApi.enrichCustomerUser(appUser).catch(() => appUser!);
 
     // updateLastLogin is non-fatal — don't block login if this fails
-    usersApi.updateLastLogin(appUser.id).catch((err) =>
-      console.error("[verify] updateLastLogin failed (non-fatal):", err)
-    );
+    usersApi.updateLastLogin(appUser.id).catch(() => {});
 
     return Response.json(
       { success: true, data: { user: appUser, uid: decoded.uid, email: decoded.email } },
@@ -128,7 +120,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("[verify] Unexpected error:", message);
     return Response.json(
       { success: false, error: "Verification failed", ...(IS_DEV && { detail: message }) },
       { status: 500 }

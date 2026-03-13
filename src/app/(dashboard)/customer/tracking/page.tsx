@@ -18,7 +18,32 @@ export default function CustomerTrackingPage() {
   const [selectedHistory, setSelectedHistory] = useState<StatusHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const autoSelected = useRef(false);
+  const panelPushedRef = useRef(false);
+
+  // Push a history entry when panel opens so native back closes it, not navigates away
+  useEffect(() => {
+    if (selectedItem) {
+      if (!panelPushedRef.current) {
+        window.history.pushState({ panel: "tracking" }, "");
+        panelPushedRef.current = true;
+      }
+    } else {
+      panelPushedRef.current = false;
+    }
+  }, [selectedItem]);
+
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent) => {
+      if (e.state?.panel === "tracking" || panelPushedRef.current) {
+        // Back was pressed while panel was open — close panel instead
+        setSelectedItem(null);
+        setSelectedHistory([]);
+        panelPushedRef.current = false;
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const fetchHistory = useCallback(async (itemId: string) => {
     setHistoryLoading(true);
@@ -46,18 +71,13 @@ export default function CustomerTrackingPage() {
         });
         const data: Item[] = res.data.data;
         setItems(data);
-        if (!autoSelected.current && data.length > 0) {
-          autoSelected.current = true;
-          setSelectedItem(data[0]);
-          fetchHistory(data[0].id);
-        }
       } catch {
         error("Failed to load items");
       } finally {
         setLoading(false);
       }
     },
-    [error, fetchHistory]
+    [error]
   );
 
   useEffect(() => { load(); }, [load]);
@@ -146,7 +166,7 @@ export default function CustomerTrackingPage() {
             {/* Mobile header with back button */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 sticky top-0 bg-white z-10 md:hidden">
               <button
-                onClick={() => { setSelectedItem(null); setSelectedHistory([]); }}
+                onClick={() => { if (panelPushedRef.current) { window.history.back(); } else { setSelectedItem(null); setSelectedHistory([]); } }}
                 className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
               >
                 <ArrowLeft className="h-5 w-5" />

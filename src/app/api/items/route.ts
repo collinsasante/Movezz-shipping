@@ -65,8 +65,7 @@ export async function GET(request: NextRequest) {
     const data = allItems.slice((page - 1) * limit, page * limit);
 
     return Response.json({ success: true, data, total, totalPages, page });
-  } catch (err) {
-    console.error("[GET /items] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch items");
   }
 }
@@ -100,8 +99,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (err) {
-    console.error("[POST /items] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to create item");
   }
 }

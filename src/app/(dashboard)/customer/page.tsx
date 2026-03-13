@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/shared/StatCard";
@@ -13,9 +13,9 @@ import {
   ShoppingCart,
   DollarSign,
   Clock,
-  MapPin,
-  Box,
   CalendarDays,
+  Truck,
+  CheckCircle,
 } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
@@ -45,6 +45,7 @@ function filterByPeriod<T>(items: T[], getDate: (i: T) => string, period: Period
     return !isNaN(d.getTime()) && d >= cutoff && d <= now;
   });
 }
+
 
 export default function CustomerDashboardPage() {
   const { appUser } = useAuth();
@@ -92,7 +93,7 @@ export default function CustomerDashboardPage() {
   const filteredItemCount = deduplicatedItems.length;
   const filteredOrderCount = filteredOrders.length;
   const filteredPendingPayment = filteredOrders
-    .filter((o) => o.status === "Pending")
+    .filter((o) => o.status === "Pending" || o.status === "Partial")
     .reduce((sum, o) => sum + o.invoiceAmount, 0);
   const filteredReadyForPickup = deduplicatedItems.filter((i) => i.status === "Ready for Pickup").length;
   const filteredCbm = deduplicatedItems.reduce((sum, item) => {
@@ -103,6 +104,20 @@ export default function CustomerDashboardPage() {
   const isFiltered = period !== "all";
   const activeItems = deduplicatedItems.filter((i) => i.status !== "Completed").length;
 
+  // New stat card values
+  const filteredInTransit = deduplicatedItems.filter(
+    (i) => i.status === "Shipped to Ghana" || i.status === "Arrived in Ghana"
+  ).length;
+  const filteredDelivered = deduplicatedItems.filter(
+    (i) => i.status === "Completed" || i.status === "Ready for Pickup"
+  ).length;
+
+  // Outstanding invoices
+  const outstandingOrders = filteredOrders.filter(
+    (o) => o.status === "Pending" || o.status === "Partial"
+  );
+
+
   return (
     <div className="flex flex-col h-full">
       <Header
@@ -110,41 +125,34 @@ export default function CustomerDashboardPage() {
         subtitle="Here's an overview of your shipments"
       />
 
-      <div className="flex-1 p-6 space-y-6 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 space-y-5 overflow-y-auto">
         {/* Period filter — above cards so it affects them */}
-        <div className="flex flex-wrap items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-gray-400" />
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white">
-            {(["all", "today", "week", "month", "custom"] as Period[]).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 font-medium transition-colors capitalize ${period === p ? "bg-brand-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
-              >
-                {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "This week" : p === "month" ? "This month" : "Custom"}
-              </button>
-            ))}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+            <CalendarDays className="h-4 w-4 text-gray-400 shrink-0" />
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs bg-white shrink-0">
+              {(["all", "today", "week", "month", "custom"] as Period[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={`px-3 py-2 font-medium transition-colors whitespace-nowrap ${period === p ? "bg-brand-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+                >
+                  {p === "all" ? "All time" : p === "today" ? "Today" : p === "week" ? "Week" : p === "month" ? "Month" : "Custom"}
+                </button>
+              ))}
+            </div>
           </div>
           {period === "custom" && (
             <div className="flex items-center gap-1">
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
-              <span className="text-gray-400 text-xs">–</span>
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="flex-1 h-9 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <span className="text-gray-400 text-xs shrink-0">–</span>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="flex-1 h-9 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </div>
           )}
         </div>
 
-        {/* Stats — reflect selected period */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <StatCard
-            title="Total Items"
-            value={stats ? filteredItemCount : "—"}
-            subtitle={isFiltered ? `${activeItems} active` : `${activeItems} active`}
-            icon={Package}
-            iconColor="text-blue-600"
-            iconBg="bg-blue-50"
-            href="/customer/items"
-          />
+        {/* Stats — 4 cards: 2 cols mobile, 4 cols lg */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Total Orders"
             value={stats ? filteredOrderCount : "—"}
@@ -155,33 +163,34 @@ export default function CustomerDashboardPage() {
             href="/customer/orders"
           />
           <StatCard
-            title="Pending Payment"
-            value={stats ? formatCurrency(filteredPendingPayment) : "—"}
-            subtitle="Outstanding balance"
-            icon={DollarSign}
-            iconColor="text-amber-600"
-            iconBg="bg-amber-50"
-            href="/customer/orders"
+            title="In Transit"
+            value={stats ? filteredInTransit : "—"}
+            subtitle="On the way"
+            icon={Truck}
+            iconColor="text-blue-600"
+            iconBg="bg-blue-50"
+            href="/customer/tracking"
           />
           <StatCard
-            title="Ready for Pickup"
-            value={stats ? filteredReadyForPickup : "—"}
-            subtitle="Available now"
-            icon={MapPin}
+            title="Delivered"
+            value={stats ? filteredDelivered : "—"}
+            subtitle="Ready or completed"
+            icon={CheckCircle}
             iconColor="text-green-600"
             iconBg="bg-green-50"
             href="/customer/items"
           />
           <StatCard
-            title="Total CBM"
-            value={stats ? `${filteredCbm.toFixed(2)} m³` : "—"}
-            subtitle={isFiltered ? "In period" : "Your shipments"}
-            icon={Box}
-            iconColor="text-teal-600"
-            iconBg="bg-teal-50"
-            href="/customer/items"
+            title="Outstanding Balance"
+            value={stats ? formatCurrency(filteredPendingPayment) : "—"}
+            subtitle="Pending payment"
+            icon={DollarSign}
+            iconColor="text-amber-600"
+            iconBg="bg-amber-50"
+            href="/customer/orders"
           />
         </div>
+
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* Recent Items */}
@@ -244,7 +253,7 @@ export default function CustomerDashboardPage() {
             )}
           </div>
 
-          {/* Tracking Timeline */}
+          {/* Right column: Tracking + Recent Orders + Outstanding Invoices */}
           <div className="lg:col-span-2">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-gray-900">
@@ -260,7 +269,7 @@ export default function CustomerDashboardPage() {
             <div>
               {selectedItem ? (
                 <>
-                  <div className="mb-4 pb-4 border-b border-gray-50">
+                  <div className="pb-4 border-b border-gray-50">
                     <p className="text-sm font-semibold text-gray-900 truncate">
                       {selectedItem.description}
                     </p>
@@ -272,6 +281,7 @@ export default function CustomerDashboardPage() {
                         : ""}
                     </p>
                   </div>
+
                   <TrackingTimeline
                     currentStatus={selectedItem.status}
                     compact
@@ -287,39 +297,6 @@ export default function CustomerDashboardPage() {
               )}
             </div>
 
-            {/* Recent Orders */}
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-900">Recent Orders</h2>
-                <a
-                  href="/customer/orders"
-                  className="text-sm text-brand-600 hover:underline"
-                >
-                  View all →
-                </a>
-              </div>
-              {filteredOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl"
-                >
-                  <div>
-                    <p className="font-mono text-xs font-bold text-gray-800">
-                      {order.orderRef}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatDate(order.invoiceDate)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-sm">
-                      {formatCurrency(order.invoiceAmount)}
-                    </p>
-                    <StatusBadge status={order.status} />
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>

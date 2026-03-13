@@ -53,6 +53,11 @@ export default function AdminOrderDetailPage() {
   const [customerPhone, setCustomerPhone] = useState<string>("");
   const [customerPackage, setCustomerPackage] = useState<string>("standard");
 
+  // Keepup payment data — persisted separately so values survive re-fetches where Keepup returns null
+  const [keepupPaid, setKeepupPaid] = useState<number | null>(null);
+  const [keepupBalance, setKeepupBalance] = useState<number | null>(null);
+  const [keepupTotal, setKeepupTotal] = useState<number | null>(null);
+
   // Record Payment modal
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -63,6 +68,12 @@ export default function AdminOrderDetailPage() {
       const res = await axios.get(`/api/orders/${id}`);
       const o: OrderDetail = res.data.data;
       setOrder(o);
+      // Only update keepup payment amounts if the API returned real values (Keepup didn't fail)
+      if (o.keepupAmountPaid != null || o.keepupTotalAmount != null) {
+        setKeepupPaid(o.keepupAmountPaid ?? null);
+        setKeepupBalance(o.keepupBalanceDue ?? null);
+        setKeepupTotal(o.keepupTotalAmount ?? null);
+      }
       // Fetch customer phone + package tier
       if (o.customerId) {
         axios.get(`/api/customers/${o.customerId}`).then((cRes) => {
@@ -72,7 +83,7 @@ export default function AdminOrderDetailPage() {
         }).catch(() => {});
       }
     } catch {
-      error("Failed to load order");
+      error("Failed to load invoice");
     } finally {
       setLoading(false);
     }
@@ -84,30 +95,24 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     setCreatingInvoice(true);
     try {
-      // Calculate per-item prices using natural pricing (air: weight, sea: CBM)
+      // Split invoice amount proportionally by CBM (or equally if no dimensions)
+      const items = order.items ?? [];
+      const cbms = items.map((item) => getCbm(item));
+      const totalCbmForInvoice = cbms.reduce((s, c) => s + c, 0);
       const priceMap: Record<string, number> = {};
-      try {
-        const rates = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}");
-        const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
-        const usdToGhs: number = rates.usdToGhs ?? 12.5;
-        const tier = customerPackage as "standard" | "discounted" | "premium";
-        const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
-        console.log("[handleCreateInvoice] tier:", tier, "tierRates:", tierRates, "usdToGhs:", usdToGhs);
-        (order.items ?? []).forEach((item) => {
-          if (item.shippingType === "air" && item.weight) {
-            const ghs = item.weight * (item.quantity ?? 1) * tierRates.air * usdToGhs;
-            console.log(`[handleCreateInvoice] ${item.itemRef} AIR → GHS ${ghs.toFixed(2)}`);
-            priceMap[item.id] = Math.round(ghs * 100) / 100;
-          } else if (item.length && item.width && item.height) {
-            const ghs = getCbm(item) * tierRates.sea * usdToGhs;
-            console.log(`[handleCreateInvoice] ${item.itemRef} SEA → GHS ${ghs.toFixed(2)}`);
-            priceMap[item.id] = Math.round(ghs * 100) / 100;
-          }
-        });
-      } catch (e) { console.error("[handleCreateInvoice] rate calc error:", e); }
+      let running = 0;
+      items.forEach((item, i) => {
+        const proportion = totalCbmForInvoice > 0 ? cbms[i] / totalCbmForInvoice : 1 / items.length;
+        if (i < items.length - 1) {
+          const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
+          priceMap[item.id] = p;
+          running += p;
+        } else {
+          priceMap[item.id] = Math.round((order.invoiceAmount - running) * 100) / 100;
+        }
+      });
 
       const itemPriceMap = Object.keys(priceMap).length > 0 ? priceMap : undefined;
-      console.log("[handleCreateInvoice] final itemPriceMap:", itemPriceMap);
       await axios.post(`/api/orders/${id}/create-invoice`, { itemPriceMap });
       success("Invoice created in Keepup");
       load();
@@ -123,10 +128,10 @@ export default function AdminOrderDetailPage() {
     setDeleting(true);
     try {
       await axios.delete(`/api/orders/${id}`);
-      success("Order deleted");
+      success("Invoice deleted");
       router.push("/admin/orders");
     } catch {
-      error("Failed to delete order");
+      error("Failed to delete invoice");
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -145,11 +150,8 @@ export default function AdminOrderDetailPage() {
       setPaymentModalOpen(false);
       setPaymentAmount("");
       // Optimistically update payment figures before re-fetch
-      setOrder((prev) => prev ? {
-        ...prev,
-        keepupAmountPaid: (prev.keepupAmountPaid ?? 0) + amount,
-        keepupBalanceDue: Math.max(0, (prev.keepupBalanceDue ?? prev.invoiceAmount) - amount),
-      } : prev);
+      setKeepupPaid((prev) => (prev ?? 0) + amount);
+      setKeepupBalance((prev) => Math.max(0, (prev ?? (order?.invoiceAmount ?? 0)) - amount));
       load();
     } catch {
       error("Failed to record payment");
@@ -162,13 +164,12 @@ export default function AdminOrderDetailPage() {
     setCancelingInvoice(true);
     try {
       await axios.delete(`/api/orders/${id}/create-invoice`);
-      success("Invoice cancelled");
-      setConfirmCancelInvoice(false);
-      load();
+      await axios.delete(`/api/orders/${id}`);
+      success("Invoice cancelled and deleted");
+      router.push("/admin/orders");
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error ?? "Failed to cancel invoice" : "Failed to cancel invoice";
       error("Error", msg);
-    } finally {
       setCancelingInvoice(false);
     }
   };
@@ -184,70 +185,60 @@ export default function AdminOrderDetailPage() {
   if (!order) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-gray-400">Order not found</p>
+        <p className="text-gray-400">Invoice not found</p>
       </div>
     );
   }
 
   const totalCbm = order.items?.reduce((sum, item) => sum + getCbm(item), 0) ?? 0;
 
-  // Per-item prices using natural pricing (air: weight-based, sea: CBM-based)
+  // Per-item prices: proportional split of invoice total by CBM
   const itemPrices = (() => {
     const items = order.items ?? [];
     if (items.length === 0) return new Map<string, number>();
-    try {
-      const rates = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}");
-      const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
-      const usdToGhs: number = rates.usdToGhs ?? 12.5;
-      const tier = customerPackage as "standard" | "discounted" | "premium";
-      const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
-      console.log("[itemPrices] tier:", tier, "tierRates:", tierRates, "usdToGhs:", usdToGhs);
-      const prices = new Map<string, number>();
-      items.forEach((item) => {
-        if (item.shippingType === "air" && item.weight) {
-          const ghs = item.weight * (item.quantity ?? 1) * tierRates.air * usdToGhs;
-          console.log(`[itemPrices] ${item.itemRef} AIR → ${item.weight}kg × ${tierRates.air} × ${usdToGhs} = GHS ${ghs.toFixed(2)}`);
-          prices.set(item.id, Math.round(ghs * 100) / 100);
-        } else if (item.length && item.width && item.height) {
-          const cbm = getCbm(item);
-          const ghs = cbm * tierRates.sea * usdToGhs;
-          console.log(`[itemPrices] ${item.itemRef} SEA → cbm=${cbm.toFixed(6)} × ${tierRates.sea} × ${usdToGhs} = GHS ${ghs.toFixed(2)}`);
-          prices.set(item.id, Math.round(ghs * 100) / 100);
-        }
-      });
-      return prices;
-    } catch (e) {
-      console.error("[itemPrices] error reading rates:", e);
-      return new Map<string, number>();
-    }
+    const cbms = items.map((item) => getCbm(item));
+    const total = cbms.reduce((s, c) => s + c, 0);
+    const prices = new Map<string, number>();
+    let running = 0;
+    items.forEach((item, i) => {
+      const proportion = total > 0 ? cbms[i] / total : 1 / items.length;
+      if (i < items.length - 1) {
+        const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
+        prices.set(item.id, p);
+        running += p;
+      } else {
+        prices.set(item.id, Math.round((order.invoiceAmount - running) * 100) / 100);
+      }
+    });
+    return prices;
   })();
 
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3 shrink-0">
+      <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2 shrink-0">
         <button
           onClick={() => router.push("/admin/orders")}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors shrink-0"
         >
           <ArrowLeft className="h-4 w-4" />
           Invoices
         </button>
-        <span className="text-gray-300">|</span>
-        <span className="font-mono font-bold text-gray-800">{order.orderRef}</span>
+        <span className="text-gray-300 hidden sm:inline">|</span>
+        <span className="font-mono font-bold text-gray-800 text-sm truncate max-w-[120px] sm:max-w-none">{order.orderRef}</span>
         <StatusBadge status={order.status} />
 
-        <div className="ml-auto flex items-center gap-2">
-          {!order.keepupSaleId && order.status !== "Paid" && (
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          {order.status !== "Paid" && (
             <Button size="sm" variant="outline" onClick={handleCreateInvoice} loading={creatingInvoice}>
-              <ExternalLink className="h-3.5 w-3.5 mr-1" />
-              Create Invoice
+              <ExternalLink className="h-3.5 w-3.5 sm:mr-1" />
+              <span className="hidden sm:inline">{order.keepupSaleId ? "Update Invoice" : "Create Invoice"}</span>
             </Button>
           )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: read-only invoice details */}
           <div className="lg:col-span-2 space-y-5">
@@ -266,23 +257,17 @@ export default function AdminOrderDetailPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Invoice Amount (GHS)</label>
-                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(order.invoiceAmount)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Invoice Date</label>
-                    <p className="text-sm text-gray-900">{order.invoiceDate ? formatDate(order.invoiceDate) : "—"}</p>
-                  </div>
-                </div>
-
                 {customerPhone && (
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">Customer Phone</label>
                     <p className="text-sm text-gray-900">{customerPhone}</p>
                   </div>
                 )}
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Invoice Date</label>
+                  <p className="text-sm text-gray-900">{order.invoiceDate ? formatDate(order.invoiceDate) : "—"}</p>
+                </div>
 
                 {order.notes && (
                   <div>
@@ -354,7 +339,7 @@ export default function AdminOrderDetailPage() {
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Summary</h3>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-gray-400">Order Ref</span>
+                  <span className="text-xs text-gray-400">Invoice Ref</span>
                   <span className="text-sm font-mono font-bold text-gray-800">{order.orderRef}</span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -374,20 +359,20 @@ export default function AdminOrderDetailPage() {
                 {order.keepupSaleId && (
                   <div className="border-t border-gray-50 pt-3 space-y-1.5">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Payment Info</p>
-                    {order.keepupTotalAmount != null && (
+                    {keepupTotal != null && (
                       <div className="flex justify-between items-center text-xs">
                         <span className="text-gray-400">Invoice Total</span>
-                        <span className="font-semibold text-gray-800">{formatCurrency(order.keepupTotalAmount)}</span>
+                        <span className="font-semibold text-gray-800">{formatCurrency(keepupTotal)}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-gray-400">Amount Paid</span>
-                      <span className="font-semibold text-green-700">{formatCurrency(order.keepupAmountPaid ?? 0)}</span>
+                      <span className="font-semibold text-green-700">{formatCurrency(keepupPaid ?? 0)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5 mt-1">
                       <span className="text-gray-500 font-medium">Balance Due</span>
-                      <span className={`font-bold ${(order.keepupBalanceDue ?? 0) <= 0 ? "text-green-700" : "text-orange-600"}`}>
-                        {formatCurrency(Math.max(0, order.keepupBalanceDue ?? (order.invoiceAmount - (order.keepupAmountPaid ?? 0))))}
+                      <span className={`font-bold ${(keepupBalance ?? 0) <= 0 ? "text-green-700" : "text-orange-600"}`}>
+                        {formatCurrency(Math.max(0, keepupBalance ?? (order.invoiceAmount - (keepupPaid ?? 0))))}
                       </span>
                     </div>
                   </div>
@@ -425,7 +410,7 @@ export default function AdminOrderDetailPage() {
                     <span className="text-xs text-gray-400">Sale ID</span>
                     <span className="text-xs font-mono text-gray-600">{order.keepupSaleId}</span>
                   </div>
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2 pt-1">
                     {order.keepupLink && (
                       <a
                         href={order.keepupLink}

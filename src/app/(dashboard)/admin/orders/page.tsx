@@ -102,10 +102,10 @@ export default function OrdersPage() {
     setDeletingId(id);
     try {
       await axios.delete(`/api/orders/${id}`);
-      success("Order deleted");
+      success("Invoice deleted");
       setOrders((prev) => prev.filter((o) => o.id !== id));
     } catch {
-      error("Failed to delete order");
+      error("Failed to delete invoice");
     } finally {
       setDeletingId(null);
       setConfirmDeleteId(null);
@@ -116,11 +116,11 @@ export default function OrdersPage() {
     <div className="flex flex-col h-full">
       <Header title="Invoices" subtitle="All customer invoices and payments" />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-4 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <SearchBar
-              placeholder="Search orders..."
+              placeholder="Search invoices..."
               onSearch={(val) => {
                 setSearch(val);
                 setPage(1);
@@ -162,7 +162,7 @@ export default function OrdersPage() {
           columns={[
             {
               key: "orderRef",
-              header: "Order Ref",
+              header: "Invoice Ref",
               render: (o) => (
                 <span className="font-mono text-xs font-bold text-gray-800">
                   {o.orderRef}
@@ -252,7 +252,7 @@ export default function OrdersPage() {
                       <button
                         onClick={() => setConfirmDeleteId(o.id)}
                         className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Delete order"
+                        title="Delete invoice"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -265,7 +265,7 @@ export default function OrdersPage() {
           data={applyDateFilter(orders, (o) => o.invoiceDate, dateRange, dateFrom, dateTo)}
           keyExtractor={(o) => o.id}
           loading={loading}
-          emptyMessage="No orders found"
+          emptyMessage="No invoices found"
           emptyIcon={<ShoppingCart className="h-12 w-12" />}
           onRowClick={(o) => router.push(`/admin/orders/${o.id}`)}
           page={page}

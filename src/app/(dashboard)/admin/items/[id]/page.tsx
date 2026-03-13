@@ -66,6 +66,10 @@ export default function AdminItemDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editModal, setEditModal] = useState(false);
+  const [reassignSearch, setReassignSearch] = useState("");
+  const [reassignResults, setReassignResults] = useState<{ id: string; name: string; shippingMark: string }[]>([]);
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassigning, setReassigning] = useState(false);
   const [editForm, setEditForm] = useState({
     description: "",
     weight: "",
@@ -96,7 +100,6 @@ export default function AdminItemDetailPage() {
         setContainerDisplayName(loadedItem.containerName ?? null);
       }
       const historyData = historyRes.data.data ?? [];
-      console.log("[ItemDetail] history response:", historyRes.data, "parsed:", historyData);
       setHistory(historyData);
     } catch {
       error("Failed to load item");
@@ -159,6 +162,39 @@ export default function AdminItemDetailPage() {
     }
   };
 
+  const handleReassignSearch = (q: string) => {
+    setReassignSearch(q);
+    if (!q.trim()) setReassignResults([]);
+  };
+
+  useEffect(() => {
+    if (!reassignSearch.trim()) return;
+    const t = setTimeout(async () => {
+      setReassignLoading(true);
+      try {
+        const res = await axios.get("/api/customers", { params: { search: reassignSearch } });
+        setReassignResults((res.data.data ?? []).slice(0, 8).map((c: { id: string; name: string; shippingMark: string }) => ({ id: c.id, name: c.name, shippingMark: c.shippingMark })));
+      } catch { setReassignResults([]); }
+      finally { setReassignLoading(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [reassignSearch]);
+
+  const handleReassign = async (customerId: string, customerName: string) => {
+    setReassigning(true);
+    try {
+      await axios.patch(`/api/items/${id}`, { customerId });
+      success("Customer reassigned", `Item assigned to ${customerName}`);
+      setReassignSearch("");
+      setReassignResults([]);
+      load();
+    } catch {
+      error("Failed to reassign customer");
+    } finally {
+      setReassigning(false);
+    }
+  };
+
   const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
@@ -212,34 +248,35 @@ export default function AdminItemDetailPage() {
         subtitle={item.description}
       />
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="flex items-center gap-4 mb-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        {/* Top bar: back + actions */}
+        <div className="flex flex-wrap items-center gap-2 mb-6">
           <button
             onClick={() => router.push("/admin/items")}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Items
+            Back
           </button>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             {item.isMissing && (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg text-xs font-semibold text-red-700">
+              <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 border border-red-200 rounded-lg text-xs font-semibold text-red-700 shrink-0">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Missing
               </span>
             )}
             <StatusBadge status={item.status} />
             <Button size="sm" variant="outline" onClick={openEdit}>
-              <Edit2 className="h-3.5 w-3.5 mr-1.5" />
-              Edit
+              <Edit2 className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Edit</span>
             </Button>
             <Button size="sm" onClick={() => setStatusModal(true)}>
-              Update Status
+              <span className="hidden sm:inline">Update </span>Status
             </Button>
             {confirmDelete ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-red-600">Delete item?</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-red-600 hidden sm:inline">Delete?</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -260,8 +297,8 @@ export default function AdminItemDetailPage() {
                 className="border-red-300 text-red-600 hover:bg-red-50"
                 onClick={() => setConfirmDelete(true)}
               >
-                <Trash2 className="h-4 w-4 mr-1.5" />
-                Delete
+                <Trash2 className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Delete</span>
               </Button>
             )}
           </div>
@@ -335,18 +372,54 @@ export default function AdminItemDetailPage() {
               </h3>
               <div className="divide-y divide-gray-50">
                 <InfoRow icon={Hash} label="Item Reference" value={item.itemRef} />
-                <InfoRow icon={User} label="Customer" value={
-                  <span className="flex items-center gap-2">
-                    {item.customerName}
-                    {item.customerShippingMark && (
-                      <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">
-                        {item.customerShippingMark}
-                      </code>
-                    )}
-                  </span>
-                } />
+                <div className="flex items-start gap-3 py-3 border-b border-gray-50">
+                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0 mt-0.5">
+                    <User className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gray-400 font-medium">Customer</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <p className="text-sm text-gray-900 font-medium">{item.customerName ?? "—"}</p>
+                      {item.customerShippingMark && (
+                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono">
+                          {item.customerShippingMark}
+                        </code>
+                      )}
+                    </div>
+                    {/* Reassign customer search */}
+                    <div className="mt-2">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Search to reassign customer..."
+                          value={reassignSearch}
+                          onChange={(e) => handleReassignSearch(e.target.value)}
+                          className="h-8 w-full px-2.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                        />
+                        {reassignLoading && (
+                          <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-gray-400" />
+                        )}
+                      </div>
+                      {reassignResults.length > 0 && (
+                        <div className="mt-1 border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-white shadow-sm">
+                          {reassignResults.map((c) => (
+                            <button
+                              key={c.id}
+                              onClick={() => handleReassign(c.id, c.name)}
+                              disabled={reassigning}
+                              className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors text-sm"
+                            >
+                              <span className="font-medium text-gray-900 truncate">{c.name}</span>
+                              <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <InfoRow icon={Scale} label="Weight" value={item.weight ? `${item.weight} kg` : null} />
-                {(item.quantity ?? 1) > 1 && (
+                {item.quantity && (
                   <InfoRow icon={Package} label="Quantity" value={`${item.quantity} pcs`} />
                 )}
                 <InfoRow icon={Package} label="Dimensions" value={dimensions} />
@@ -363,7 +436,7 @@ export default function AdminItemDetailPage() {
                     const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
                     const usdToGhs = rates.usdToGhs ?? 12.5;
                     // Use the customer's package tier if available
-                    const tier = (item as Item & { customerPackage?: string }).customerPackage as "standard" | "discounted" | "premium" ?? "standard";
+                    const tier = (item as Item & { customerPackage?: string }).customerPackage as "standard" | "discounted" | "premium" | "special" ?? "standard";
                     const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
                     if (item.shippingType === "air" && item.weight) {
                       const usd = item.weight * (item.quantity ?? 1) * tierRates.air;
@@ -378,6 +451,15 @@ export default function AdminItemDetailPage() {
                   } catch { /* ignore */ }
                   return null;
                 })()}
+                {item.estPrice != null && (
+                  <InfoRow icon={DollarSign} label="Est. Item Price" value={`GH₵ ${item.estPrice.toFixed(2)}`} />
+                )}
+                {item.estShippingPrice != null && (
+                  <InfoRow icon={DollarSign} label="Est. Shipping Price" value={`GH₵ ${item.estShippingPrice.toFixed(2)}`} />
+                )}
+                {item.isSpecialItem && (
+                  <InfoRow icon={Package} label="Special Item" value="Yes" />
+                )}
                 <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
                 {item.createdBy && (
                   <InfoRow icon={User} label="Created by" value={
@@ -410,10 +492,10 @@ export default function AdminItemDetailPage() {
                   {item.orderId && (
                     <InfoRow icon={ShoppingCart} label="Order" value={
                       <button
-                        onClick={() => router.push(`/admin/orders`)}
+                        onClick={() => router.push(`/admin/orders/${item.orderId}`)}
                         className="text-brand-600 hover:underline"
                       >
-                        {item.orderRef ?? item.orderId}
+                        {item.orderRef ?? "View Order"}
                       </button>
                     } />
                   )}

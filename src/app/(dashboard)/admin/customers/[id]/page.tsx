@@ -43,7 +43,7 @@ export default function CustomerDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "standard" | "discounted" | "premium" | "" });
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "standard" | "discounted" | "premium" | "special" | "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
@@ -238,12 +238,13 @@ export default function CustomerDetailPage() {
                   <Select
                     label="Package"
                     value={editForm.package}
-                    onChange={(e) => setEditForm({ ...editForm, package: e.target.value as "standard" | "discounted" | "premium" | "" })}
+                    onChange={(e) => setEditForm({ ...editForm, package: e.target.value as "standard" | "discounted" | "premium" | "special" | "" })}
                     options={[
                       { value: "", label: "No package" },
-                      { value: "standard", label: "Standard" },
-                      { value: "discounted", label: "Discounted" },
-                      { value: "premium", label: "Premium" },
+                      { value: "standard", label: "Basic Shipping" },
+                      { value: "discounted", label: "Business Shipping" },
+                      { value: "premium", label: "Enterprise Shipping" },
+                      { value: "special", label: "Special" },
                     ]}
                   />
                   <Textarea label="Notes (optional)" value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} rows={2} />
@@ -283,7 +284,7 @@ export default function CustomerDetailPage() {
                           customer.package === "discounted" ? "bg-blue-50 text-blue-700" :
                           "bg-gray-100 text-gray-700"
                         }`}>
-                          {customer.package}
+                          {customer.package === "standard" ? "Basic Shipping" : customer.package === "discounted" ? "Business Shipping" : customer.package === "premium" ? "Enterprise Shipping" : customer.package === "special" ? "Special" : customer.package}
                         </span>
                       </InfoRow>
                     )}
@@ -371,7 +372,7 @@ export default function CustomerDetailPage() {
             {/* Orders */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-900">Orders</h3>
+                <h3 className="font-semibold text-gray-900">Invoices</h3>
                 <Button
                   size="sm"
                   variant="outline"
@@ -380,14 +381,14 @@ export default function CustomerDetailPage() {
                   }
                 >
                   <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-                  New Order
+                  New Invoice
                 </Button>
               </div>
               <DataTable
                 columns={[
                   {
                     key: "orderRef",
-                    header: "Order",
+                    header: "Invoice",
                     render: (o) => (
                       <span className="font-mono text-xs font-bold">
                         {o.orderRef}

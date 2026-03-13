@@ -35,16 +35,14 @@ export async function POST(request: NextRequest) {
             await ordersApi.update(order.id, { status: newStatus }, user.email);
             updated++;
           }
-        } catch (err) {
-          console.error(`[keepup-sync] Failed to sync order ${order.orderRef}:`, err);
+        } catch {
           errors++;
         }
       })
     );
 
     return Response.json({ success: true, synced: toSync.length, updated, errors });
-  } catch (err) {
-    console.error("[POST /orders/keepup-sync] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to sync Keepup statuses");
   }
 }

@@ -13,8 +13,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json();
     const warehouse = await warehousesApi.toggleActive(id, body.isActive);
     return Response.json({ success: true, data: warehouse });
-  } catch (err) {
-    console.error("[PATCH /warehouses/:id]", err);
+  } catch {
     return serverErrorResponse("Failed to update warehouse");
   }
 }
@@ -27,8 +26,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     await warehousesApi.delete(id);
     return Response.json({ success: true });
-  } catch (err) {
-    console.error("[DELETE /warehouses/:id]", err);
+  } catch {
     return serverErrorResponse("Failed to delete warehouse");
   }
 }

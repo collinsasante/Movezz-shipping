@@ -7,48 +7,60 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import type { CustomerPackage } from "@/types";
-import { DollarSign, Save, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { DollarSign, Save, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight, Tag } from "lucide-react";
 import axios from "axios";
 import type { Warehouse as WarehouseType } from "@/types";
 
 const RATES_KEY = "pakk_exchange_rates";
 const PACKAGES_RATES_KEY = "pakk_package_rates";
+const SPECIAL_RATES_KEY = "pakk_special_rates";
+
+interface SpecialRate { id: string; name: string; sea: number; air: number; }
 
 interface PackageRate { sea: number; air: number; }
-interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; }
+interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; special: PackageRate; }
 const DEFAULT_PKG_RATES: PackageRates = {
   standard: { sea: 350, air: 8 },
   discounted: { sea: 280, air: 6 },
   premium: { sea: 450, air: 12 },
+  special: { sea: 500, air: 15 },
 };
 
 const PACKAGE_OPTIONS: { value: CustomerPackage | ""; label: string }[] = [
   { value: "", label: "No package" },
   { value: "standard", label: "Basic Shipping" },
   { value: "discounted", label: "Business Shipping" },
-  { value: "premium", label: "Enterprise Logistics" },
+  { value: "premium", label: "Enterprise Shipping" },
+  { value: "special", label: "Special" },
 ];
 
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
   standard: "Basic Shipping",
   discounted: "Business Shipping",
-  premium: "Enterprise Logistics",
+  premium: "Enterprise Shipping",
+  special: "Special",
 };
 
 const PACKAGE_COLORS: Record<CustomerPackage, string> = {
   standard: "bg-gray-100 text-gray-700",
   discounted: "bg-blue-50 text-blue-700",
   premium: "bg-amber-50 text-amber-700",
+  special: "bg-purple-50 text-purple-700",
 };
 
 export default function AdminSettingsPage() {
   const { success, error } = useToast();
-  const [activeTab, setActiveTab] = useState<"exchange" | "warehouses">("exchange");
+  const [activeTab, setActiveTab] = useState<"exchange" | "warehouses" | "special-rates">("exchange");
 
   // Exchange rate settings
   const [defaultRate, setDefaultRate] = useState("12.5");
   const [shippingRatePerCbm, setShippingRatePerCbm] = useState("200");
   const [pkgRates, setPkgRates] = useState<PackageRates>(DEFAULT_PKG_RATES);
+
+  // Special rates
+  const [specialRates, setSpecialRates] = useState<SpecialRate[]>([]);
+  const [specialRateForm, setSpecialRateForm] = useState({ name: "", sea: "", air: "" });
+  const [confirmDeleteSpecialId, setConfirmDeleteSpecialId] = useState<string | null>(null);
 
   // Warehouses
   const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
@@ -68,8 +80,12 @@ export default function AdminSettingsPage() {
     } catch {}
     const savedPkgRates = localStorage.getItem(PACKAGES_RATES_KEY);
     if (savedPkgRates) {
-      try { setPkgRates(JSON.parse(savedPkgRates)); } catch {}
+      try { setPkgRates({ ...DEFAULT_PKG_RATES, ...JSON.parse(savedPkgRates) }); } catch {}
     }
+    try {
+      const savedSpecial = localStorage.getItem(SPECIAL_RATES_KEY);
+      if (savedSpecial) setSpecialRates(JSON.parse(savedSpecial));
+    } catch {}
   }, []);
 
   const saveDefaultRate = () => {
@@ -145,32 +161,55 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const addSpecialRate = () => {
+    if (!specialRateForm.name.trim()) { error("Rate name is required"); return; }
+    const sea = parseFloat(specialRateForm.sea);
+    const air = parseFloat(specialRateForm.air);
+    if ((isNaN(sea) && isNaN(air)) || (sea < 0) || (air < 0)) { error("Enter at least one valid rate"); return; }
+    const newRate: SpecialRate = { id: Date.now().toString(), name: specialRateForm.name.trim(), sea: isNaN(sea) ? 0 : sea, air: isNaN(air) ? 0 : air };
+    const updated = [...specialRates, newRate];
+    setSpecialRates(updated);
+    localStorage.setItem(SPECIAL_RATES_KEY, JSON.stringify(updated));
+    setSpecialRateForm({ name: "", sea: "", air: "" });
+    success("Special rate added");
+  };
+
+  const deleteSpecialRate = (id: string) => {
+    const updated = specialRates.filter((r) => r.id !== id);
+    setSpecialRates(updated);
+    localStorage.setItem(SPECIAL_RATES_KEY, JSON.stringify(updated));
+    setConfirmDeleteSpecialId(null);
+    success("Special rate removed");
+  };
+
   const tabs = [
     { id: "exchange" as const, label: "Exchange Rates", icon: DollarSign },
     { id: "warehouses" as const, label: "Warehouses", icon: Warehouse },
+    { id: "special-rates" as const, label: "Special Rates", icon: Tag },
   ];
 
   return (
     <div className="flex flex-col h-full">
       <Header title="Settings" subtitle="Manage system configuration" />
 
-      <div className="flex-1 p-6 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-full sm:w-fit mb-6 overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex-1 sm:flex-none justify-center sm:justify-start ${
                   activeTab === tab.id
                     ? "bg-white shadow-sm text-gray-900"
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {tab.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.id === "exchange" ? "Rates" : tab.id === "warehouses" ? "Warehouses" : "Special"}</span>
               </button>
             );
           })}
@@ -190,7 +229,7 @@ export default function AdminSettingsPage() {
                 <p className="text-sm text-gray-500">
                   Set the default USD → GHS exchange rate and base shipping rate.
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
                     label="USD → GHS Rate"
                     type="number"
@@ -240,7 +279,7 @@ export default function AdminSettingsPage() {
                     <div className="flex items-center gap-2">
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${PACKAGE_COLORS[pkg]}`}>{PACKAGE_LABELS[pkg]}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Input
                         label="Sea Rate (USD/CBM)"
                         type="number"
@@ -269,6 +308,106 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
+        {/* Special Rates */}
+        {activeTab === "special-rates" && (
+          <div className="max-w-2xl space-y-5">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Tag className="h-5 w-5 text-brand-600" />
+                  Add Special Rate
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-gray-500">
+                  Create named rates you can apply to individual items when logging them.
+                </p>
+                <Input
+                  label="Rate Name *"
+                  placeholder="e.g. Electronics, Fragile, Oversized"
+                  value={specialRateForm.name}
+                  onChange={(e) => setSpecialRateForm({ ...specialRateForm, name: e.target.value })}
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input
+                    label="Sea Rate (USD/CBM)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 400"
+                    value={specialRateForm.sea}
+                    onChange={(e) => setSpecialRateForm({ ...specialRateForm, sea: e.target.value })}
+                  />
+                  <Input
+                    label="Air Rate (USD/kg)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="e.g. 10"
+                    value={specialRateForm.air}
+                    onChange={(e) => setSpecialRateForm({ ...specialRateForm, air: e.target.value })}
+                  />
+                </div>
+                <Button onClick={addSpecialRate} className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  Add Rate
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Special Rate List</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {specialRates.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">No special rates yet. Add one above.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {specialRates.map((r) => (
+                      <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">{r.name}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Sea: ${r.sea}/CBM · Air: ${r.air}/kg
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {confirmDeleteSpecialId === r.id ? (
+                            <>
+                              <span className="text-xs text-red-600">Delete?</span>
+                              <button
+                                onClick={() => deleteSpecialRate(r.id)}
+                                className="text-xs px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteSpecialId(null)}
+                                className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteSpecialId(r.id)}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Warehouses */}
         {activeTab === "warehouses" && (
           <div className="max-w-2xl space-y-5">
@@ -280,7 +419,7 @@ export default function AdminSettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
                     label="Warehouse Name *"
                     placeholder="e.g. China Warehouse"

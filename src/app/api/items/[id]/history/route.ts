@@ -32,13 +32,11 @@ export async function GET(
     let history: Awaited<ReturnType<typeof statusHistoryApi.getForRecord>> = [];
     try {
       history = await statusHistoryApi.getForRecord(id);
-    } catch (histErr) {
+    } catch {
       // Non-fatal — timeline still renders without timestamps
-      console.error("[GET /items/[id]/history] History fetch error (returning empty):", histErr);
     }
     return Response.json({ success: true, data: history });
-  } catch (err) {
-    console.error("[GET /items/[id]/history] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to load status history");
   }
 }

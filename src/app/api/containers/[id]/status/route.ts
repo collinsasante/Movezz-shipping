@@ -68,7 +68,6 @@ export async function PATCH(
     if (err instanceof BusinessError) {
       return badRequestResponse(err.message);
     }
-    console.error("[PATCH /containers/[id]/status] Error:", err);
     return serverErrorResponse("Failed to update container status");
   }
 }

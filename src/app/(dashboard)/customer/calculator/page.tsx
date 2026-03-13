@@ -11,7 +11,7 @@ type Tab = "estimator" | "cbm";
 type DimUnit = "cm" | "inches";
 
 interface PackageRate { sea: number; air: number; }
-interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; }
+interface PackageRates { standard: PackageRate; discounted: PackageRate; premium: PackageRate; special?: PackageRate; }
 
 const DEFAULT_PKG_RATES: PackageRates = {
   standard: { sea: 350, air: 8 },
@@ -20,9 +20,10 @@ const DEFAULT_PKG_RATES: PackageRates = {
 };
 
 const PACKAGE_META: Record<CustomerPackage, { label: string; color: string }> = {
-  standard: { label: "Standard", color: "bg-gray-100 text-gray-700" },
-  discounted: { label: "Discounted", color: "bg-blue-50 text-blue-700" },
-  premium: { label: "Premium", color: "bg-amber-50 text-amber-700" },
+  standard: { label: "Basic Shipping", color: "bg-gray-100 text-gray-700" },
+  discounted: { label: "Business Shipping", color: "bg-blue-50 text-blue-700" },
+  premium: { label: "Enterprise Shipping", color: "bg-amber-50 text-amber-700" },
+  special: { label: "Special", color: "bg-purple-50 text-purple-700" },
 };
 
 function Field({
@@ -82,7 +83,7 @@ export default function CustomerCalculatorPage() {
       const saved = localStorage.getItem("pakk_exchange_rates");
       if (saved) { const p = JSON.parse(saved); if (p.ghsPerUsd) setGhsPerUsd(p.ghsPerUsd); }
       const savedPkg = localStorage.getItem("pakk_package_rates");
-      if (savedPkg) setPkgRates(JSON.parse(savedPkg));
+      if (savedPkg) setPkgRates({ ...DEFAULT_PKG_RATES, ...JSON.parse(savedPkg) });
     } catch { /* ignore */ }
     if (appUser?.package) setActivePackage(appUser.package);
   }, [appUser?.package]);
@@ -101,7 +102,10 @@ export default function CustomerCalculatorPage() {
   const n = (v: string) => parseFloat(v) || 0;
   const factor = (u: DimUnit) => u === "inches" ? 16.387064 : 1;
 
-  const currentRates = activePackage ? pkgRates[activePackage] : { sea: pkgRates.standard.sea, air: pkgRates.standard.air };
+  const activeMeta = activePackage
+    ? (PACKAGE_META[activePackage] ?? { label: activePackage, color: "bg-gray-100 text-gray-700" })
+    : null;
+  const currentRates = (activePackage ? pkgRates[activePackage] : null) ?? pkgRates.standard ?? DEFAULT_PKG_RATES.standard;
 
   // Estimator
   const cbmValue = (() => {
@@ -139,9 +143,9 @@ export default function CustomerCalculatorPage() {
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm hover:bg-gray-50 transition-colors"
             >
               <Package className="h-4 w-4 text-gray-400" />
-              {activePackage ? (
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${PACKAGE_META[activePackage].color}`}>
-                  {PACKAGE_META[activePackage].label}
+              {activeMeta ? (
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${activeMeta.color}`}>
+                  {activeMeta.label}
                 </span>
               ) : (
                 <span className="text-xs text-gray-400">No package selected</span>

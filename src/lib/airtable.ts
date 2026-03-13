@@ -206,6 +206,9 @@ function mapItem(record: AirtableRecord<FieldSet>): Item {
     orderRef: (f["OrderRef"] as string) ?? undefined,
     isMissing: (f["IsMissing"] as boolean) ?? false,
     quantity: (f["Quantity"] as number) ?? undefined,
+    estPrice: (f["EstPrice"] as number) ?? undefined,
+    estShippingPrice: (f["EstShippingPrice"] as number) ?? undefined,
+    isSpecialItem: (f["IsSpecialItem"] as boolean) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     createdBy: (f["CreatedBy"] as string) ?? undefined,
@@ -450,14 +453,9 @@ export const itemsApi = {
     if (params.status) formulas.push(`{Status} = '${params.status}'`);
     if (params.isMissing !== undefined)
       formulas.push(`{IsMissing} = ${params.isMissing ? 1 : 0}`);
-    if (params.search) {
-      const s = escapeFormula(params.search.toLowerCase());
-      // Only search plain text fields — lookup fields (CustomerShippingMark, CustomerName)
-      // are array-typed and can cause formula errors; filter those in JS below.
-      formulas.push(
-        `OR(SEARCH('${s}', LOWER({Description})), SEARCH('${s}', LOWER({TrackingNumber})), SEARCH('${s}', LOWER({ItemRef})))`
-      );
-    }
+    // Search is handled entirely in JS (after fetch) so that lookup fields
+    // like CustomerShippingMark and CustomerName are also searched correctly.
+    // Do NOT push a formula for search here.
 
     const formula =
       formulas.length > 1
@@ -507,7 +505,6 @@ export const itemsApi = {
   async getById(id: string): Promise<Item> {
     const record = await getRecord(TABLES.ITEMS, id);
     const item = mapItem(record);
-    console.log("[itemsApi.getById] customerName:", item.customerName, "customerId:", item.customerId);
     if (item.customerId && !item.customerName) {
       const customer = await customersApi.getById(item.customerId).catch(() => null);
       if (customer) {
@@ -550,6 +547,9 @@ export const itemsApi = {
     if (input.height) fields["Height"] = input.height;
     if (input.trackingNumber) fields["TrackingNumber"] = input.trackingNumber;
     if (input.quantity) fields["Quantity"] = input.quantity;
+    if (input.estPrice !== undefined) fields["EstPrice"] = input.estPrice;
+    if (input.estShippingPrice !== undefined) fields["EstShippingPrice"] = input.estShippingPrice;
+    if (input.isSpecialItem !== undefined) fields["IsSpecialItem"] = input.isSpecialItem;
     if (input.photoUrls && input.photoUrls.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
@@ -576,6 +576,7 @@ export const itemsApi = {
     if (input.notes !== undefined) fields["Notes"] = input.notes;
     if (input.orderId !== undefined) fields["Order"] = [input.orderId];
     if (input.containerId !== undefined) fields["Container"] = [input.containerId];
+    if (input.customerId !== undefined) fields["Customer"] = [input.customerId];
     if (input.isMissing !== undefined) fields["IsMissing"] = input.isMissing;
     if (input.photoUrls !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -651,8 +652,8 @@ export const itemsApi = {
           newStatus,
           message,
         });
-      } catch (err) {
-        console.error("WhatsApp notification failed (non-critical):", err);
+      } catch {
+        // WhatsApp notification failed (non-critical)
       }
     }
 
@@ -774,9 +775,7 @@ export const ordersApi = {
     // Unlink all items from this order
     await Promise.all(
       itemIds.map((itemId) =>
-        updateRecord(TABLES.ITEMS, itemId, { Order: [] }).catch((e) =>
-          console.error(`Failed to unlink item ${itemId} from order:`, e)
-        )
+        updateRecord(TABLES.ITEMS, itemId, { Order: [] }).catch(() => {})
       )
     );
     await deleteRecord(TABLES.ORDERS, id);
@@ -925,11 +924,7 @@ export const containersApi = {
     const containerId = existing.fields["ContainerID"] as string;
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
 
-    console.log(`[cascade] container ${containerId}: ${previousStatus} → ${newStatus}`);
-    console.log(`[cascade] items in container:`, itemIds);
-
     await updateRecord(TABLES.CONTAINERS, id, { Status: newStatus });
-    console.log(`[cascade] container status updated OK`);
 
     // ---- CASCADE STATUS TO ALL ITEMS ----
     const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
@@ -940,12 +935,10 @@ export const containersApi = {
     };
 
     const targetItemStatus = containerToItemStatus[newStatus];
-    console.log(`[cascade] targetItemStatus:`, targetItemStatus ?? "none (no cascade for this status)");
 
     if (targetItemStatus && itemIds.length > 0) {
       await Promise.all(
         itemIds.map(async (itemId) => {
-          console.log(`[cascade] updating item ${itemId} → ${targetItemStatus}`);
           try {
             await itemsApi.updateStatus(
               itemId,
@@ -956,16 +949,11 @@ export const containersApi = {
               false,
               true // skipContainerCheck — item is already in this container
             );
-            console.log(`[cascade] item ${itemId} updated OK`);
-          } catch (err) {
-            console.error(`[cascade] FAILED to update item ${itemId}:`, err);
+          } catch {
+            // Failed to update item (non-fatal)
           }
         })
       );
-    } else if (!targetItemStatus) {
-      console.log(`[cascade] skipping — no item status mapped for container status "${newStatus}"`);
-    } else {
-      console.log(`[cascade] skipping — container has no items`);
     }
 
     const updated = await getRecord(TABLES.CONTAINERS, id);
@@ -977,12 +965,9 @@ export const containersApi = {
     itemId: string,
     addedByEmail: string
   ): Promise<Container> {
-    console.log("[addItem] containerId:", containerId, "itemId:", itemId);
-
     let container: AirtableRecord<FieldSet>;
     try {
       container = await getRecord(TABLES.CONTAINERS, containerId);
-      console.log("[addItem] fetched container OK, Items field:", JSON.stringify(container.fields["Items"]));
     } catch (e) {
       const msg = e instanceof Error ? e.message : JSON.stringify(e);
       throw new Error(`[addItem:getContainer] ${msg}`);
@@ -994,18 +979,14 @@ export const containersApi = {
       currentItems.push(itemId);
       try {
         await updateRecord(TABLES.CONTAINERS, containerId, { Items: currentItems });
-        console.log("[addItem] updated container Items OK");
       } catch (e) {
         const msg = e instanceof Error ? e.message : JSON.stringify(e);
         throw new Error(`[addItem:updateContainerItems] ${msg}`);
       }
-    } else {
-      console.log("[addItem] item already in container Items list");
     }
 
     try {
       await updateRecord(TABLES.ITEMS, itemId, { Container: [containerId] });
-      console.log("[addItem] updated item Container field OK");
     } catch (e) {
       const msg = e instanceof Error ? e.message : JSON.stringify(e);
       throw new Error(`[addItem:updateItemContainer] ${msg}`);
@@ -1022,9 +1003,7 @@ export const containersApi = {
     // Unlink all items from this container before deleting
     await Promise.all(
       itemIds.map((itemId) =>
-        updateRecord(TABLES.ITEMS, itemId, { Container: [] }).catch((e) =>
-          console.error(`Failed to unlink item ${itemId} from container:`, e)
-        )
+        updateRecord(TABLES.ITEMS, itemId, { Container: [] }).catch(() => {})
       )
     );
     await deleteRecord(TABLES.CONTAINERS, id);
@@ -1067,9 +1046,8 @@ export const statusHistoryApi = {
         ChangedAt: toISOString(),
         Notes: entry.notes ?? "",
       });
-    } catch (err) {
+    } catch {
       // Non-fatal — status history logging should never block the main operation
-      console.error("[statusHistory] Failed to log entry (non-fatal):", err);
     }
   },
 
@@ -1231,12 +1209,8 @@ export const whatsAppApi = {
           }
         );
 
-        if (!response.ok) {
-          const err = await response.json();
-          console.error("WhatsApp API error:", err);
-        }
-      } catch (err) {
-        console.error("Failed to send WhatsApp message:", err);
+      } catch {
+        // Failed to send WhatsApp message (non-critical)
       }
     } else {
       // Airtable automation handles WhatsApp notifications via status change triggers
@@ -1318,6 +1292,61 @@ export const dashboardApi = {
       return sum + (l * w * h * factor) / 1_000_000;
     }, 0);
 
+    // ordersThisMonth: count orders where InvoiceDate (or CreatedAt) is in current month/year
+    const now = new Date();
+    const ordersThisMonth = allOrders.filter((r) => {
+      const raw = (r.fields["InvoiceDate"] as string) || (r.fields["CreatedAt"] as string);
+      if (!raw) return false;
+      const d = new Date(raw);
+      return !isNaN(d.getTime()) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).length;
+
+    // recentOrders: last 5 orders by CreatedAt desc
+    const recentOrders = [...allOrders]
+      .sort(
+        (a, b) =>
+          new Date((b.fields["CreatedAt"] as string) ?? 0).getTime() -
+          new Date((a.fields["CreatedAt"] as string) ?? 0).getTime()
+      )
+      .slice(0, 5)
+      .map((r) => {
+        const f = r.fields;
+        return {
+          id: r.id,
+          orderRef: (f["OrderRef"] as string) ?? "",
+          customerName: (f["CustomerName"] as string) ?? undefined,
+          invoiceAmount: (f["InvoiceAmount"] as number) ?? 0,
+          invoiceDate: (f["InvoiceDate"] as string) || (f["CreatedAt"] as string) || "",
+          status: (f["Status"] as string) ?? "",
+          itemCount: ((f["Items"] as string[]) ?? []).length,
+        };
+      });
+
+    // recentShipments: last 5 items by DateReceived desc
+    const recentShipments = [...allItems]
+      .sort(
+        (a, b) =>
+          new Date((b.fields["DateReceived"] as string) ?? 0).getTime() -
+          new Date((a.fields["DateReceived"] as string) ?? 0).getTime()
+      )
+      .slice(0, 5)
+      .map((r) => {
+        const f = r.fields;
+        const rawCustomerName = f["CustomerName"];
+        const customerName = Array.isArray(rawCustomerName)
+          ? (rawCustomerName as string[])[0]
+          : (rawCustomerName as string | undefined);
+        return {
+          id: r.id,
+          itemRef: (f["ItemRef"] as string) ?? "",
+          customerName,
+          containerName: (f["ContainerName"] as string) ?? undefined,
+          status: (f["Status"] as string) ?? "",
+          trackingNumber: (f["TrackingNumber"] as string) ?? undefined,
+          dateReceived: (f["DateReceived"] as string) ?? "",
+        };
+      });
+
     return {
       totalCustomers: allCustomers.length,
       activeCustomers,
@@ -1331,6 +1360,9 @@ export const dashboardApi = {
       totalCbm,
       itemsByStatus,
       pendingOrders,
+      ordersThisMonth,
+      recentOrders,
+      recentShipments,
     };
   },
 

@@ -1,5 +1,5 @@
 // ============================================================
-// Pakkmaxx Email System — powered by Resend
+// PAKKmax Email System — powered by Resend
 // ============================================================
 // Docs: https://resend.com/docs
 // Set RESEND_API_KEY and EMAIL_FROM in your environment.
@@ -8,7 +8,7 @@
 
 const RESEND_API_KEY = () => process.env.RESEND_API_KEY;
 const EMAIL_FROM = () =>
-  process.env.EMAIL_FROM ?? "Pakkmaxx <noreply@pakkmaxx.com>";
+  process.env.EMAIL_FROM ?? "PAKKmax <noreply@pakkmaxx.com>";
 
 // ---- Core send helper ----
 export async function sendEmail(
@@ -18,7 +18,6 @@ export async function sendEmail(
 ): Promise<void> {
   const key = RESEND_API_KEY();
   if (!key) {
-    console.warn("[email] RESEND_API_KEY not set — skipping:", subject);
     return;
   }
   const res = await fetch("https://api.resend.com/emails", {
@@ -56,7 +55,7 @@ function baseLayout(content: string, previewText = ""): string {
         <tr>
           <td style="background-color:#6d28d9;border-radius:12px 12px 0 0;padding:28px 40px;text-align:center;">
             <span style="display:inline-block;background-color:rgba(255,255,255,0.15);border-radius:8px;padding:6px 14px;">
-              <span style="font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.5px;">Pakkmaxx</span>
+              <span style="font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.5px;">PAKKmax</span>
             </span>
             <p style="margin:8px 0 0;font-size:12px;color:rgba(255,255,255,0.7);letter-spacing:0.5px;text-transform:uppercase;">USA → Ghana Freight Forwarding</p>
           </td>
@@ -72,13 +71,13 @@ function baseLayout(content: string, previewText = ""): string {
         <!-- Footer -->
         <tr>
           <td style="background-color:#fff;border-radius:0 0 12px 12px;padding:0 40px 32px;text-align:center;border-top:1px solid #f3f4f6;">
-            <p style="margin:20px 0 4px;font-size:12px;color:#9ca3af;">This email was sent automatically by <strong style="color:#6b7280;">Pakkmaxx</strong>. Please do not reply.</p>
-            <p style="margin:0;font-size:11px;color:#d1d5db;">&copy; ${new Date().getFullYear()} Pakkmaxx. All rights reserved.</p>
+            <p style="margin:20px 0 4px;font-size:12px;color:#9ca3af;">This email was sent automatically by <strong style="color:#6b7280;">PAKKmax</strong>. Please do not reply.</p>
+            <p style="margin:0;font-size:11px;color:#d1d5db;">&copy; ${new Date().getFullYear()} PAKKmax. All rights reserved.</p>
           </td>
         </tr>
 
         <tr><td style="padding:20px 0;text-align:center;">
-          <p style="margin:0;font-size:11px;color:#9ca3af;">Pakkmaxx &mdash; USA to Ghana Freight Forwarding</p>
+          <p style="margin:0;font-size:11px;color:#9ca3af;">PAKKmax &mdash; USA to Ghana Freight Forwarding</p>
         </td></tr>
 
       </table>
@@ -154,7 +153,7 @@ export async function sendWelcomeEmail(
           <span style="font-size:28px;line-height:56px;">🎉</span>
         </td></tr>
       </table>
-      <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Welcome to Pakkmaxx, ${firstName}!</h1>
+      <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Welcome to PAKKmax, ${firstName}!</h1>
       <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#4b5563;text-align:center;">Your account is ready. Here's your unique shipping mark — use it on every package you send to our warehouse in the USA.</p>
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
@@ -176,9 +175,9 @@ export async function sendWelcomeEmail(
           </table>
         </td></tr>
       </table>`,
-    `Welcome to Pakkmaxx! Your shipping mark is ${shippingMark}`
+    `Welcome to PAKKmax! Your shipping mark is ${shippingMark}`
   );
-  await sendEmail(to, "Welcome to Pakkmaxx 🎉 — Here's your shipping mark", html);
+  await sendEmail(to, "Welcome to PAKKmax 🎉 — Here's your shipping mark", html);
 }
 
 // ============================================================
@@ -321,7 +320,7 @@ export async function sendItemStatusEmail(opts: {
     "Completed": {
       emoji: "✅",
       headline: "Package Delivered — All Done!",
-      body: "Your package has been successfully delivered. Thanks for shipping with Pakkmaxx!",
+      body: "Your package has been successfully delivered. Thanks for shipping with PAKKmax!",
     },
   };
 
@@ -374,13 +373,13 @@ export async function sendPasswordResetEmail(
         </td></tr>
       </table>
       <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Reset Your Password</h1>
-      <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#4b5563;text-align:center;">We received a request to reset your Pakkmaxx account password. Click the button below to choose a new one.</p>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#4b5563;text-align:center;">We received a request to reset your PAKKmax account password. Click the button below to choose a new one.</p>
       <p style="margin:0 0 28px;font-size:13px;line-height:1.6;color:#6b7280;text-align:center;">This link expires in <strong style="color:#374151;">1 hour</strong>. If you didn't request this, you can safely ignore this email.</p>
       ${ctaButton(resetUrl, "Reset Password")}
       <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">Or copy this link: <a href="${resetUrl}" style="color:#6d28d9;word-break:break-all;">${resetUrl}</a></p>`,
-    "Reset your Pakkmaxx password"
+    "Reset your PAKKmax password"
   );
-  await sendEmail(to, "Reset Your Pakkmaxx Password", html);
+  await sendEmail(to, "Reset Your PAKKmax Password", html);
 }
 
 // ============================================================

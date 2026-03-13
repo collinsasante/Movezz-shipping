@@ -5,10 +5,10 @@ import { ToastProvider } from "@/components/ui/toast";
 import ChunkErrorHandler from "@/components/ChunkErrorHandler";
 
 export const metadata: Metadata = {
-  title: "Pakkmaxx | Freight Forwarding & Shipment Tracking",
+  title: "PAKKmax | Freight Forwarding & Shipment Tracking",
   description:
-    "Pakkmaxx - Professional freight forwarding from China to Ghana. Track your packages, manage orders, and get real-time WhatsApp notifications.",
-  keywords: ["freight forwarding", "Ghana shipping", "China shipping", "package tracking", "Pakkmaxx"],
+    "PAKKmax - Professional freight forwarding from China to Ghana. Track your packages, manage orders, and get real-time WhatsApp notifications.",
+  keywords: ["freight forwarding", "Ghana shipping", "China shipping", "package tracking", "PAKKmax"],
   icons: { icon: "/logowithouttext.png", shortcut: "/logowithouttext.png", apple: "/logowithouttext.png" },
 };
 

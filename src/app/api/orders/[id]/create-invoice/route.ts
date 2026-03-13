@@ -16,14 +16,12 @@ export async function POST(
     const { id } = await params;
     const body = await request.json().catch(() => ({})) as { itemPriceMap?: Record<string, number> };
     const { itemPriceMap } = body;
-    console.log("[create-invoice] received itemPriceMap:", JSON.stringify(itemPriceMap));
     const order = await ordersApi.getById(id);
 
+    // If invoice already exists, cancel it first then recreate (update flow)
     if (order.keepupSaleId) {
-      return Response.json(
-        { success: false, error: "Invoice already exists in Keepup" },
-        { status: 400 }
-      );
+      await cancelKeepupSale(order.keepupSaleId).catch(() => {});
+      await ordersApi.clearKeepupIds(order.id);
     }
 
     if (order.status === "Paid") {
@@ -33,28 +31,10 @@ export async function POST(
       );
     }
 
-    console.log("[create-invoice] ===== DATA CONSISTENCY CHECK =====");
-    console.log("[create-invoice] order id:", order.id);
-    console.log("[create-invoice] order ref:", order.orderRef);
-    console.log("[create-invoice] invoice amount (app):", order.invoiceAmount, "GHS");
-    console.log("[create-invoice] invoice date (app):", order.invoiceDate);
-    console.log("[create-invoice] customer id:", order.customerId);
-    console.log("[create-invoice] item ids:", order.itemIds);
-    console.log("[create-invoice] status:", order.status);
-
     const [customer, items] = await Promise.all([
       customersApi.getById(order.customerId).catch(() => null),
       Promise.all(order.itemIds.map((itemId) => itemsApi.getById(itemId).catch(() => null))),
     ]);
-
-    console.log("[create-invoice] customer name (app):", customer?.name);
-    console.log("[create-invoice] customer email (app):", customer?.email);
-    console.log("[create-invoice] customer phone (app):", customer?.phone);
-    console.log("[create-invoice] items fetched:", items.length, "valid:", items.filter(Boolean).length);
-    items.forEach((item, i) => {
-      if (item) console.log(`[create-invoice]   item[${i}]: ref=${item.itemRef} desc="${item.description}" weight=${item.weight}kg dims=${item.length}x${item.width}x${item.height}${item.dimensionUnit}`);
-      else console.log(`[create-invoice]   item[${i}]: FETCH FAILED`);
-    });
 
     const validItems = items.filter(Boolean);
 
@@ -77,14 +57,12 @@ export async function POST(
     } else {
       // Use client-provided per-item prices if available (from calcItemPrice with customer tier rates)
       const hasClientPrices = itemPriceMap && validItems.every((item) => itemPriceMap[item!.id] != null);
-      console.log("[create-invoice] hasClientPrices:", hasClientPrices);
 
       let prices: number[];
       if (hasClientPrices) {
         // Use client prices but adjust last item so sum matches invoice total (avoids rounding drift)
         const rawPrices = validItems.map((item) => itemPriceMap![item!.id]);
         const rawSum = rawPrices.reduce((s, p) => s + p, 0);
-        console.log("[create-invoice] client prices:", rawPrices, "sum:", rawSum, "invoiceAmount:", order.invoiceAmount);
         // Scale prices proportionally to match invoice amount
         prices = rawPrices.map((p, i) =>
           i < rawPrices.length - 1
@@ -95,7 +73,6 @@ export async function POST(
         prices[prices.length - 1] = Math.round((order.invoiceAmount - running) * 100) / 100;
       } else {
         // Fallback: split proportionally by CBM (or equally if no CBM)
-        console.log("[create-invoice] falling back to CBM-proportional split");
         const cbms = validItems.map((item) => getItemCbm(item!));
         const totalCbm = cbms.reduce((s, c) => s + c, 0);
         const useCbm = totalCbm > 0;
@@ -115,7 +92,9 @@ export async function POST(
 
       lineItems = validItems.map((item, i) => {
         const trk = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
-        const name = (item!.description || item!.itemRef) + trk;
+        const cbm = getItemCbm(item!);
+        const cbmStr = cbm > 0 ? ` [CBM: ${cbm.toFixed(4)}m3]` : "";
+        const name = (item!.description || item!.itemRef) + trk + cbmStr;
         return {
           item_name: name.replace(/[^\x20-\x7E]/g, "").slice(0, 200),
           quantity: 1,
@@ -124,8 +103,6 @@ export async function POST(
         };
       });
     }
-
-    console.log("[create-invoice] lineItems:", JSON.stringify(lineItems));
 
     const keepupResult = await createKeepupSale({
       customerName: customer?.name,
@@ -144,7 +121,6 @@ export async function POST(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /orders/[id]/create-invoice] Error:", msg);
     return Response.json({ success: false, error: msg }, { status: 500 });
   }
 }
@@ -170,7 +146,6 @@ export async function DELETE(
     return Response.json({ success: true, message: "Invoice cancelled" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[DELETE /orders/[id]/create-invoice] Error:", msg);
     return Response.json({ success: false, error: msg }, { status: 500 });
   }
 }

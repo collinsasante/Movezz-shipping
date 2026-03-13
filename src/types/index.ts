@@ -30,7 +30,7 @@ export type CustomerStatus = "active" | "inactive";
 // ============================================================
 // CUSTOMER
 // ============================================================
-export type CustomerPackage = "standard" | "discounted" | "premium";
+export type CustomerPackage = "standard" | "discounted" | "premium" | "special";
 
 export interface Customer {
   id: string; // Airtable record ID
@@ -110,6 +110,9 @@ export interface Item {
   orderRef?: string;
   isMissing: boolean;
   quantity?: number;
+  estPrice?: number;
+  estShippingPrice?: number;
+  isSpecialItem?: boolean;
   notes?: string;
   createdAt: string;
   createdBy?: string;
@@ -128,6 +131,9 @@ export interface CreateItemInput {
   trackingNumber?: string;
   customerId: string;
   quantity?: number;
+  estPrice?: number;
+  estShippingPrice?: number;
+  isSpecialItem?: boolean;
   notes?: string;
 }
 
@@ -141,6 +147,7 @@ export interface UpdateItemInput {
   notes?: string;
   orderId?: string;
   containerId?: string;
+  customerId?: string;
   isMissing?: boolean;
   photoUrls?: string[];
 }
@@ -291,6 +298,25 @@ export interface AdminDashboardStats {
   totalCbm: number;
   itemsByStatus: Partial<Record<string, number>>;
   pendingOrders: Order[];
+  ordersThisMonth: number;
+  recentOrders: Array<{
+    id: string;
+    orderRef: string;
+    customerName?: string;
+    invoiceAmount: number;
+    invoiceDate: string;
+    status: string;
+    itemCount: number;
+  }>;
+  recentShipments: Array<{
+    id: string;
+    itemRef: string;
+    customerName?: string;
+    containerName?: string;
+    status: string;
+    trackingNumber?: string;
+    dateReceived: string;
+  }>;
 }
 
 export interface CustomerDashboardStats {

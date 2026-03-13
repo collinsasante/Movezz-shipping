@@ -42,7 +42,7 @@ export default function CustomerOrdersPage() {
     <div className="flex flex-col h-full">
       <Header title="My Invoices" subtitle="Tap an invoice to view details" />
 
-      <div className="flex-1 p-6 space-y-3 overflow-y-auto">
+      <div className="flex-1 p-4 sm:p-6 space-y-3 overflow-y-auto">
         {orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <ShoppingCart className="h-12 w-12 text-gray-200 mb-3" />

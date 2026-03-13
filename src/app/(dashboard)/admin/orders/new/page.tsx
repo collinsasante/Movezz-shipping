@@ -4,14 +4,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
-import { ArrowLeft, Package, ShoppingCart, Loader2 } from "lucide-react";
+import { ArrowLeft, Package, ShoppingCart, Loader2, Search } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 import type { Customer, Item } from "@/types";
 import { formatDate } from "@/lib/utils";
 
 const RATES_LS_KEY = "pakk_exchange_rates";
+const DRAFT_LS_KEY = "pakk_new_order_draft";
 
 function getCbm(item: Item): number {
   const { length: l, width: w, height: h, dimensionUnit: unit } = item;
@@ -46,17 +46,62 @@ export default function NewOrderPage() {
     new Date().toISOString().split("T")[0]
   );
   const [notes, setNotes] = useState("");
+  const draftRestoredRef = React.useRef(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+
+  // Persist draft to localStorage whenever form state changes
+  useEffect(() => {
+    if (!draftRestoredRef.current) return; // don't save until after restore
+    try {
+      localStorage.setItem(DRAFT_LS_KEY, JSON.stringify({
+        selectedCustomerId,
+        selectedItemIds,
+        invoiceAmount,
+        invoiceDate,
+        notes,
+      }));
+    } catch { /* ignore */ }
+  }, [selectedCustomerId, selectedItemIds, invoiceAmount, invoiceDate, notes]);
 
   useEffect(() => {
     const load = async () => {
       try {
         const res = await axios.get("/api/customers");
         setCustomers(res.data.data);
+        // Restore draft after customers are loaded
+        if (!draftRestoredRef.current) {
+          draftRestoredRef.current = true;
+          try {
+            const saved = localStorage.getItem(DRAFT_LS_KEY);
+            if (saved) {
+              const draft = JSON.parse(saved);
+              if (draft.invoiceDate) setInvoiceDate(draft.invoiceDate);
+              if (draft.notes) setNotes(draft.notes);
+              if (draft.invoiceAmount) setInvoiceAmount(draft.invoiceAmount);
+              if (draft.selectedCustomerId) {
+                setSelectedCustomerId(draft.selectedCustomerId);
+                // Set search display label from loaded customers list
+                const matched = (res.data.data as Customer[]).find((c) => c.id === draft.selectedCustomerId);
+                if (matched) setCustomerSearch(`${matched.name} (${matched.shippingMark})`);
+                setLoadingItems(true);
+                try {
+                  const itemsRes = await axios.get("/api/items", { params: { customerId: draft.selectedCustomerId } });
+                  const unordered: Item[] = itemsRes.data.data.filter((item: Item) => !item.orderId);
+                  setCustomerItems(unordered);
+                  const savedIds: string[] = draft.selectedItemIds ?? [];
+                  setSelectedItemIds(savedIds.filter((id) => unordered.some((item) => item.id === id)));
+                } catch { /* ignore */ } finally { setLoadingItems(false); }
+              }
+            }
+          } catch { /* ignore */ }
+        }
       } catch {
         error("Failed to load customers");
+        draftRestoredRef.current = true;
       } finally {
         setLoadingCustomers(false);
       }
@@ -65,7 +110,7 @@ export default function NewOrderPage() {
   }, [error]);
 
   const loadCustomerItems = useCallback(
-    async (customerId: string) => {
+    async (customerId: string, keepSelectedIds?: string[]) => {
       if (!customerId) {
         setCustomerItems([]);
         setSelectedItemIds([]);
@@ -78,7 +123,11 @@ export default function NewOrderPage() {
         });
         const unordered = res.data.data.filter((item: Item) => !item.orderId);
         setCustomerItems(unordered);
-        setSelectedItemIds([]);
+        if (keepSelectedIds) {
+          setSelectedItemIds(keepSelectedIds.filter((id) => unordered.some((item: Item) => item.id === id)));
+        } else {
+          setSelectedItemIds([]);
+        }
       } catch {
         error("Failed to load items");
       } finally {
@@ -88,10 +137,24 @@ export default function NewOrderPage() {
     [error]
   );
 
-  const handleCustomerChange = (customerId: string) => {
-    setSelectedCustomerId(customerId);
-    loadCustomerItems(customerId);
+  const handleSelectCustomer = (customer: Customer) => {
+    setSelectedCustomerId(customer.id);
+    setCustomerSearch(`${customer.name} (${customer.shippingMark})`);
+    setCustomerDropdownOpen(false);
+    loadCustomerItems(customer.id);
   };
+
+  const filteredCustomers = customers.filter((c) => {
+    const q = customerSearch.toLowerCase();
+    // If search matches the currently selected customer's full label, show all
+    const selectedCustomer = customers.find((x) => x.id === selectedCustomerId);
+    if (selectedCustomer && customerSearch === `${selectedCustomer.name} (${selectedCustomer.shippingMark})`) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.shippingMark.toLowerCase().includes(q) ||
+      (c.phone ?? "").toLowerCase().includes(q)
+    );
+  });
 
   const toggleItem = (id: string) => {
     setSelectedItemIds((prev) => {
@@ -120,25 +183,24 @@ export default function NewOrderPage() {
         invoiceDate,
         notes: notes || undefined,
       });
+      const orderId = res.data.data.id;
+      // Auto-create Keepup invoice
+      try {
+        await axios.post(`/api/orders/${orderId}/create-invoice`, {});
+      } catch {
+        // Non-fatal — order is created, Keepup can be retried from the order page
+      }
       success("Invoice created!", res.data.message);
-      router.push(`/admin/orders/${res.data.data.id}`);
+      router.push(`/admin/orders/${orderId}`);
     } catch (err) {
       const msg = axios.isAxiosError(err)
-        ? err.response?.data?.error ?? "Failed to create order"
-        : "Failed to create order";
+        ? err.response?.data?.error ?? "Failed to create invoice"
+        : "Failed to create invoice";
       error("Error", msg);
     } finally {
       setSubmitting(false);
     }
   };
-
-  const customerOptions = [
-    { value: "", label: "Select a customer..." },
-    ...customers.map((c) => ({
-      value: c.id,
-      label: `${c.name} (${c.shippingMark})`,
-    })),
-  ];
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
@@ -158,7 +220,7 @@ export default function NewOrderPage() {
         <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
           {/* Invoice Details */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <ShoppingCart className="h-4 w-4 text-brand-600" />
               Invoice Details
             </h3>
@@ -174,12 +236,41 @@ export default function NewOrderPage() {
                     Loading customers...
                   </div>
                 ) : (
-                  <Select
-                    options={customerOptions}
-                    value={selectedCustomerId}
-                    onChange={(e) => handleCustomerChange(e.target.value)}
-                    className="w-full"
-                  />
+                  <div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search by name or shipping mark..."
+                        value={customerSearch}
+                        onChange={(e) => {
+                          setCustomerSearch(e.target.value);
+                          setCustomerDropdownOpen(true);
+                          if (!e.target.value) { setSelectedCustomerId(""); setCustomerItems([]); setSelectedItemIds([]); }
+                        }}
+                        onFocus={() => setCustomerDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setCustomerDropdownOpen(false), 150)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pr-8 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 transition-colors"
+                      />
+                      {selectedCustomer && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500" />
+                      )}
+                    </div>
+                    {customerDropdownOpen && filteredCustomers.length > 0 && (
+                      <div className="mt-1 border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-white shadow-sm">
+                        {filteredCustomers.slice(0, 20).map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={() => handleSelectCustomer(c)}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors border-b border-gray-50 last:border-0 ${selectedCustomerId === c.id ? "bg-brand-50" : ""}`}
+                          >
+                            <span className="text-sm font-medium text-gray-900">{c.name}</span>
+                            <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -235,7 +326,7 @@ export default function NewOrderPage() {
             </h3>
             <p className="text-xs text-gray-400 mb-4">
               {selectedCustomer
-                ? `Unordered items for ${selectedCustomer.name}`
+                ? `Items without invoice for ${selectedCustomer.name}`
                 : "Select a customer above to see their available items"}
             </p>
 
@@ -253,7 +344,7 @@ export default function NewOrderPage() {
               <div className="text-center py-8 border-2 border-dashed border-gray-100 rounded-xl">
                 <Package className="h-8 w-8 text-gray-200 mx-auto mb-2" />
                 <p className="text-sm text-gray-400">
-                  No unordered items for this customer
+                  No uninvoiced items for this customer
                 </p>
               </div>
             ) : (

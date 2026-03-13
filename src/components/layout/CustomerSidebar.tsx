@@ -26,7 +26,8 @@ import type { CustomerPackage } from "@/types";
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
   standard: "Basic Shipping",
   discounted: "Business Shipping",
-  premium: "Enterprise Logistics",
+  premium: "Enterprise Shipping",
+  special: "Special",
 };
 
 const navItems = [
@@ -79,8 +80,8 @@ export function CustomerSidebar() {
       {/* Logo */}
       <div className="flex items-center justify-between h-14 lg:h-16 px-5 border-b border-gray-100 shrink-0">
         <div className="flex items-center gap-2">
-          <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
-          <span className="font-bold text-lg tracking-tight text-gray-900">Pakkmaxx</span>
+          <Image src="/logowithouttext.png" alt="PAKKmax" width={32} height={32} className="rounded-lg" />
+          <span className="font-bold text-lg tracking-tight text-gray-900">PAKKmax</span>
         </div>
         <button
           onClick={closeSidebar}
@@ -93,7 +94,7 @@ export function CustomerSidebar() {
 
       {/* Shipping Mark Card */}
       <div className="mx-4 mt-4 p-3 bg-brand-50 border border-brand-100 rounded-xl shrink-0">
-        <p className="text-xs text-brand-600 font-medium mb-1">Your Shipping Mark</p>
+        <p className="text-xs text-brand-600 font-medium mb-1">Your Shipping Address</p>
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">

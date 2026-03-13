@@ -199,7 +199,7 @@ export default function CustomerSettingsPage() {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Account type</span>
                     <span className="text-gray-900 font-medium">
-                      {appUser.package === "standard" ? "Basic Shipping" : appUser.package === "discounted" ? "Business Shipping" : appUser.package === "premium" ? "Enterprise Logistics" : appUser.package}
+                      {appUser.package === "standard" ? "Basic Shipping" : appUser.package === "discounted" ? "Business Shipping" : appUser.package === "premium" ? "Enterprise Shipping" : appUser.package === "special" ? "Special" : appUser.package}
                     </span>
                   </div>
                 )}

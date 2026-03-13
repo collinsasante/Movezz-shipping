@@ -21,6 +21,7 @@ const UpdateItemSchema = z.object({
   notes: z.string().optional(),
   orderId: z.string().optional(),
   containerId: z.string().optional(),
+  customerId: z.string().optional(),
   isMissing: z.boolean().optional(),
   photoUrls: z.array(z.string().url()).optional(),
 });
@@ -54,8 +55,7 @@ export async function GET(
       success: true,
       data: item,
     });
-  } catch (err) {
-    console.error("[GET /items/[id]] Error:", err);
+  } catch {
     return notFoundResponse("Item not found");
   }
 }
@@ -90,8 +90,7 @@ export async function PATCH(
       data: item,
       message: "Item updated successfully",
     });
-  } catch (err) {
-    console.error("[PATCH /items/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to update item");
   }
 }
@@ -109,8 +108,7 @@ export async function DELETE(
     const { id } = await params;
     await itemsApi.delete(id);
     return Response.json({ success: true, message: "Item deleted" });
-  } catch (err) {
-    console.error("[DELETE /items/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to delete item");
   }
 }

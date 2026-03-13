@@ -57,8 +57,7 @@ export async function GET(request: NextRequest) {
       .map((c) => ({ ...c, totalCbm: cbmMap[c.id] ?? 0 }));
 
     return Response.json({ success: true, data, total, totalPages, page });
-  } catch (err) {
-    console.error("[GET /containers] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch containers");
   }
 }
@@ -90,7 +89,6 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /containers] Error:", err);
     return serverErrorResponse(`Failed to create container: ${errMsg}`);
   }
 }

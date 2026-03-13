@@ -113,7 +113,7 @@ export default function CustomersPage() {
     <div className="flex flex-col h-full">
       <Header title="Customers" subtitle={total > 0 ? `${total} customers` : "Manage all customer accounts"} />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="flex-1 p-4 sm:p-6 space-y-4">
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">

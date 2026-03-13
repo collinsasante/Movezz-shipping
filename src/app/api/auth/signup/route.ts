@@ -123,26 +123,23 @@ export async function POST(request: NextRequest) {
         role: "customer",
         customerId: customer.id,
       });
-    } catch (claimsErr) {
-      console.error("[signup] setCustomClaims failed (non-fatal):", claimsErr);
+    } catch {
+      // setCustomClaims failed (non-fatal)
     }
 
     // Send welcome email (non-fatal)
-    sendWelcomeEmail(email, customer.name, customer.shippingMark).catch((e) =>
-      console.error("[signup] Welcome email failed (non-fatal):", e)
-    );
+    sendWelcomeEmail(email, customer.name, customer.shippingMark).catch(() => {});
 
     return Response.json(
       {
         success: true,
         data: { customer, user: appUser },
-        message: `Welcome to Pakkmaxx! Your shipping mark is ${customer.shippingMark}`,
+        message: `Welcome to PAKKmax! Your shipping mark is ${customer.shippingMark}`,
       },
       { status: 201 }
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /auth/signup] Error:", msg);
     if (err instanceof Error) {
       if (msg.includes("email-already-in-use") || msg.includes("already-exists")) {
         return badRequestResponse("An account with this email already exists");

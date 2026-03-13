@@ -26,8 +26,7 @@ export async function GET(request: NextRequest) {
 
     const stats = await dashboardApi.getCustomerStats(customerId);
     return Response.json({ success: true, data: stats });
-  } catch (err) {
-    console.error("[GET /dashboard/customer] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch customer dashboard stats");
   }
 }

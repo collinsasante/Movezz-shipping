@@ -10,11 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import type { Customer } from "@/types";
-import { ArrowLeft, Camera, X, Package, Loader2, ChevronLeft, ChevronRight, Columns2 } from "lucide-react";
+import { ArrowLeft, Camera, X, Package, Loader2, ChevronLeft, ChevronRight, Columns2, Tag, Search } from "lucide-react";
 import axios from "axios";
 import { uploadPhotos } from "@/lib/uploadPhotos";
 
 const CBM_LS_KEY = "pakk_exchange_rates";
+const SPECIAL_RATES_KEY = "pakk_special_rates";
+interface SpecialRate { id: string; name: string; sea: number; air: number; }
 
 function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number {
   if (!l || !w || !h) return 0;
@@ -22,7 +24,7 @@ function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number 
   return l * w * h * 0.000016387;
 }
 
-function CbmDisplay({ length, width, height, unit, quantity, weight, shippingType }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number; weight: number; shippingType: "air" | "sea" }) {
+function CbmDisplay({ length, width, height, unit, quantity, weight, shippingType, specialRate }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number; weight: number; shippingType: "air" | "sea"; specialRate?: SpecialRate }) {
   let rates = { shippingRatePerCbm: 0, usdToGhs: 0 };
   let pkgRates: { standard?: { sea?: number; air?: number } } = {};
   try {
@@ -32,18 +34,18 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
 
   const usdToGhs = rates.usdToGhs || 0;
   const stdRates = pkgRates.standard ?? { sea: 0, air: 0 };
+  const rateLabel = specialRate ? specialRate.name : "Standard";
 
   // Air: weight-based
   if (shippingType === "air") {
     if (!weight || !usdToGhs) return null;
-    const airRate = stdRates.air || 0;
+    const airRate = specialRate ? specialRate.air : (stdRates.air || 0);
     if (!airRate) return (
       <p className="text-xs text-brand-500">Set air rate in Settings → Package Rates to see estimate.</p>
     );
     const qty = Math.max(1, quantity || 1);
     const costUsd = weight * qty * airRate;
     const costGhs = costUsd * usdToGhs;
-    console.log("[CbmDisplay air] weight:", weight, "qty:", qty, "airRate:", airRate, "usdToGhs:", usdToGhs, "costGhs:", costGhs);
     return (
       <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 text-sm space-y-1">
         <div className="flex justify-between">
@@ -51,7 +53,7 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
           <span className="font-bold text-brand-900">{(weight * qty).toFixed(2)} kg</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-brand-600">Rate (Standard)</span>
+          <span className="text-brand-600">Rate ({rateLabel})</span>
           <span className="font-semibold">${airRate}/kg</span>
         </div>
         <div className="flex justify-between text-xs">
@@ -66,10 +68,9 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
   const cbm = getCbm(length, width, height, unit) * Math.max(1, quantity || 1);
   if (!cbm) return null;
 
-  const seaRate = stdRates.sea || rates.shippingRatePerCbm || 0;
+  const seaRate = specialRate ? specialRate.sea : (stdRates.sea || rates.shippingRatePerCbm || 0);
   const costUsd = seaRate ? cbm * seaRate : null;
   const costGhs = costUsd && usdToGhs ? costUsd * usdToGhs : null;
-  console.log("[CbmDisplay sea] cbm:", cbm, "seaRate:", seaRate, "usdToGhs:", usdToGhs, "costGhs:", costGhs);
 
   return (
     <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 text-sm space-y-1">
@@ -79,7 +80,7 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
       </div>
       {costUsd != null && (
         <div className="flex justify-between text-xs">
-          <span className="text-brand-600">Rate (Standard)</span>
+          <span className="text-brand-600">Rate ({rateLabel})</span>
           <span className="font-semibold">${seaRate}/m³</span>
         </div>
       )}
@@ -102,6 +103,8 @@ export default function NewItemPage() {
   const { success, error } = useToast();
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [splitView, setSplitView] = useState(false);
   const [splitPhotoIdx, setSplitPhotoIdx] = useState(0);
@@ -119,15 +122,34 @@ export default function NewItemPage() {
     trackingNumber: "",
     quantity: "",
     dateReceived: new Date().toISOString().slice(0, 16),
+    estPrice: "",
+    estShippingPrice: "",
     notes: "",
   });
+  const [isSpecialItem, setIsSpecialItem] = useState(false);
+  const [specialRates, setSpecialRates] = useState<SpecialRate[]>([]);
+  const [selectedSpecialRateId, setSelectedSpecialRateId] = useState("");
+  const [specialSearch, setSpecialSearch] = useState("");
 
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
   useEffect(() => {
-    axios.get("/api/customers").then((res) => setCustomers(res.data.data));
+    axios.get("/api/customers").then((res) => {
+      const data: Customer[] = res.data.data;
+      setCustomers(data);
+      // If pre-filled from URL, set the search text
+      const prefilledId = searchParams?.get("customerId");
+      if (prefilledId) {
+        const match = data.find((c) => c.id === prefilledId);
+        if (match) setCustomerSearch(`${match.name} (${match.shippingMark})`);
+      }
+    });
+    try {
+      const saved = localStorage.getItem(SPECIAL_RATES_KEY);
+      if (saved) setSpecialRates(JSON.parse(saved));
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -138,13 +160,36 @@ export default function NewItemPage() {
     }
   }, [form.customerId, customers]);
 
-  const customerOptions = [
-    { value: "", label: "Select a customer..." },
-    ...customers.map((c) => ({
-      value: c.id,
-      label: `${c.name} (${c.shippingMark})`,
-    })),
-  ];
+  // Auto-fill estShippingPrice when special rate + dimensions/weight are set
+  useEffect(() => {
+    const rate = specialRates.find((r) => r.id === selectedSpecialRateId);
+    if (!rate) return;
+    try {
+      const { usdToGhs } = JSON.parse(localStorage.getItem(CBM_LS_KEY) ?? "{}");
+      if (!usdToGhs) return;
+      const qty = Math.max(1, parseInt(form.quantity) || 1);
+      let costUsd = 0;
+      if (form.shippingType === "air") {
+        const w = parseFloat(form.weight) || 0;
+        if (w) costUsd = w * qty * rate.air;
+      } else {
+        const cbm = getCbm(parseFloat(form.length) || 0, parseFloat(form.width) || 0, parseFloat(form.height) || 0, form.dimensionUnit) * qty;
+        if (cbm) costUsd = cbm * rate.sea;
+      }
+      if (costUsd > 0) {
+        setForm((prev) => ({ ...prev, estShippingPrice: (costUsd * usdToGhs).toFixed(2) }));
+      }
+    } catch {}
+  }, [selectedSpecialRateId, specialRates, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity]);
+
+  const filteredCustomers = customers.filter((c) => {
+    const q = customerSearch.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.shippingMark ?? "").toLowerCase().includes(q) ||
+      (c.phone ?? "").includes(q)
+    );
+  });
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -195,9 +240,18 @@ export default function NewItemPage() {
         }
       }
 
+      const selectedRate = specialRates.find((r) => r.id === selectedSpecialRateId);
+      const notesWithRate = selectedRate
+        ? `[Special Rate: ${selectedRate.name}]${form.notes ? "\n" + form.notes : ""}`
+        : form.notes;
+
       const payload = {
         ...form,
+        notes: notesWithRate || undefined,
         weight: form.weight ? parseFloat(form.weight) : undefined,
+        estPrice: form.estPrice ? parseFloat(form.estPrice) : undefined,
+        estShippingPrice: form.estShippingPrice ? parseFloat(form.estShippingPrice) : undefined,
+        isSpecialItem: (isSpecialItem || !!selectedRate) || undefined,
         length: form.length ? parseFloat(form.length) : undefined,
         width: form.width ? parseFloat(form.width) : undefined,
         height: form.height ? parseFloat(form.height) : undefined,
@@ -222,7 +276,7 @@ export default function NewItemPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Log Item" subtitle="Record a new package at the warehouse" />
+      <Header title="Add Item" subtitle="Record a new package at the warehouse" />
 
       <div className={`flex-1 overflow-hidden ${splitView && photoPreviews.length > 0 ? "flex flex-row" : "overflow-y-auto"}`}>
         {/* Form column */}
@@ -256,13 +310,49 @@ export default function NewItemPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Select
-                  label="Assign to Customer"
-                  options={customerOptions}
-                  value={form.customerId}
-                  onChange={(e) => setForm({ ...form, customerId: e.target.value })}
-                  required
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Assign to Customer <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Search by name or shipping mark..."
+                      value={customerSearch}
+                      onChange={(e) => {
+                        setCustomerSearch(e.target.value);
+                        setCustomerDropdownOpen(true);
+                        if (!e.target.value) setForm({ ...form, customerId: "" });
+                      }}
+                      onFocus={() => setCustomerDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setCustomerDropdownOpen(false), 150)}
+                      className="h-10 w-full pl-9 pr-3 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                    />
+                  </div>
+                  {customerDropdownOpen && filteredCustomers.length > 0 && (
+                    <div className="mt-1 border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-white shadow-sm">
+                      {filteredCustomers.slice(0, 20).map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setForm({ ...form, customerId: c.id });
+                            setCustomerSearch(`${c.name} (${c.shippingMark})`);
+                            setCustomerDropdownOpen(false);
+                          }}
+                          className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors text-sm"
+                        >
+                          <span className="font-medium text-gray-900 truncate">{c.name}</span>
+                          <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {customerDropdownOpen && customerSearch && filteredCustomers.length === 0 && (
+                    <p className="mt-1 text-xs text-gray-400 px-2">No customers match &quot;{customerSearch}&quot;</p>
+                  )}
+                </div>
                 <Textarea
                   label="Description (optional)"
                   placeholder="Describe the item (e.g. iPhone 15 Pro Max, 2x Sneakers size 10)"
@@ -438,9 +528,64 @@ export default function NewItemPage() {
                   quantity={parseInt(form.quantity) || 1}
                   weight={parseFloat(form.weight) || 0}
                   shippingType={form.shippingType}
+                  specialRate={specialRates.find((r) => r.id === selectedSpecialRateId)}
                 />
               </CardContent>
             </Card>
+
+            {specialRates.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Tag className="h-5 w-5 text-brand-600" />
+                    Special Rate (optional)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Search rates..."
+                    value={specialSearch}
+                    onChange={(e) => setSpecialSearch(e.target.value)}
+                    className="h-9 w-full px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {specialRates
+                      .filter((r) => r.name.toLowerCase().includes(specialSearch.toLowerCase()))
+                      .map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSpecialRateId(selectedSpecialRateId === r.id ? "" : r.id);
+                            setIsSpecialItem(selectedSpecialRateId !== r.id);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all ${
+                            selectedSpecialRateId === r.id
+                              ? "border-brand-300 bg-brand-50"
+                              : "border-gray-100 hover:border-gray-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span className="text-sm font-medium text-gray-900">{r.name}</span>
+                          <span className="text-xs text-gray-500">Sea: ${r.sea}/CBM · Air: ${r.air}/kg</span>
+                        </button>
+                      ))}
+                    {specialRates.filter((r) => r.name.toLowerCase().includes(specialSearch.toLowerCase())).length === 0 && (
+                      <p className="text-sm text-gray-400 text-center py-3">No rates match your search</p>
+                    )}
+                  </div>
+                  {selectedSpecialRateId && (
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedSpecialRateId(""); setIsSpecialItem(false); }}
+                      className="text-xs text-red-500 hover:underline"
+                    >
+                      Clear selection
+                    </button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardContent className="pt-5">

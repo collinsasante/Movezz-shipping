@@ -32,8 +32,7 @@ export async function GET(request: NextRequest) {
     const data = all.slice((page - 1) * limit, page * limit);
 
     return Response.json({ success: true, data, total, totalPages, page });
-  } catch (err) {
-    console.error("[GET /suppliers]", err);
+  } catch {
     return serverErrorResponse("Failed to fetch suppliers");
   }
 }
@@ -52,8 +51,7 @@ export async function POST(request: NextRequest) {
 
     const supplier = await suppliersApi.create(parsed.data as Parameters<typeof suppliersApi.create>[0], user.email);
     return Response.json({ success: true, data: supplier }, { status: 201 });
-  } catch (err) {
-    console.error("[POST /suppliers]", err);
+  } catch {
     return serverErrorResponse("Failed to create supplier");
   }
 }

@@ -73,6 +73,9 @@ export async function GET(
         keepupTotalAmount = keepupTotalAmount ?? order.invoiceAmount;
         keepupAmountPaid = order.invoiceAmount;
         keepupBalanceDue = 0;
+      } else if (order.status === "Partial" && (keepupAmountPaid ?? 0) === 0 && keepupTotalAmount) {
+        // Derive amount paid from balance due if Keepup field names differ
+        keepupAmountPaid = keepupTotalAmount - (keepupBalanceDue ?? keepupTotalAmount);
       }
     }
 
@@ -81,10 +84,7 @@ export async function GET(
       ? (
           await Promise.all(
             order.itemIds.map((itemId) =>
-              itemsApi.getById(itemId).catch((err) => {
-                console.error(`[orders/${id}] Failed to fetch item ${itemId}:`, err);
-                return null;
-              })
+              itemsApi.getById(itemId).catch(() => null)
             )
           )
         ).filter(Boolean)
@@ -94,8 +94,7 @@ export async function GET(
       success: true,
       data: { ...order, items, keepupTotalAmount, keepupAmountPaid, keepupBalanceDue },
     });
-  } catch (err) {
-    console.error("[GET /orders/[id]] Error:", err);
+  } catch {
     return notFoundResponse("Order not found");
   }
 }
@@ -129,8 +128,8 @@ export async function PATCH(
         const newStatus = parsed.data.paymentAmount >= order.invoiceAmount ? "Paid" : "Partial";
         await ordersApi.update(id, { status: newStatus }, user.email);
         order.status = newStatus;
-      } catch (e) {
-        console.error("[PATCH /orders] Keepup payment record failed:", e);
+      } catch {
+        // Keepup payment record failed (non-fatal)
       }
     }
 
@@ -138,8 +137,8 @@ export async function PATCH(
     if (parsed.data.status === "Paid" && order.keepupSaleId) {
       try {
         await recordKeepupPayment(order.keepupSaleId, order.invoiceAmount);
-      } catch (keepupErr) {
-        console.error("[PATCH /orders] Keepup payment record failed (non-fatal):", keepupErr);
+      } catch {
+        // Keepup payment record failed (non-fatal)
       }
     }
 
@@ -153,7 +152,7 @@ export async function PATCH(
             customerName: customer.name,
             orderRef: order.orderRef,
             invoiceAmount: order.invoiceAmount,
-          }).catch((e) => console.error("[PATCH /orders] Payment email failed:", e));
+          }).catch(() => {});
         } else if (parsed.data.status === "Partial") {
           sendPartialPaymentEmail({
             to: customer.email,
@@ -162,7 +161,7 @@ export async function PATCH(
             amountPaid: order.invoiceAmount * 0.5, // placeholder — Keepup has actual amounts
             balanceDue: order.invoiceAmount * 0.5,
             keepupLink: order.keepupLink,
-          }).catch((e) => console.error("[PATCH /orders] Partial payment email failed:", e));
+          }).catch(() => {});
         }
       }).catch(() => {/* non-fatal */});
     }
@@ -173,8 +172,8 @@ export async function PATCH(
         await updateKeepupSale(order.keepupSaleId, {
           invoiceDate: parsed.data.invoiceDate,
         });
-      } catch (keepupErr) {
-        console.error("[PATCH /orders] Keepup update failed (non-fatal):", keepupErr);
+      } catch {
+        // Keepup update failed (non-fatal)
       }
     }
 
@@ -183,8 +182,7 @@ export async function PATCH(
       data: order,
       message: "Order updated successfully",
     });
-  } catch (err) {
-    console.error("[PATCH /orders/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to update order");
   }
 }
@@ -208,14 +206,13 @@ export async function DELETE(
     if (existing.keepupSaleId) {
       try {
         await cancelKeepupSale(existing.keepupSaleId);
-      } catch (keepupErr) {
-        console.error("[DELETE /orders] Keepup cancel failed (non-fatal):", keepupErr);
+      } catch {
+        // Keepup cancel failed (non-fatal)
       }
     }
 
     return Response.json({ success: true, message: "Order deleted" });
-  } catch (err) {
-    console.error("[DELETE /orders/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to delete order");
   }
 }

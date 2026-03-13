@@ -25,12 +25,12 @@ export default function NewCustomerPage() {
 
   const [phoneCode, setPhoneCode] = useState("+1");
   const [phoneLocal, setPhoneLocal] = useState("");
-  const [defaultAddress, setDefaultAddress] = useState("Pakkmaxx Warehouse, Accra, Ghana");
+  const [defaultAddress, setDefaultAddress] = useState("Accra Ghana");
   const [form, setForm] = useState({
     name: "",
     email: "",
     notes: "",
-    shippingAddress: "",
+    shippingAddress: "Accra Ghana",
   });
 
   useEffect(() => {

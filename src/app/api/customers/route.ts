@@ -50,8 +50,7 @@ export async function GET(request: NextRequest) {
     const data = allCustomers.slice((page - 1) * limit, page * limit);
 
     return Response.json({ success: true, data, total, totalPages, page });
-  } catch (err) {
-    console.error("[GET /customers] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to fetch customers");
   }
 }
@@ -88,7 +87,6 @@ export async function POST(request: NextRequest) {
       firebaseUser = await createFirebaseUser(email, tempPassword);
     } catch (fbErr: unknown) {
       const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-      console.error("[POST /customers] createFirebaseUser failed:", msg);
       if (msg.includes("EMAIL_EXISTS") || msg.includes("email-already-in-use") || msg.includes("already exists")) {
         return badRequestResponse("A user with this email already exists");
       }
@@ -102,9 +100,7 @@ export async function POST(request: NextRequest) {
         { name, phone, email, notes, shippingAddress },
         user.email
       );
-    } catch (atErr: unknown) {
-      const msg = atErr instanceof Error ? atErr.message : String(atErr);
-      console.error("[POST /customers] customersApi.create failed:", msg);
+    } catch {
       // Rollback Firebase user
       await import("@/lib/firebase-admin").then(m => m.deleteFirebaseUser(firebaseUser.uid)).catch(() => {});
       return Response.json({ success: false, error: "Failed to save customer record. Please try again." }, { status: 500 });
@@ -113,15 +109,12 @@ export async function POST(request: NextRequest) {
     // 3. Create user record linking Firebase UID → Airtable customer
     try {
       await usersApi.create(firebaseUser.uid, email, "customer", customer.id);
-    } catch (userErr: unknown) {
-      console.error("[POST /customers] usersApi.create failed:", userErr);
+    } catch {
       // Non-fatal — customer exists, login will auto-create user record on first sign-in
     }
 
     // 4. Link Firebase UID to customer record
-    await customersApi.linkFirebaseUid(customer.id, firebaseUser.uid).catch((e) =>
-      console.error("[POST /customers] linkFirebaseUid failed (non-fatal):", e)
-    );
+    await customersApi.linkFirebaseUid(customer.id, firebaseUser.uid).catch(() => {});
 
     // 5. Set Firebase custom claims (no-op, non-fatal)
     setCustomClaims(firebaseUser.uid, { role: "customer", customerId: customer.id }).catch(() => {});
@@ -131,8 +124,8 @@ export async function POST(request: NextRequest) {
     try {
       await sendPasswordResetEmail(email);
       emailSent = true;
-    } catch (emailErr) {
-      console.error("[POST /customers] sendPasswordResetEmail failed (non-fatal):", emailErr);
+    } catch {
+      // sendPasswordResetEmail failed (non-fatal)
     }
 
     return Response.json(
@@ -143,9 +136,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[POST /customers] Unexpected error:", msg);
+  } catch {
     return Response.json(
       { success: false, error: "Failed to create customer" },
       { status: 500 }

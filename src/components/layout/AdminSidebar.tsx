@@ -19,7 +19,6 @@ import {
   ShieldCheck,
   Settings,
   X,
-  BarChart2,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -30,8 +29,7 @@ const navItems = [
   { href: "/admin/containers", label: "Containers", icon: Container },
   { href: "/admin/orders", label: "Invoices", icon: ShoppingCart },
   { href: "/admin/sorting", label: "Sorting", icon: SortAsc },
-  { href: "/admin/reports", label: "Reports", icon: BarChart2 },
-  { href: "/admin/staff", label: "Staff", icon: ShieldCheck },
+{ href: "/admin/staff", label: "Staff", icon: ShieldCheck },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -63,8 +61,8 @@ export function AdminSidebar() {
       >
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <Image src="/logowithouttext.png" alt="Pakkmaxx" width={32} height={32} className="rounded-lg" />
-            <span className="font-bold text-lg tracking-tight">Pakkmaxx</span>
+            <Image src="/logowithouttext.png" alt="PAKKmax" width={32} height={32} className="rounded-lg" />
+            <span className="font-bold text-lg tracking-tight">PAKKmax</span>
           </div>
         )}
         {/* Mobile: X to close drawer | Desktop: chevron to collapse */}

@@ -63,8 +63,7 @@ export async function GET(
         totalOrders: orders.length,
       },
     });
-  } catch (err) {
-    console.error("[GET /customers/[id]] Error:", err);
+  } catch {
     return notFoundResponse("Customer not found");
   }
 }
@@ -114,8 +113,7 @@ export async function PATCH(
       data: customer,
       message: "Customer updated successfully",
     });
-  } catch (err) {
-    console.error("[PATCH /customers/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to update customer");
   }
 }
@@ -137,8 +135,7 @@ export async function DELETE(
       success: true,
       message: "Customer deleted successfully",
     });
-  } catch (err) {
-    console.error("[DELETE /customers/[id]] Error:", err);
+  } catch {
     return serverErrorResponse("Failed to delete customer");
   }
 }

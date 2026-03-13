@@ -53,8 +53,8 @@ export function Header({ title, subtitle }: HeaderProps) {
 
   return (
     <header className="h-14 lg:h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 shrink-0">
-      <div className="flex items-center gap-3 min-w-0">
-        {/* Hamburger — mobile only */}
+      <div className="flex items-center gap-2 min-w-0">
+        {/* Hamburger — mobile only, hidden when bottom nav present */}
         <button
           onClick={openSidebar}
           className="lg:hidden p-2 -ml-1 rounded-lg hover:bg-gray-100 text-gray-500 shrink-0"
@@ -63,12 +63,12 @@ export function Header({ title, subtitle }: HeaderProps) {
           <Menu className="h-5 w-5" />
         </button>
         <div className="min-w-0">
-          <h1 className="text-lg lg:text-xl font-semibold text-gray-900 truncate">{title}</h1>
-          {subtitle && <p className="text-xs lg:text-sm text-gray-500 truncate hidden sm:block">{subtitle}</p>}
+          <h1 className="text-base lg:text-xl font-semibold text-gray-900 truncate">{title}</h1>
+          {subtitle && <p className="text-xs text-gray-500 truncate hidden sm:block">{subtitle}</p>}
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <div className="relative hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
@@ -94,7 +94,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           </button>
 
           {open && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden">
+            <div className="fixed right-4 top-14 lg:top-auto lg:right-0 lg:absolute lg:top-full mt-0 lg:mt-2 w-[min(20rem,calc(100vw-2rem))] bg-white border border-gray-200 rounded-xl shadow-xl z-[60] overflow-hidden">
               {/* Dropdown header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <p className="font-semibold text-sm text-gray-900">
@@ -163,12 +163,12 @@ export function Header({ title, subtitle }: HeaderProps) {
         </div>
 
         {/* User avatar */}
-        <div className="flex items-center gap-2 pl-3 border-l border-gray-200">
-          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-semibold">
+        <div className="flex items-center gap-2 pl-2 sm:pl-3 border-l border-gray-200">
+          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-semibold shrink-0">
             {appUser?.email?.charAt(0).toUpperCase() ?? "U"}
           </div>
           <div className="hidden sm:block">
-            <p className="text-sm font-medium text-gray-900 leading-none">
+            <p className="text-sm font-medium text-gray-900 leading-none truncate max-w-[120px]">
               {appUser?.customerName ?? appUser?.email?.split("@")[0]}
             </p>
             <p className="text-xs text-gray-500 capitalize mt-0.5">
