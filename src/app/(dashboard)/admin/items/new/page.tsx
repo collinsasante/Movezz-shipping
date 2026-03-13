@@ -25,27 +25,23 @@ function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number 
 }
 
 function CbmDisplay({ length, width, height, unit, quantity, weight, shippingType, specialRate }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number; weight: number; shippingType: "air" | "sea"; specialRate?: SpecialRate }) {
-  let rates = { shippingRatePerCbm: 0, usdToGhs: 0 };
-  let pkgRates: { standard?: { sea?: number; air?: number } } = {};
+  let pkgRates: { standard?: { sea?: number; air?: number }; shippingRatePerCbm?: number } = {};
   try {
-    rates = JSON.parse(localStorage.getItem(CBM_LS_KEY) ?? "{}");
     pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
   } catch {}
 
-  const usdToGhs = rates.usdToGhs || 0;
   const stdRates = pkgRates.standard ?? { sea: 0, air: 0 };
   const rateLabel = specialRate ? specialRate.name : "Standard";
 
   // Air: weight-based
   if (shippingType === "air") {
-    if (!weight || !usdToGhs) return null;
+    if (!weight) return null;
     const airRate = specialRate ? specialRate.air : (stdRates.air || 0);
     if (!airRate) return (
       <p className="text-xs text-brand-500">Set air rate in Settings → Package Rates to see estimate.</p>
     );
     const qty = Math.max(1, quantity || 1);
-    const costUsd = weight * qty * airRate;
-    const costGhs = costUsd * usdToGhs;
+    const costGhs = weight * qty * airRate;
     return (
       <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 text-sm space-y-1">
         <div className="flex justify-between">
@@ -54,7 +50,7 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-brand-600">Rate ({rateLabel})</span>
-          <span className="font-semibold">${airRate}/kg</span>
+          <span className="font-semibold">GH₵{airRate}/kg</span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-brand-600">Est. cost (GHS)</span>
@@ -68,9 +64,8 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
   const cbm = getCbm(length, width, height, unit) * Math.max(1, quantity || 1);
   if (!cbm) return null;
 
-  const seaRate = specialRate ? specialRate.sea : (stdRates.sea || rates.shippingRatePerCbm || 0);
-  const costUsd = seaRate ? cbm * seaRate : null;
-  const costGhs = costUsd && usdToGhs ? costUsd * usdToGhs : null;
+  const seaRate = specialRate ? specialRate.sea : (stdRates.sea || pkgRates.shippingRatePerCbm || 0);
+  const costGhs = seaRate ? cbm * seaRate : null;
 
   return (
     <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 text-sm space-y-1">
@@ -78,10 +73,10 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
         <span className="text-brand-700 font-medium">CBM</span>
         <span className="font-bold text-brand-900">{cbm.toFixed(4)} m³</span>
       </div>
-      {costUsd != null && (
+      {costGhs != null && (
         <div className="flex justify-between text-xs">
           <span className="text-brand-600">Rate ({rateLabel})</span>
-          <span className="font-semibold">${seaRate}/m³</span>
+          <span className="font-semibold">GH₵{seaRate}/m³</span>
         </div>
       )}
       {costGhs != null && (
@@ -91,7 +86,7 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
         </div>
       )}
       {!seaRate && (
-        <p className="text-xs text-brand-500">Set exchange rates in settings to see cost estimate.</p>
+        <p className="text-xs text-brand-500">Set rates in Settings → Package Rates to see cost estimate.</p>
       )}
     </div>
   );
@@ -165,22 +160,20 @@ export default function NewItemPage() {
     // Special rate takes priority — handled by the effect below
     if (selectedSpecialRateId) return;
     try {
-      const { usdToGhs } = JSON.parse(localStorage.getItem(CBM_LS_KEY) ?? "{}");
       const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
-      if (!usdToGhs) return;
       const customer = customers.find((c) => c.id === form.customerId);
       const tier = (customer?.package ?? "standard") as "standard" | "discounted" | "premium" | "special";
       const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
       const qty = Math.max(1, parseInt(form.quantity) || 1);
-      let costUsd = 0;
+      let costGhs = 0;
       if (form.shippingType === "air") {
         const w = parseFloat(form.weight) || 0;
-        if (w) costUsd = w * qty * tierRates.air;
+        if (w) costGhs = w * qty * tierRates.air;
       } else {
         const cbm = getCbm(parseFloat(form.length) || 0, parseFloat(form.width) || 0, parseFloat(form.height) || 0, form.dimensionUnit) * qty;
-        if (cbm) costUsd = cbm * tierRates.sea;
+        if (cbm) costGhs = cbm * tierRates.sea;
       }
-      setForm((prev) => ({ ...prev, estShippingPrice: costUsd > 0 ? (costUsd * usdToGhs).toFixed(2) : "" }));
+      setForm((prev) => ({ ...prev, estShippingPrice: costGhs > 0 ? costGhs.toFixed(2) : "" }));
     } catch {}
   }, [form.customerId, customers, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity, selectedSpecialRateId]);
 
@@ -189,19 +182,17 @@ export default function NewItemPage() {
     const rate = specialRates.find((r) => r.id === selectedSpecialRateId);
     if (!rate) return;
     try {
-      const { usdToGhs } = JSON.parse(localStorage.getItem(CBM_LS_KEY) ?? "{}");
-      if (!usdToGhs) return;
       const qty = Math.max(1, parseInt(form.quantity) || 1);
-      let costUsd = 0;
+      let costGhs = 0;
       if (form.shippingType === "air") {
         const w = parseFloat(form.weight) || 0;
-        if (w) costUsd = w * qty * rate.air;
+        if (w) costGhs = w * qty * rate.air;
       } else {
         const cbm = getCbm(parseFloat(form.length) || 0, parseFloat(form.width) || 0, parseFloat(form.height) || 0, form.dimensionUnit) * qty;
-        if (cbm) costUsd = cbm * rate.sea;
+        if (cbm) costGhs = cbm * rate.sea;
       }
-      if (costUsd > 0) {
-        setForm((prev) => ({ ...prev, estShippingPrice: (costUsd * usdToGhs).toFixed(2) }));
+      if (costGhs > 0) {
+        setForm((prev) => ({ ...prev, estShippingPrice: costGhs.toFixed(2) }));
       }
     } catch {}
   }, [selectedSpecialRateId, specialRates, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity]);

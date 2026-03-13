@@ -118,43 +118,41 @@ export default function AdminItemDetailPage() {
   useEffect(() => {
     if (!item) return;
     try {
-      const { usdToGhs } = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}") as { usdToGhs?: number };
       const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}") as Record<string, { sea?: number; air?: number }>;
       const specialRatesRaw = JSON.parse(localStorage.getItem("pakk_special_rates") ?? "[]") as { id: string; name: string; sea: number; air: number }[];
-      if (!usdToGhs) { setShippingEstimate(null); return; }
       // Special rates take priority if item customer matches a special rate by name
       const tierRates = pkgRates[customerPackage] ?? pkgRates.standard ?? { sea: 0, air: 0 };
       const qty = item.quantity ?? 1;
-      let costUsd = 0;
+      let costGhs = 0;
       let rateStr = "";
       if (item.shippingType === "air" && item.weight) {
         const rate = tierRates.air ?? 0;
-        costUsd = item.weight * qty * rate;
-        rateStr = `$${rate}/kg`;
+        costGhs = item.weight * qty * rate;
+        rateStr = `GH₵${rate}/kg`;
       } else if (item.length && item.width && item.height) {
         const factor = item.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
         const cbm = item.length * item.width * item.height * factor * qty;
         const rate = tierRates.sea ?? 0;
-        costUsd = cbm * rate;
-        rateStr = `$${rate}/m³`;
+        costGhs = cbm * rate;
+        rateStr = `GH₵${rate}/m³`;
       }
       // Check if there's a matching special named rate
       if (specialRatesRaw.length > 0) {
         const specialMatch = specialRatesRaw.find((r) => r.name.toLowerCase() === customerPackage.toLowerCase());
         if (specialMatch) {
           if (item.shippingType === "air" && item.weight) {
-            costUsd = item.weight * qty * specialMatch.air;
-            rateStr = `$${specialMatch.air}/kg (${specialMatch.name})`;
+            costGhs = item.weight * qty * specialMatch.air;
+            rateStr = `GH₵${specialMatch.air}/kg (${specialMatch.name})`;
           } else if (item.length && item.width && item.height) {
             const factor = item.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
             const cbm = item.length * item.width * item.height * factor * qty;
-            costUsd = cbm * specialMatch.sea;
-            rateStr = `$${specialMatch.sea}/m³ (${specialMatch.name})`;
+            costGhs = cbm * specialMatch.sea;
+            rateStr = `GH₵${specialMatch.sea}/m³ (${specialMatch.name})`;
           }
         }
       }
-      if (costUsd > 0) {
-        setShippingEstimate({ amount: (costUsd * usdToGhs).toFixed(2), rateStr, tier: customerPackage });
+      if (costGhs > 0) {
+        setShippingEstimate({ amount: costGhs.toFixed(2), rateStr, tier: customerPackage });
       } else {
         setShippingEstimate(null);
       }

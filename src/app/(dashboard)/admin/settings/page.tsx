@@ -281,7 +281,7 @@ export default function AdminSettingsPage() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Input
-                        label="Sea Rate (USD/CBM)"
+                        label="Sea Rate (GHS/CBM)"
                         type="number"
                         step="0.01"
                         min="0"
@@ -289,7 +289,7 @@ export default function AdminSettingsPage() {
                         onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], sea: parseFloat(e.target.value) || 0 } }))}
                       />
                       <Input
-                        label="Air Rate (USD/kg)"
+                        label="Air Rate (GHS/kg)"
                         type="number"
                         step="0.01"
                         min="0"
@@ -330,7 +330,7 @@ export default function AdminSettingsPage() {
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Sea Rate (USD/CBM)"
+                    label="Sea Rate (GHS/CBM)"
                     type="number"
                     step="0.01"
                     min="0"
@@ -339,7 +339,7 @@ export default function AdminSettingsPage() {
                     onChange={(e) => setSpecialRateForm({ ...specialRateForm, sea: e.target.value })}
                   />
                   <Input
-                    label="Air Rate (USD/kg)"
+                    label="Air Rate (GHS/kg)"
                     type="number"
                     step="0.01"
                     min="0"
@@ -369,7 +369,7 @@ export default function AdminSettingsPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{r.name}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            Sea: ${r.sea}/CBM · Air: ${r.air}/kg
+                            Sea: GH₵{r.sea}/CBM · Air: GH₵{r.air}/kg
                           </p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
