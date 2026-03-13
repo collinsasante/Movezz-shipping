@@ -270,7 +270,7 @@ export default function ReportsPage() {
                         <tr>
                           <th className="px-4 py-3 bg-gray-50 border-b text-left text-xs font-medium text-gray-500 uppercase">Customer Name</th>
                           <th className="px-4 py-3 bg-gray-50 border-b text-right text-xs font-medium text-gray-500 uppercase">Total Orders</th>
-                          <th className="px-4 py-3 bg-gray-50 border-b text-right text-xs font-medium text-gray-500 uppercase">Total Revenue (GHS)</th>
+                          <th className="px-4 py-3 bg-gray-50 border-b text-right text-xs font-medium text-gray-500 uppercase">Total Revenue (USD)</th>
                           <th className="px-4 py-3 bg-gray-50 border-b text-right text-xs font-medium text-gray-500 uppercase">Outstanding Balance</th>
                         </tr>
                       </thead>
@@ -311,7 +311,7 @@ export default function ReportsPage() {
                         <tr>
                           <th className="px-4 py-3 bg-gray-50 border-b text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                           <th className="px-4 py-3 bg-gray-50 border-b text-left text-xs font-medium text-gray-500 uppercase">Invoice ID</th>
-                          <th className="px-4 py-3 bg-gray-50 border-b text-right text-xs font-medium text-gray-500 uppercase">Amount Due (GHS)</th>
+                          <th className="px-4 py-3 bg-gray-50 border-b text-right text-xs font-medium text-gray-500 uppercase">Amount Due (USD)</th>
                           <th className="px-4 py-3 bg-gray-50 border-b text-left text-xs font-medium text-gray-500 uppercase">Invoice Date</th>
                           <th className="px-4 py-3 bg-gray-50 border-b text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                         </tr>

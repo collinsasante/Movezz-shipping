@@ -86,7 +86,7 @@ export default function NewOrderPage() {
                 setSelectedCustomerId(draft.selectedCustomerId);
                 // Set search display label from loaded customers list
                 const matched = (res.data.data as Customer[]).find((c) => c.id === draft.selectedCustomerId);
-                if (matched) setCustomerSearch(`${matched.name} (${matched.shippingMark})`);
+                if (matched) setCustomerSearch(matched.shippingMark);
                 setLoadingItems(true);
                 try {
                   const itemsRes = await axios.get("/api/items", { params: { customerId: draft.selectedCustomerId } });
@@ -139,7 +139,7 @@ export default function NewOrderPage() {
 
   const handleSelectCustomer = (customer: Customer) => {
     setSelectedCustomerId(customer.id);
-    setCustomerSearch(`${customer.name} (${customer.shippingMark})`);
+    setCustomerSearch(customer.shippingMark);
     setCustomerDropdownOpen(false);
     loadCustomerItems(customer.id);
   };
@@ -148,7 +148,7 @@ export default function NewOrderPage() {
     const q = customerSearch.toLowerCase();
     // If search matches the currently selected customer's full label, show all
     const selectedCustomer = customers.find((x) => x.id === selectedCustomerId);
-    if (selectedCustomer && customerSearch === `${selectedCustomer.name} (${selectedCustomer.shippingMark})`) return true;
+    if (selectedCustomer && customerSearch === selectedCustomer.shippingMark) return true;
     return (
       c.name.toLowerCase().includes(q) ||
       c.shippingMark.toLowerCase().includes(q) ||
@@ -264,8 +264,8 @@ export default function NewOrderPage() {
                             onMouseDown={() => handleSelectCustomer(c)}
                             className={`w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors border-b border-gray-50 last:border-0 ${selectedCustomerId === c.id ? "bg-brand-50" : ""}`}
                           >
-                            <span className="text-sm font-medium text-gray-900">{c.name}</span>
-                            <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
+                            <span className="text-sm font-mono font-bold text-gray-900 truncate uppercase tracking-wide">{c.name}</span>
+                            <code className="text-xs text-brand-600 font-mono font-bold ml-2 shrink-0 tracking-wider">{c.shippingMark}</code>
                           </button>
                         ))}
                       </div>
@@ -277,12 +277,12 @@ export default function NewOrderPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Invoice Amount (GHS) <span className="text-red-500">*</span>
+                    Invoice Amount (USD) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     readOnly
-                    value={invoiceAmount ? `GHS ${Number(invoiceAmount).toFixed(2)}` : ""}
+                    value={invoiceAmount ? `$ ${Number(invoiceAmount).toFixed(2)}` : ""}
                     placeholder="Select items to auto-calculate"
                     className="h-10 w-full px-3 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-700 cursor-default"
                   />
@@ -382,7 +382,7 @@ export default function NewOrderPage() {
                           const ghs = Math.round(cbm * shippingRatePerCbm * usdToGhs * 100) / 100;
                           return cbm > 0 ? (
                             <span className="text-xs font-semibold text-brand-700">
-                              GHS {ghs.toFixed(2)}
+                              $ {ghs.toFixed(2)}
                             </span>
                           ) : null;
                         } catch { return null; }

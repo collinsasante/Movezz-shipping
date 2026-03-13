@@ -137,7 +137,7 @@ export default function AdminItemDetailPage() {
       const tierRates = pkgRates[tierKey] ?? { sea: 0, air: 0 };
       const tierLabel = tierKey.charAt(0).toUpperCase() + tierKey.slice(1);
       const pkgCost = calcCost(tierRates.sea ?? 0, tierRates.air ?? 0);
-      setPkgEstimate(pkgCost > 0 ? { amount: pkgCost.toFixed(2), rateStr: item.shippingType === "air" ? `GH₵${tierRates.air}/kg` : `GH₵${tierRates.sea}/m³`, label: tierLabel } : null);
+      setPkgEstimate(pkgCost > 0 ? { amount: pkgCost.toFixed(2), rateStr: item.shippingType === "air" ? `$${tierRates.air}/kg` : `$${tierRates.sea}/m³`, label: tierLabel } : null);
 
       // Special surcharge — matched by item's saved specialRateName
       const specialMatch = item.specialRateName
@@ -145,7 +145,7 @@ export default function AdminItemDetailPage() {
         : null;
       if (specialMatch) {
         const spCost = calcCost(specialMatch.sea, specialMatch.air);
-        setSpecialEstimate(spCost > 0 ? { amount: spCost.toFixed(2), rateStr: item.shippingType === "air" ? `GH₵${specialMatch.air}/kg` : `GH₵${specialMatch.sea}/m³`, label: specialMatch.name } : null);
+        setSpecialEstimate(spCost > 0 ? { amount: spCost.toFixed(2), rateStr: item.shippingType === "air" ? `$${specialMatch.air}/kg` : `$${specialMatch.sea}/m³`, label: specialMatch.name } : null);
       } else {
         setSpecialEstimate(null);
       }
@@ -357,10 +357,10 @@ export default function AdminItemDetailPage() {
                   return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
                 })() : null}
                 {item.estPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Item Price" value={`GH₵ ${item.estPrice.toFixed(2)}`} />
+                  <InfoRow icon={DollarSign} label="Est. Item Price" value={`$ ${item.estPrice.toFixed(2)}`} />
                 )}
                 {item.estShippingPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Shipping Cost" value={`GH₵ ${item.estShippingPrice.toFixed(2)}`} />
+                  <InfoRow icon={DollarSign} label="Est. Shipping Cost" value={`$ ${item.estShippingPrice.toFixed(2)}`} />
                 )}
                 {/* Live shipping estimate: package + special surcharge + total */}
                 {pkgEstimate && (
@@ -369,17 +369,17 @@ export default function AdminItemDetailPage() {
                       <p className="text-xs font-semibold text-brand-700 mb-1">Shipping Estimate</p>
                       <div className="flex justify-between text-xs">
                         <span className="text-brand-600">{pkgEstimate.label} <span className="text-brand-400">({pkgEstimate.rateStr})</span></span>
-                        <span className="font-semibold text-brand-900">GH₵ {pkgEstimate.amount}</span>
+                        <span className="font-semibold text-brand-900">$ {pkgEstimate.amount}</span>
                       </div>
                       {specialEstimate && (
                         <div className="flex justify-between text-xs">
                           <span className="text-purple-600">+ {specialEstimate.label} <span className="text-purple-400">({specialEstimate.rateStr})</span></span>
-                          <span className="font-semibold text-purple-900">GH₵ {specialEstimate.amount}</span>
+                          <span className="font-semibold text-purple-900">$ {specialEstimate.amount}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5 mt-0.5">
                         <span className="font-semibold text-brand-800">Total Est.</span>
-                        <span className="font-bold text-brand-900">GH₵ {(parseFloat(pkgEstimate.amount) + parseFloat(specialEstimate?.amount ?? "0")).toFixed(2)}</span>
+                        <span className="font-bold text-brand-900">$ {(parseFloat(pkgEstimate.amount) + parseFloat(specialEstimate?.amount ?? "0")).toFixed(2)}</span>
                       </div>
                     </div>
                   </div>

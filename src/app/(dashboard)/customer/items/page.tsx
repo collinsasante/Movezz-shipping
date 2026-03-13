@@ -85,11 +85,11 @@ function useShippingEstimate(item: Item | null, customerPackage: string) {
       const tierKey = ["basic", "business", "enterprise", "special"].includes(customerPackage.toLowerCase()) ? customerPackage : "basic";
       const tierRates = pkgRates[tierKey] ?? { sea: 0, air: 0 };
       const pkgCost = calc(tierRates.sea ?? 0, tierRates.air ?? 0);
-      setPkgEst(pkgCost > 0 ? { label: tierKey.charAt(0).toUpperCase() + tierKey.slice(1), amount: pkgCost.toFixed(2), rateStr: it.shippingType === "air" ? `GH₵${tierRates.air}/kg` : `GH₵${tierRates.sea}/m³` } : null);
+      setPkgEst(pkgCost > 0 ? { label: tierKey.charAt(0).toUpperCase() + tierKey.slice(1), amount: pkgCost.toFixed(2), rateStr: it.shippingType === "air" ? `$${tierRates.air}/kg` : `$${tierRates.sea}/m³` } : null);
       const spMatch = it.specialRateName ? specialRatesRaw.find((r) => r.name.toLowerCase() === it.specialRateName!.toLowerCase()) : null;
       if (spMatch) {
         const spCost = calc(spMatch.sea, spMatch.air);
-        setSpEst(spCost > 0 ? { label: spMatch.name, amount: spCost.toFixed(2), rateStr: it.shippingType === "air" ? `GH₵${spMatch.air}/kg` : `GH₵${spMatch.sea}/m³` } : null);
+        setSpEst(spCost > 0 ? { label: spMatch.name, amount: spCost.toFixed(2), rateStr: it.shippingType === "air" ? `$${spMatch.air}/kg` : `$${spMatch.sea}/m³` } : null);
       } else setSpEst(null);
     } catch { setPkgEst(null); setSpEst(null); }
   }, [item, customerPackage]);
@@ -329,24 +329,24 @@ export default function CustomerItemsPage() {
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
                 {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
-                {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`GH₵ ${selectedItem.estPrice.toFixed(2)}`} />}
-                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping" value={`GH₵ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
+                {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`$ ${selectedItem.estPrice.toFixed(2)}`} />}
+                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
                 {pkgEst && (
                   <div className="mt-2 bg-brand-50 border border-brand-100 rounded-xl p-3 space-y-1.5">
                     <p className="text-xs font-semibold text-brand-700">Shipping Estimate</p>
                     <div className="flex justify-between text-xs">
                       <span className="text-brand-600">{pkgEst.label} <span className="text-brand-400">({pkgEst.rateStr})</span></span>
-                      <span className="font-semibold text-brand-900">GH₵ {pkgEst.amount}</span>
+                      <span className="font-semibold text-brand-900">$ {pkgEst.amount}</span>
                     </div>
                     {spEst && (
                       <div className="flex justify-between text-xs">
                         <span className="text-purple-600">+ {spEst.label} <span className="text-purple-400">({spEst.rateStr})</span></span>
-                        <span className="font-semibold text-purple-900">GH₵ {spEst.amount}</span>
+                        <span className="font-semibold text-purple-900">$ {spEst.amount}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5">
                       <span className="font-semibold text-brand-800">Total Est.</span>
-                      <span className="font-bold text-brand-900">GH₵ {(parseFloat(pkgEst.amount) + parseFloat(spEst?.amount ?? "0")).toFixed(2)}</span>
+                      <span className="font-bold text-brand-900">$ {(parseFloat(pkgEst.amount) + parseFloat(spEst?.amount ?? "0")).toFixed(2)}</span>
                     </div>
                   </div>
                 )}

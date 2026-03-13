@@ -195,7 +195,7 @@ export async function sendInvoiceCreatedEmail(opts: {
 }): Promise<void> {
   const { to, customerName, orderRef, invoiceAmount, invoiceDate, itemCount, keepupLink, notes } = opts;
   const firstName = customerName.split(" ")[0];
-  const amountStr = new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(invoiceAmount);
+  const amountStr = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(invoiceAmount);
 
   const html = baseLayout(
     `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
@@ -241,7 +241,7 @@ export async function sendPaymentConfirmedEmail(opts: {
 }): Promise<void> {
   const { to, customerName, orderRef, invoiceAmount } = opts;
   const firstName = customerName.split(" ")[0];
-  const amountStr = new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(invoiceAmount);
+  const amountStr = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(invoiceAmount);
 
   const html = baseLayout(
     `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
@@ -395,7 +395,7 @@ export async function sendPartialPaymentEmail(opts: {
 }): Promise<void> {
   const { to, customerName, orderRef, amountPaid, balanceDue, keepupLink } = opts;
   const firstName = customerName.split(" ")[0];
-  const fmt = (n: number) => new Intl.NumberFormat("en-GH", { style: "currency", currency: "GHS" }).format(n);
+  const fmt = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
   const html = baseLayout(
     `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">

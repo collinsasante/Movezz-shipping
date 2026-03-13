@@ -76,9 +76,9 @@ export function toISOString(date: Date = new Date()): string {
 // ---- Currency Formatting ----
 export function formatCurrency(
   amount: number,
-  currency: string = "GHS"
+  currency: string = "USD"
 ): string {
-  return new Intl.NumberFormat("en-GH", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,

@@ -177,7 +177,7 @@ export default function CustomerCalculatorPage() {
             )}
           </div>
           {activePackage && (
-            <p className="text-xs text-gray-400">Sea: GH₵{currentRates.sea}/CBM · Air: GH₵{currentRates.air}/kg</p>
+            <p className="text-xs text-gray-400">Sea: ${currentRates.sea}/CBM · Air: ${currentRates.air}/kg</p>
           )}
         </div>
 
@@ -243,30 +243,30 @@ export default function CustomerCalculatorPage() {
               <div className={`bg-white border rounded-2xl p-5 transition-all ${cheaper === "sea" ? "border-brand-300 ring-2 ring-brand-100" : "border-gray-100"}`}>
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center"><Anchor className="h-4 w-4 text-blue-600" /></div>
-                  <div><p className="text-sm font-semibold text-gray-800">Sea Freight</p><p className="text-xs text-gray-400">GH₵{currentRates.sea}/CBM</p></div>
+                  <div><p className="text-sm font-semibold text-gray-800">Sea Freight</p><p className="text-xs text-gray-400">${currentRates.sea}/CBM</p></div>
                   {cheaper === "sea" && <span className="ml-auto text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">Cheaper</span>}
                 </div>
                 {cbmValue > 0 ? (
                   <>
                     <Row label="Volume" value={`${cbmValue.toFixed(4)} m³`} />
-                    <Row label={`${activeMeta?.label ?? "Package"} rate`} value={`GH₵${seaCost.toFixed(2)}`} />
-                    {seaSpecial > 0 && <Row label={`+ ${selectedSpecial!.name}`} value={`GH₵${seaSpecial.toFixed(2)}`} />}
-                    <Row label="Total Sea Est." value={`GH₵${(seaCost + seaSpecial).toFixed(2)}`} highlight />
+                    <Row label={`${activeMeta?.label ?? "Package"} rate`} value={`$${seaCost.toFixed(2)}`} />
+                    {seaSpecial > 0 && <Row label={`+ ${selectedSpecial!.name}`} value={`$${seaSpecial.toFixed(2)}`} />}
+                    <Row label="Total Sea Est." value={`$${(seaCost + seaSpecial).toFixed(2)}`} highlight />
                   </>
                 ) : <p className="text-sm text-gray-400 text-center py-3">Enter dimensions above</p>}
               </div>
               <div className={`bg-white border rounded-2xl p-5 transition-all ${cheaper === "air" ? "border-brand-300 ring-2 ring-brand-100" : "border-gray-100"}`}>
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center"><Wind className="h-4 w-4 text-purple-600" /></div>
-                  <div><p className="text-sm font-semibold text-gray-800">Air Freight</p><p className="text-xs text-gray-400">GH₵{currentRates.air}/kg</p></div>
+                  <div><p className="text-sm font-semibold text-gray-800">Air Freight</p><p className="text-xs text-gray-400">${currentRates.air}/kg</p></div>
                   {cheaper === "air" && <span className="ml-auto text-xs bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">Cheaper</span>}
                 </div>
                 {airCost > 0 ? (
                   <>
                     <Row label="Weight" value={`${(n(weight) * Math.max(1, n(qty))).toFixed(2)} kg`} />
-                    <Row label={`${activeMeta?.label ?? "Package"} rate`} value={`GH₵${airCost.toFixed(2)}`} />
-                    {airSpecial > 0 && <Row label={`+ ${selectedSpecial!.name}`} value={`GH₵${airSpecial.toFixed(2)}`} />}
-                    <Row label="Total Air Est." value={`GH₵${(airCost + airSpecial).toFixed(2)}`} highlight />
+                    <Row label={`${activeMeta?.label ?? "Package"} rate`} value={`$${airCost.toFixed(2)}`} />
+                    {airSpecial > 0 && <Row label={`+ ${selectedSpecial!.name}`} value={`$${airSpecial.toFixed(2)}`} />}
+                    <Row label="Total Air Est." value={`$${(airCost + airSpecial).toFixed(2)}`} highlight />
                   </>
                 ) : <p className="text-sm text-gray-400 text-center py-3">Enter weight above</p>}
               </div>
@@ -302,7 +302,7 @@ export default function CustomerCalculatorPage() {
                 {n(cbmQty) <= 1 && <p className="text-lg font-bold text-brand-700">{cbmResult.single.toFixed(4)} m³</p>}
                 <div className="pt-2 border-t border-brand-100 space-y-1">
                   <p className="text-xs text-brand-600 font-medium">Estimated sea shipping:</p>
-                  <p className="text-sm font-bold text-brand-800">GH₵{(cbmResult.total * currentRates.sea).toFixed(2)}</p>
+                  <p className="text-sm font-bold text-brand-800">${(cbmResult.total * currentRates.sea).toFixed(2)}</p>
                 </div>
               </div>
             ) : (

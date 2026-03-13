@@ -465,7 +465,7 @@ export default function AdminOrderDetailPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="py-2">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Payment Amount (GHS)</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Payment Amount (USD)</label>
             <input
               type="number"
               step="0.01"

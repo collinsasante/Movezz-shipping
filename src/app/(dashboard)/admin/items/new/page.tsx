@@ -50,11 +50,11 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-brand-600">Rate ({rateLabel})</span>
-          <span className="font-semibold">GH₵{airRate}/kg</span>
+          <span className="font-semibold">${airRate}/kg</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-brand-600">Est. cost (GHS)</span>
-          <span className="font-bold text-brand-900">GH₵ {costGhs.toFixed(2)}</span>
+          <span className="text-brand-600">Est. cost (USD)</span>
+          <span className="font-bold text-brand-900">${costGhs.toFixed(2)}</span>
         </div>
       </div>
     );
@@ -76,13 +76,13 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
       {costGhs != null && (
         <div className="flex justify-between text-xs">
           <span className="text-brand-600">Rate ({rateLabel})</span>
-          <span className="font-semibold">GH₵{seaRate}/m³</span>
+          <span className="font-semibold">${seaRate}/m³</span>
         </div>
       )}
       {costGhs != null && (
         <div className="flex justify-between text-xs">
-          <span className="text-brand-600">Est. cost (GHS)</span>
-          <span className="font-bold text-brand-900">GH₵ {costGhs.toFixed(2)}</span>
+          <span className="text-brand-600">Est. cost (USD)</span>
+          <span className="font-bold text-brand-900">${costGhs.toFixed(2)}</span>
         </div>
       )}
       {!seaRate && (
@@ -138,7 +138,7 @@ export default function NewItemPage() {
       const prefilledId = searchParams?.get("customerId");
       if (prefilledId) {
         const match = data.find((c) => c.id === prefilledId);
-        if (match) setCustomerSearch(`${match.name} (${match.shippingMark})`);
+        if (match) setCustomerSearch(match.shippingMark);
       }
     });
     try {
@@ -199,6 +199,7 @@ export default function NewItemPage() {
 
   const filteredCustomers = customers.filter((c) => {
     const q = customerSearch.toLowerCase();
+    if (form.customerId && c.shippingMark === customerSearch) return true;
     return (
       c.name.toLowerCase().includes(q) ||
       (c.shippingMark ?? "").toLowerCase().includes(q) ||
@@ -351,13 +352,13 @@ export default function NewItemPage() {
                           type="button"
                           onMouseDown={() => {
                             setForm({ ...form, customerId: c.id });
-                            setCustomerSearch(`${c.name} (${c.shippingMark})`);
+                            setCustomerSearch(c.shippingMark);
                             setCustomerDropdownOpen(false);
                           }}
                           className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors text-sm"
                         >
-                          <code className="text-sm font-mono font-semibold text-gray-900 truncate">{c.name}</code>
-                          <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
+                          <span className="text-sm font-mono font-bold text-gray-900 truncate uppercase tracking-wide">{c.name}</span>
+                          <code className="text-xs text-brand-600 font-mono font-bold ml-2 shrink-0 tracking-wider">{c.shippingMark}</code>
                         </button>
                       ))}
                     </div>
