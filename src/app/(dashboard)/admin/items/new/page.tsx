@@ -160,6 +160,30 @@ export default function NewItemPage() {
     }
   }, [form.customerId, customers]);
 
+  // Auto-fill estShippingPrice from customer package tier rates (all items)
+  useEffect(() => {
+    // Special rate takes priority — handled by the effect below
+    if (selectedSpecialRateId) return;
+    try {
+      const { usdToGhs } = JSON.parse(localStorage.getItem(CBM_LS_KEY) ?? "{}");
+      const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
+      if (!usdToGhs) return;
+      const customer = customers.find((c) => c.id === form.customerId);
+      const tier = (customer?.package ?? "standard") as "standard" | "discounted" | "premium" | "special";
+      const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
+      const qty = Math.max(1, parseInt(form.quantity) || 1);
+      let costUsd = 0;
+      if (form.shippingType === "air") {
+        const w = parseFloat(form.weight) || 0;
+        if (w) costUsd = w * qty * tierRates.air;
+      } else {
+        const cbm = getCbm(parseFloat(form.length) || 0, parseFloat(form.width) || 0, parseFloat(form.height) || 0, form.dimensionUnit) * qty;
+        if (cbm) costUsd = cbm * tierRates.sea;
+      }
+      setForm((prev) => ({ ...prev, estShippingPrice: costUsd > 0 ? (costUsd * usdToGhs).toFixed(2) : "" }));
+    } catch {}
+  }, [form.customerId, customers, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity, selectedSpecialRateId]);
+
   // Auto-fill estShippingPrice when special rate + dimensions/weight are set
   useEffect(() => {
     const rate = specialRates.find((r) => r.id === selectedSpecialRateId);
@@ -343,7 +367,7 @@ export default function NewItemPage() {
                           }}
                           className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors text-sm"
                         >
-                          <span className="font-medium text-gray-900 truncate">{c.name}</span>
+                          <code className="text-sm font-mono font-semibold text-gray-900 truncate">{c.name}</code>
                           <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
                         </button>
                       ))}
