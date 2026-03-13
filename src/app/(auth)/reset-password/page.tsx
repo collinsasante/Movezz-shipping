@@ -1,28 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { resetPassword } from "@/lib/firebase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+const COOLDOWN_SECONDS = 60;
+
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldown = () => {
+    setCooldown(COOLDOWN_SECONDS);
+    timerRef.current = setInterval(() => {
+      setCooldown((c) => {
+        if (c <= 1) {
+          clearInterval(timerRef.current!);
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (cooldown > 0) return;
     setLoading(true);
     setError("");
     try {
       await resetPassword(email);
       setSent(true);
+      startCooldown();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send reset email";
       setError(msg.includes("user-not-found") ? "No account found with that email." : msg);
+      startCooldown(); // still apply cooldown on error to prevent enumeration
     } finally {
       setLoading(false);
     }
@@ -76,8 +96,14 @@ export default function ResetPasswordPage() {
                   <p className="text-sm text-red-600">{error}</p>
                 )}
 
-                <Button type="submit" className="w-full" size="lg" loading={loading}>
-                  Send reset link
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  loading={loading}
+                  disabled={loading || cooldown > 0}
+                >
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : "Send reset link"}
                 </Button>
               </form>
 

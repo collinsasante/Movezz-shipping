@@ -8,6 +8,7 @@ import {
   serverErrorResponse,
   badRequestResponse,
 } from "@/lib/auth";
+import { checkRateLimit, rateLimitedResponse, getClientIp } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const CreateCustomerSchema = z.object({
@@ -57,6 +58,12 @@ export async function GET(request: NextRequest) {
 
 // POST /api/customers
 export async function POST(request: NextRequest) {
+  // Rate limit: max 20 customer creations per IP per hour (prevents Firebase account spam)
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`create-customer:${ip}`, 20, 60 * 60_000)) {
+    return rateLimitedResponse(3600);
+  }
+
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;

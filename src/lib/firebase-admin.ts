@@ -70,7 +70,7 @@ let _cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getAdminToken(): Promise<string> {
   const now = Date.now();
-  if (_cachedToken && _cachedToken.expiresAt > now + 60_000) {
+  if (_cachedToken && _cachedToken.expiresAt > now + 5 * 60_000) {
     return _cachedToken.token;
   }
 

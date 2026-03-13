@@ -4,10 +4,21 @@ import { NextRequest } from "next/server";
 import { verifyIdToken } from "@/lib/firebase-admin";
 import { usersApi, customersApi } from "@/lib/airtable";
 import { badRequestResponse } from "@/lib/auth";
+import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
 export async function POST(request: NextRequest) {
+  // Body size guard — Firebase ID tokens are ~1KB; reject anything over 16KB
+  const sizeErr = checkBodySize(request, 16_384);
+  if (sizeErr) return sizeErr;
+
+  // Rate limit: max 20 verify attempts per IP per minute (handles token refresh)
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`verify:${ip}`, 20, 60_000)) {
+    return rateLimitedResponse(60);
+  }
+
   try {
     const body = await request.json();
     const { idToken } = body;
@@ -115,7 +126,7 @@ export async function POST(request: NextRequest) {
       { success: true, data: { user: appUser, uid: decoded.uid, email: decoded.email } },
       {
         status: 200,
-        headers: { "Set-Cookie": `auth-token=${idToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` },
+        headers: { "Set-Cookie": `auth-token=${idToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=3600` },
       }
     );
   } catch (err: unknown) {

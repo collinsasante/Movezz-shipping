@@ -14,7 +14,7 @@ import { z } from "zod";
 const CreateOrderSchema = z.object({
   customerId: z.string().min(1, "Customer ID is required"),
   itemIds: z.array(z.string()).min(1, "At least one item is required"),
-  invoiceAmount: z.number().positive("Invoice amount must be positive"),
+  invoiceAmount: z.number().positive("Invoice amount must be positive").max(1_000_000, "Invoice amount cannot exceed GH₵1,000,000"),
   invoiceDate: z.string(),
   notes: z.string().optional(),
 });

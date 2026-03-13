@@ -93,6 +93,31 @@ export const TABLES = {
 } as const;
 
 // ============================================================
+// AIRTABLE RETRY — handles 429 rate-limit responses
+// Airtable allows 5 req/s per base. On 429, back off and retry.
+// ============================================================
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      attempt++;
+      const isRateLimit =
+        (err instanceof Error && err.message.includes("429")) ||
+        (typeof err === "object" && err !== null && "statusCode" in err && (err as { statusCode: number }).statusCode === 429);
+
+      if (isRateLimit && attempt < maxAttempts) {
+        // Exponential backoff: 1s, 2s, 4s
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+// ============================================================
 // GENERIC HELPERS
 // ============================================================
 async function getAllRecords(
@@ -100,39 +125,45 @@ async function getAllRecords(
   formula?: string,
   sort?: { field: string; direction: "asc" | "desc" }[]
 ): Promise<AirtableRecord<FieldSet>[]> {
-  const base = getBase();
-  const records: AirtableRecord<FieldSet>[] = [];
+  return withRetry(async () => {
+    const base = getBase();
+    const records: AirtableRecord<FieldSet>[] = [];
 
-  const options: Parameters<ReturnType<typeof base>["select"]>[0] = {
-    pageSize: 100,
-  };
-  if (formula) options.filterByFormula = formula;
-  if (sort) options.sort = sort;
+    const options: Parameters<ReturnType<typeof base>["select"]>[0] = {
+      pageSize: 100,
+    };
+    if (formula) options.filterByFormula = formula;
+    if (sort) options.sort = sort;
 
-  await base(tableName)
-    .select(options)
-    .eachPage((pageRecords, fetchNextPage) => {
-      records.push(...pageRecords);
-      fetchNextPage();
-    });
+    await base(tableName)
+      .select(options)
+      .eachPage((pageRecords, fetchNextPage) => {
+        records.push(...pageRecords);
+        fetchNextPage();
+      });
 
-  return records;
+    return records;
+  });
 }
 
 async function getRecord(
   tableName: string,
   id: string
 ): Promise<AirtableRecord<FieldSet>> {
-  const base = getBase();
-  return base(tableName).find(id);
+  return withRetry(() => {
+    const base = getBase();
+    return base(tableName).find(id);
+  });
 }
 
 async function createRecord(
   tableName: string,
   fields: FieldSet
 ): Promise<AirtableRecord<FieldSet>> {
-  const base = getBase();
-  return base(tableName).create(fields);
+  return withRetry(() => {
+    const base = getBase();
+    return base(tableName).create(fields);
+  });
 }
 
 async function updateRecord(
@@ -140,13 +171,17 @@ async function updateRecord(
   id: string,
   fields: FieldSet
 ): Promise<AirtableRecord<FieldSet>> {
-  const base = getBase();
-  return base(tableName).update(id, fields);
+  return withRetry(() => {
+    const base = getBase();
+    return base(tableName).update(id, fields);
+  });
 }
 
 async function deleteRecord(tableName: string, id: string): Promise<void> {
-  const base = getBase();
-  await base(tableName).destroy(id);
+  await withRetry(async () => {
+    const base = getBase();
+    await base(tableName).destroy(id);
+  });
 }
 
 async function countRecords(

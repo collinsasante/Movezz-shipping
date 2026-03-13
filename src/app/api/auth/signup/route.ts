@@ -8,6 +8,7 @@ import { customersApi, usersApi } from "@/lib/airtable";
 import { createFirebaseUser, verifyIdToken, setCustomClaims } from "@/lib/firebase-admin";
 import { serverErrorResponse, badRequestResponse } from "@/lib/auth";
 import { sendWelcomeEmail } from "@/lib/email";
+import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
 import { z } from "zod";
 
 const EmailSignupSchema = z.object({
@@ -31,6 +32,16 @@ const SignupSchema = z.discriminatedUnion("flow", [
 ]);
 
 export async function POST(request: NextRequest) {
+  // Body size guard — reject oversized payloads (max 32KB)
+  const sizeErr = checkBodySize(request, 32_768);
+  if (sizeErr) return sizeErr;
+
+  // Rate limit: max 5 signups per IP per 10 minutes
+  const ip = getClientIp(request);
+  if (!checkRateLimit(`signup:${ip}`, 5, 10 * 60_000)) {
+    return rateLimitedResponse(600);
+  }
+
   try {
     const body = await request.json();
     const parsed = SignupSchema.safeParse(body);

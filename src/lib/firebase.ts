@@ -9,6 +9,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  onIdTokenChanged,
   sendPasswordResetEmail,
   updatePassword,
   signInWithPopup,
@@ -98,5 +99,5 @@ export async function uploadSupportFile(
   });
 }
 
-export { auth, app, onAuthStateChanged, googleProvider };
+export { auth, app, onAuthStateChanged, onIdTokenChanged, googleProvider };
 export type { User, UserCredential };

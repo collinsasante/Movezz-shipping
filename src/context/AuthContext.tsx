@@ -7,7 +7,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import { auth, onAuthStateChanged, signOut, type User } from "@/lib/firebase";
+import { auth, onIdTokenChanged, signOut, type User } from "@/lib/firebase";
 import type { AppUser } from "@/types";
 import axios from "axios";
 
@@ -66,7 +66,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [firebaseUser, fetchAppUser]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    // onIdTokenChanged fires on sign-in, sign-out, AND every time Firebase
+    // silently refreshes the ID token (~every 59 min). This keeps the HttpOnly
+    // cookie up-to-date so users are never kicked out mid-session.
+    const unsubscribe = onIdTokenChanged(auth, async (user) => {
       setFirebaseUser(user);
 
       if (user) {

@@ -12,18 +12,24 @@ import {
 import { z } from "zod";
 
 const UpdateItemSchema = z.object({
-  weight: z.number().positive().optional(),
-  length: z.number().positive().optional(),
-  width: z.number().positive().optional(),
-  height: z.number().positive().optional(),
-  description: z.string().optional(),
-  trackingNumber: z.string().optional(),
-  notes: z.string().optional(),
-  orderId: z.string().optional(),
-  containerId: z.string().optional(),
-  customerId: z.string().optional(),
+  weight: z.number().positive().max(10_000).optional(),
+  length: z.number().positive().max(10_000).optional(),
+  width: z.number().positive().max(10_000).optional(),
+  height: z.number().positive().max(10_000).optional(),
+  description: z.string().max(1000).optional(),
+  trackingNumber: z.string().max(100).optional(),
+  notes: z.string().max(2000).optional(),
+  orderId: z.string().max(50).optional(),
+  containerId: z.string().max(50).optional(),
+  customerId: z.string().max(50).optional(),
   isMissing: z.boolean().optional(),
-  photoUrls: z.array(z.string().url()).optional(),
+  photoUrls: z.array(z.string().url().max(500)).max(20).optional(),
+  estPrice: z.number().min(0).max(500_000).optional(),
+  estShippingPrice: z.number().min(0).max(500_000).optional(),
+  shippingType: z.enum(["air", "sea"]).optional(),
+  dimensionUnit: z.enum(["cm", "inches"]).optional(),
+  quantity: z.number().int().positive().max(10_000).optional(),
+  status: z.string().max(100).optional(),
 });
 
 // GET /api/items/[id]

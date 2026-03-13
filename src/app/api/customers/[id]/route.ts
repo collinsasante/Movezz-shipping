@@ -69,12 +69,12 @@ export async function GET(
 }
 
 // Fields a customer is allowed to update on their own profile
+// NOTE: package tier is intentionally excluded — only admins can change it (billing tier)
 const CustomerSelfUpdateSchema = z.object({
   name: z.string().min(2).max(200).optional(),
   phone: z.string().min(7).max(30).optional(),
   notes: z.string().max(2000).optional(),
   shippingAddress: z.string().max(500).optional(),
-  package: z.enum(["standard", "discounted", "premium"]).optional(),
 });
 
 // PATCH /api/customers/[id]
