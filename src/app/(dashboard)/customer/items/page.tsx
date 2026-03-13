@@ -70,25 +70,26 @@ function useShippingEstimate(item: Item | null, customerPackage: string) {
   useEffect(() => {
     if (!item) { setPkgEst(null); setSpEst(null); return; }
     try {
+      const it = item;
       const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}") as Record<string, { sea?: number; air?: number }>;
       const specialRatesRaw = JSON.parse(localStorage.getItem("pakk_special_rates") ?? "[]") as { id: string; name: string; sea: number; air: number }[];
-      const qty = item.quantity ?? 1;
+      const qty = it.quantity ?? 1;
       function calc(seaRate: number, airRate: number): number {
-        if (item.shippingType === "air" && item.weight) return item.weight * qty * airRate;
-        if (item.length && item.width && item.height) {
-          const f = item.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
-          return item.length * item.width * item.height * f * qty * seaRate;
+        if (it.shippingType === "air" && it.weight) return it.weight * qty * airRate;
+        if (it.length && it.width && it.height) {
+          const f = it.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
+          return it.length * it.width * it.height * f * qty * seaRate;
         }
         return 0;
       }
       const tierKey = ["basic", "business", "enterprise", "special"].includes(customerPackage.toLowerCase()) ? customerPackage : "basic";
       const tierRates = pkgRates[tierKey] ?? { sea: 0, air: 0 };
       const pkgCost = calc(tierRates.sea ?? 0, tierRates.air ?? 0);
-      setPkgEst(pkgCost > 0 ? { label: tierKey.charAt(0).toUpperCase() + tierKey.slice(1), amount: pkgCost.toFixed(2), rateStr: item.shippingType === "air" ? `GH₵${tierRates.air}/kg` : `GH₵${tierRates.sea}/m³` } : null);
-      const spMatch = item.specialRateName ? specialRatesRaw.find((r) => r.name.toLowerCase() === item.specialRateName!.toLowerCase()) : null;
+      setPkgEst(pkgCost > 0 ? { label: tierKey.charAt(0).toUpperCase() + tierKey.slice(1), amount: pkgCost.toFixed(2), rateStr: it.shippingType === "air" ? `GH₵${tierRates.air}/kg` : `GH₵${tierRates.sea}/m³` } : null);
+      const spMatch = it.specialRateName ? specialRatesRaw.find((r) => r.name.toLowerCase() === it.specialRateName!.toLowerCase()) : null;
       if (spMatch) {
         const spCost = calc(spMatch.sea, spMatch.air);
-        setSpEst(spCost > 0 ? { label: spMatch.name, amount: spCost.toFixed(2), rateStr: item.shippingType === "air" ? `GH₵${spMatch.air}/kg` : `GH₵${spMatch.sea}/m³` } : null);
+        setSpEst(spCost > 0 ? { label: spMatch.name, amount: spCost.toFixed(2), rateStr: it.shippingType === "air" ? `GH₵${spMatch.air}/kg` : `GH₵${spMatch.sea}/m³` } : null);
       } else setSpEst(null);
     } catch { setPkgEst(null); setSpEst(null); }
   }, [item, customerPackage]);
