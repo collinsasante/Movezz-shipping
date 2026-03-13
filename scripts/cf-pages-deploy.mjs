@@ -208,4 +208,4 @@ for (const dir of ["cloudflare", "middleware", "server-functions", ".build", "cl
 
 console.log("✅ Staging ready:", STAGING);
 console.log("🚀 Deploying...\n");
-execSync("/usr/local/bin/node node_modules/.bin/wrangler pages deploy", { stdio: "inherit" });
+execSync("/usr/local/bin/node node_modules/.bin/wrangler pages deploy --branch=main", { stdio: "inherit" });
