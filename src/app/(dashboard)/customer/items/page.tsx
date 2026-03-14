@@ -297,6 +297,7 @@ export default function CustomerItemsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
                 {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
                 {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`$ ${selectedItem.estPrice.toFixed(2)}`} />}
+                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
                 {selectedItem.shippingType === "sea" && selectedItem.length && selectedItem.width && selectedItem.height ? (
                   <DetailRow
                     label="CBM"
