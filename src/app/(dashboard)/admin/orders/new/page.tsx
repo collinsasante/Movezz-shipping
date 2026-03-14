@@ -37,19 +37,18 @@ export default function NewOrderPage() {
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
 
-  // Persist draft to localStorage whenever form state changes
+  // Persist draft to localStorage (invoiceAmount excluded — always recomputed from items)
   useEffect(() => {
     if (!draftRestoredRef.current) return; // don't save until after restore
     try {
       localStorage.setItem(DRAFT_LS_KEY, JSON.stringify({
         selectedCustomerId,
         selectedItemIds,
-        invoiceAmount,
         invoiceDate,
         notes,
       }));
     } catch { /* ignore */ }
-  }, [selectedCustomerId, selectedItemIds, invoiceAmount, invoiceDate, notes]);
+  }, [selectedCustomerId, selectedItemIds, invoiceDate, notes]);
 
   useEffect(() => {
     const load = async () => {
@@ -65,7 +64,6 @@ export default function NewOrderPage() {
               const draft = JSON.parse(saved);
               if (draft.invoiceDate) setInvoiceDate(draft.invoiceDate);
               if (draft.notes) setNotes(draft.notes);
-              if (draft.invoiceAmount) setInvoiceAmount(draft.invoiceAmount);
               if (draft.selectedCustomerId) {
                 setSelectedCustomerId(draft.selectedCustomerId);
                 // Set search display label from loaded customers list
@@ -77,7 +75,10 @@ export default function NewOrderPage() {
                   const unordered: Item[] = itemsRes.data.data.filter((item: Item) => !item.orderId);
                   setCustomerItems(unordered);
                   const savedIds: string[] = draft.selectedItemIds ?? [];
-                  setSelectedItemIds(savedIds.filter((id) => unordered.some((item) => item.id === id)));
+                  const restoredIds = savedIds.filter((id) => unordered.some((item: Item) => item.id === id));
+                  setSelectedItemIds(restoredIds);
+                  const restoredItems = unordered.filter((item: Item) => restoredIds.includes(item.id));
+                  setInvoiceAmount(String(calcTotalGhs(restoredItems)));
                 } catch { /* ignore */ } finally { setLoadingItems(false); }
               }
             }
@@ -174,6 +175,7 @@ export default function NewOrderPage() {
       } catch {
         // Non-fatal — order is created, Keepup can be retried from the order page
       }
+      try { localStorage.removeItem(DRAFT_LS_KEY); } catch {}
       success("Invoice created!", res.data.message);
       router.push(`/admin/orders/${orderId}`);
     } catch (err) {
