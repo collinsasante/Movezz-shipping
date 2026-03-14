@@ -247,7 +247,7 @@ function mapItem(record: AirtableRecord<FieldSet>): Item {
     pkgShippingRate: (f["PkgShippingRate"] as number) ?? undefined,
     specialShippingRate: (f["SpecialShippingRate"] as number) ?? undefined,
     isSpecialItem: (f["IsSpecialItem"] as boolean) ?? undefined,
-    specialRateName: (f["SpecialRateName"] as string) ?? undefined,
+    specialRateName: (f["specialRateName"] as string) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     createdBy: (f["CreatedBy"] as string) ?? undefined,
@@ -580,33 +580,31 @@ export const itemsApi = {
     };
     if (input.weight !== undefined) fields["Weight"] = input.weight;
     if (input.shippingType) fields["FreightType"] = input.shippingType;
-
     if (input.length) fields["Length"] = input.length;
     if (input.width) fields["Width"] = input.width;
     if (input.height) fields["Height"] = input.height;
     if (input.trackingNumber) fields["TrackingNumber"] = input.trackingNumber;
     if (input.quantity) fields["Quantity"] = input.quantity;
-    if (input.estPrice !== undefined) fields["EstPrice"] = input.estPrice;
-    if (input.estShippingPrice !== undefined) fields["EstShippingPrice"] = input.estShippingPrice;
-    if (input.pkgEstShipping !== undefined) fields["PkgEstShipping"] = input.pkgEstShipping;
-    if (input.pkgShippingRate !== undefined) fields["PkgShippingRate"] = input.pkgShippingRate;
-    if (input.specialShippingRate !== undefined) fields["SpecialShippingRate"] = input.specialShippingRate;
-    if (input.isSpecialItem !== undefined) fields["IsSpecialItem"] = input.isSpecialItem;
-    if (input.specialRateName !== undefined) fields["SpecialRateName"] = input.specialRateName;
     if (input.photoUrls && input.photoUrls.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
     }
 
-    let record;
-    try {
-      record = await createRecord(TABLES.ITEMS, fields);
-    } catch {
-      // Retry without new estimate fields in case they aren't in Airtable yet
-      delete fields["PkgEstShipping"];
-      delete fields["PkgShippingRate"];
-      delete fields["SpecialShippingRate"];
-      record = await createRecord(TABLES.ITEMS, fields);
+    // Create with core fields first (guaranteed safe)
+    const record = await createRecord(TABLES.ITEMS, fields);
+
+    // Write pricing + special fields in a separate update so a field-name mismatch
+    // never blocks item creation
+    const pricingFields: FieldSet = {};
+    if (input.estPrice !== undefined) pricingFields["EstPrice"] = input.estPrice;
+    if (input.estShippingPrice !== undefined) pricingFields["EstShippingPrice"] = input.estShippingPrice;
+    if (input.pkgEstShipping !== undefined) pricingFields["PkgEstShipping"] = input.pkgEstShipping;
+    if (input.pkgShippingRate !== undefined) pricingFields["PkgShippingRate"] = input.pkgShippingRate;
+    if (input.specialShippingRate !== undefined) pricingFields["SpecialShippingRate"] = input.specialShippingRate;
+    if (input.isSpecialItem !== undefined) pricingFields["IsSpecialItem"] = input.isSpecialItem;
+    if (input.specialRateName !== undefined) pricingFields["specialRateName"] = input.specialRateName;
+    if (Object.keys(pricingFields).length > 0) {
+      await updateRecord(TABLES.ITEMS, record.id, pricingFields).catch(() => {});
     }
 
     return mapItem(record);
@@ -635,7 +633,7 @@ export const itemsApi = {
     if (input.quantity !== undefined) fields["Quantity"] = input.quantity;
     if (input.shippingType !== undefined) fields["FreightType"] = input.shippingType;
     if (input.dimensionUnit !== undefined) fields["DimensionUnit"] = input.dimensionUnit;
-    if (input.specialRateName !== undefined) fields["SpecialRateName"] = input.specialRateName;
+    if (input.specialRateName !== undefined) fields["specialRateName"] = input.specialRateName;
     if (input.photoUrls !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
