@@ -598,7 +598,16 @@ export const itemsApi = {
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
     }
 
-    const record = await createRecord(TABLES.ITEMS, fields);
+    let record;
+    try {
+      record = await createRecord(TABLES.ITEMS, fields);
+    } catch {
+      // Retry without new estimate fields in case they aren't in Airtable yet
+      delete fields["PkgEstShipping"];
+      delete fields["PkgShippingRate"];
+      delete fields["SpecialShippingRate"];
+      record = await createRecord(TABLES.ITEMS, fields);
+    }
 
     return mapItem(record);
   },
