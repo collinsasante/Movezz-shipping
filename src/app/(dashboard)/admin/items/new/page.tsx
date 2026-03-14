@@ -357,8 +357,8 @@ export default function NewItemPage() {
                           }}
                           className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-brand-50 transition-colors text-sm"
                         >
-                          <span className="text-sm font-mono font-bold text-gray-900 truncate uppercase tracking-wide">{c.name}</span>
-                          <code className="text-xs text-brand-600 font-mono font-bold ml-2 shrink-0 tracking-wider">{c.shippingMark}</code>
+                          <code className="text-sm font-mono text-gray-500 truncate">{c.name}</code>
+                          <code className="text-xs text-gray-500 font-mono ml-2 shrink-0">{c.shippingMark}</code>
                         </button>
                       ))}
                     </div>
