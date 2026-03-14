@@ -29,6 +29,7 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
       "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://v5.airtableusercontent.com",
       "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://api.cloudinary.com",
       "font-src 'self'",
+      "frame-src https://keepup.store https://*.keepup.store https://*.firebaseapp.com https://accounts.google.com",
       "frame-ancestors 'none'",
     ].join("; ")
   );

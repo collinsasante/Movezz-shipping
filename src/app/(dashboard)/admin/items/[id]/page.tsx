@@ -78,9 +78,6 @@ export default function AdminItemDetailPage() {
     notes: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
-  const [customerPackage, setCustomerPackage] = useState<string>("basic");
-  const [pkgEstimate, setPkgEstimate] = useState<{ amount: string; rateStr: string; label: string } | null>(null);
-  const [specialEstimate, setSpecialEstimate] = useState<{ amount: string; rateStr: string; label: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -100,12 +97,6 @@ export default function AdminItemDetailPage() {
       }
       const historyData = historyRes.data.data ?? [];
       setHistory(historyData);
-      // Fetch customer package tier for pricing estimate
-      if (loadedItem.customerId) {
-        axios.get(`/api/customers/${loadedItem.customerId}`).then((r) => {
-          setCustomerPackage(r.data.data?.package ?? "basic");
-        }).catch(() => {});
-      }
     } catch {
       error("Failed to load item");
     } finally {
@@ -115,45 +106,6 @@ export default function AdminItemDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Compute live shipping estimates: package base + special surcharge (additive)
-  useEffect(() => {
-    if (!item) return;
-    try {
-      const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}") as Record<string, { sea?: number; air?: number }>;
-      const specialRatesRaw = JSON.parse(localStorage.getItem("pakk_special_rates") ?? "[]") as { id: string; name: string; sea: number; air: number }[];
-      const qty = item.quantity ?? 1;
-
-      function calcCost(seaRate: number, airRate: number): number {
-        if (item!.shippingType === "air" && item!.weight) return item!.weight * qty * airRate;
-        if (item!.length && item!.width && item!.height) {
-          const factor = item!.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
-          return item!.length * item!.width * item!.height * factor * qty * seaRate;
-        }
-        return 0;
-      }
-
-      // Package tier (basic/business/enterprise)
-      const tierKey = ["basic", "business", "enterprise", "special"].includes(customerPackage.toLowerCase()) ? customerPackage : "basic";
-      const tierRates = pkgRates[tierKey] ?? { sea: 0, air: 0 };
-      const tierLabel = tierKey.charAt(0).toUpperCase() + tierKey.slice(1);
-      const pkgCost = calcCost(tierRates.sea ?? 0, tierRates.air ?? 0);
-      setPkgEstimate(pkgCost > 0 ? { amount: pkgCost.toFixed(2), rateStr: item.shippingType === "air" ? `$${tierRates.air}/kg` : `$${tierRates.sea}/m³`, label: tierLabel } : null);
-
-      // Special surcharge — matched by item's saved specialRateName
-      const specialMatch = item.specialRateName
-        ? specialRatesRaw.find((r) => r.name.toLowerCase() === item.specialRateName!.toLowerCase())
-        : null;
-      if (specialMatch) {
-        const spCost = calcCost(specialMatch.sea, specialMatch.air);
-        setSpecialEstimate(spCost > 0 ? { amount: spCost.toFixed(2), rateStr: item.shippingType === "air" ? `$${specialMatch.air}/kg` : `$${specialMatch.sea}/m³`, label: specialMatch.name } : null);
-      } else {
-        setSpecialEstimate(null);
-      }
-    } catch {
-      setPkgEstimate(null);
-      setSpecialEstimate(null);
-    }
-  }, [item, customerPackage]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -359,51 +311,6 @@ export default function AdminItemDetailPage() {
                 {item.estPrice != null && (
                   <InfoRow icon={DollarSign} label="Est. Item Price" value={`$ ${item.estPrice.toFixed(2)}`} />
                 )}
-                {item.estShippingPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Shipping Price" value={`$ ${item.estShippingPrice.toFixed(2)}`} />
-                )}
-                {/* Shipping estimate: prefer stored Airtable values, fall back to localStorage-computed */}
-                {(item.pkgEstShipping != null || pkgEstimate) && (() => {
-                  const rateUnit = item.shippingType === "air" ? "kg" : "m³";
-                  const displayPkg = item.pkgEstShipping != null
-                    ? {
-                        amount: item.pkgEstShipping.toFixed(2),
-                        rateStr: item.pkgShippingRate != null ? `$${item.pkgShippingRate}/${rateUnit}` : pkgEstimate?.rateStr ?? "",
-                        label: customerPackage.charAt(0).toUpperCase() + customerPackage.slice(1),
-                      }
-                    : pkgEstimate;
-                  const displaySpecial = (item.isSpecialItem && item.estShippingPrice != null && item.specialRateName)
-                    ? {
-                        amount: item.estShippingPrice.toFixed(2),
-                        rateStr: item.specialShippingRate != null ? `$${item.specialShippingRate}/${rateUnit}` : specialEstimate?.rateStr ?? "",
-                        label: item.specialRateName,
-                      }
-                    : specialEstimate;
-                  const total = displaySpecial ? displaySpecial.amount : displayPkg?.amount ?? "";
-                  return (
-                    <div className="py-3">
-                      <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 space-y-1.5">
-                        <p className="text-xs font-semibold text-brand-700 mb-1">Shipping Estimate</p>
-                        {displayPkg && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-brand-600">{displayPkg.label} <span className="text-brand-400">({displayPkg.rateStr})</span></span>
-                            <span className="font-semibold text-brand-900">$ {displayPkg.amount}</span>
-                          </div>
-                        )}
-                        {displaySpecial && (
-                          <div className="flex justify-between text-xs">
-                            <span className="text-purple-600">{displaySpecial.label} <span className="text-purple-400">({displaySpecial.rateStr})</span></span>
-                            <span className="font-semibold text-purple-900">$ {displaySpecial.amount}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5 mt-0.5">
-                          <span className="font-semibold text-brand-800">Est. Shipping Price</span>
-                          <span className="font-bold text-brand-900">$ {total}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
                 {item.createdBy && (
                   <InfoRow icon={User} label="Created by" value={
                     item.createdBy.includes("@")
