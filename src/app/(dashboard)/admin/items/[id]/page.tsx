@@ -379,7 +379,7 @@ export default function AdminItemDetailPage() {
                       )}
                       <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5 mt-0.5">
                         <span className="font-semibold text-brand-800">Est. Shipping Price</span>
-                        <span className="font-bold text-brand-900">$ {specialEstimate ? specialEstimate.amount : pkgEstimate.amount}</span>
+                        <span className="font-bold text-brand-900">$ {specialEstimate ? specialEstimate.amount : (item.isSpecialItem && item.estShippingPrice != null) ? item.estShippingPrice.toFixed(2) : pkgEstimate.amount}</span>
                       </div>
                     </div>
                   </div>

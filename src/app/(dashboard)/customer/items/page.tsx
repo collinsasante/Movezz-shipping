@@ -346,7 +346,7 @@ export default function CustomerItemsPage() {
                     )}
                     <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5">
                       <span className="font-semibold text-brand-800">Est. Shipping Price</span>
-                      <span className="font-bold text-brand-900">$ {spEst ? spEst.amount : pkgEst.amount}</span>
+                      <span className="font-bold text-brand-900">$ {spEst ? spEst.amount : (selectedItem.isSpecialItem && selectedItem.estShippingPrice != null) ? selectedItem.estShippingPrice.toFixed(2) : pkgEst.amount}</span>
                     </div>
                   </div>
                 )}
