@@ -10,29 +10,16 @@ import type { CustomerPackage } from "@/types";
 import { DollarSign, Save, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight, Tag } from "lucide-react";
 import axios from "axios";
 import type { Warehouse as WarehouseType } from "@/types";
+import type { SpecialRate, PackageRates } from "@/lib/airtable";
 
 const RATES_KEY = "pakk_exchange_rates";
-const PACKAGES_RATES_KEY = "pakk_package_rates";
-const SPECIAL_RATES_KEY = "pakk_special_rates";
 
-interface SpecialRate { id: string; name: string; sea: number; air: number; }
-
-interface PackageRate { sea: number; air: number; }
-interface PackageRates { basic: PackageRate; business: PackageRate; enterprise: PackageRate; special: PackageRate; }
 const DEFAULT_PKG_RATES: PackageRates = {
   basic: { sea: 350, air: 8 },
   business: { sea: 280, air: 6 },
   enterprise: { sea: 450, air: 12 },
   special: { sea: 500, air: 15 },
 };
-
-const PACKAGE_OPTIONS: { value: CustomerPackage | ""; label: string }[] = [
-  { value: "", label: "No package" },
-  { value: "basic", label: "Basic" },
-  { value: "business", label: "Business" },
-  { value: "enterprise", label: "Enterprise" },
-  { value: "special", label: "Special" },
-];
 
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
   basic: "Basic",
@@ -52,14 +39,20 @@ export default function AdminSettingsPage() {
   const { success, error } = useToast();
   const [activeTab, setActiveTab] = useState<"exchange" | "warehouses" | "special-rates">("exchange");
 
-  // Exchange rate settings
+  // Exchange rate (still localStorage — no Airtable table for this yet)
   const [defaultRate, setDefaultRate] = useState("12.5");
   const [shippingRatePerCbm, setShippingRatePerCbm] = useState("200");
-  const [pkgRates, setPkgRates] = useState<PackageRates>(DEFAULT_PKG_RATES);
 
-  // Special rates
+  // Package rates (Airtable)
+  const [pkgRates, setPkgRates] = useState<PackageRates>(DEFAULT_PKG_RATES);
+  const [loadingPkgRates, setLoadingPkgRates] = useState(false);
+  const [savingPkgRates, setSavingPkgRates] = useState(false);
+
+  // Special rates (Airtable)
   const [specialRates, setSpecialRates] = useState<SpecialRate[]>([]);
+  const [loadingSpecialRates, setLoadingSpecialRates] = useState(false);
   const [specialRateForm, setSpecialRateForm] = useState({ name: "", sea: "", air: "" });
+  const [addingSpecialRate, setAddingSpecialRate] = useState(false);
   const [confirmDeleteSpecialId, setConfirmDeleteSpecialId] = useState<string | null>(null);
 
   // Warehouses
@@ -69,6 +62,7 @@ export default function AdminSettingsPage() {
   const [savingWarehouse, setSavingWarehouse] = useState(false);
   const [confirmDeleteWarehouseId, setConfirmDeleteWarehouseId] = useState<string | null>(null);
 
+  // Load exchange rate from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(RATES_KEY);
@@ -78,15 +72,42 @@ export default function AdminSettingsPage() {
         if (parsed.shippingRatePerCbm) setShippingRatePerCbm(String(parsed.shippingRatePerCbm));
       }
     } catch {}
-    const savedPkgRates = localStorage.getItem(PACKAGES_RATES_KEY);
-    if (savedPkgRates) {
-      try { setPkgRates({ ...DEFAULT_PKG_RATES, ...JSON.parse(savedPkgRates) }); } catch {}
-    }
-    try {
-      const savedSpecial = localStorage.getItem(SPECIAL_RATES_KEY);
-      if (savedSpecial) setSpecialRates(JSON.parse(savedSpecial));
-    } catch {}
   }, []);
+
+  // Load package rates from Airtable
+  const loadPackageRates = useCallback(async () => {
+    setLoadingPkgRates(true);
+    try {
+      const res = await axios.get("/api/package-rates");
+      setPkgRates({ ...DEFAULT_PKG_RATES, ...res.data.data });
+    } catch {
+      // Fall back to defaults silently
+    } finally {
+      setLoadingPkgRates(false);
+    }
+  }, []);
+
+  // Load special rates from Airtable
+  const loadSpecialRates = useCallback(async () => {
+    setLoadingSpecialRates(true);
+    try {
+      const res = await axios.get("/api/special-rates");
+      setSpecialRates(res.data.data);
+    } catch {
+      error("Failed to load special rates");
+    } finally {
+      setLoadingSpecialRates(false);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    loadPackageRates();
+    loadSpecialRates();
+  }, [loadPackageRates, loadSpecialRates]);
+
+  useEffect(() => {
+    if (activeTab === "warehouses") loadWarehouses();
+  }, [activeTab]);
 
   const saveDefaultRate = () => {
     const usdToGhs = parseFloat(defaultRate);
@@ -103,14 +124,17 @@ export default function AdminSettingsPage() {
     success("Rates saved", `1 USD = ${usdToGhs} GHS · $${ratePerCbm}/CBM`);
   };
 
-  const savePackageRates = () => {
-    localStorage.setItem(PACKAGES_RATES_KEY, JSON.stringify(pkgRates));
-    success("Package rates saved");
+  const savePackageRates = async () => {
+    setSavingPkgRates(true);
+    try {
+      await axios.put("/api/package-rates", pkgRates);
+      success("Package rates saved");
+    } catch {
+      error("Failed to save package rates");
+    } finally {
+      setSavingPkgRates(false);
+    }
   };
-
-  useEffect(() => {
-    if (activeTab === "warehouses") loadWarehouses();
-  }, [activeTab]);
 
   const loadWarehouses = async () => {
     setLoadingWarehouses(true);
@@ -161,25 +185,37 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const addSpecialRate = () => {
+  const addSpecialRate = async () => {
     if (!specialRateForm.name.trim()) { error("Rate name is required"); return; }
     const sea = parseFloat(specialRateForm.sea);
     const air = parseFloat(specialRateForm.air);
     if ((isNaN(sea) && isNaN(air)) || (sea < 0) || (air < 0)) { error("Enter at least one valid rate"); return; }
-    const newRate: SpecialRate = { id: Date.now().toString(), name: specialRateForm.name.trim(), sea: isNaN(sea) ? 0 : sea, air: isNaN(air) ? 0 : air };
-    const updated = [...specialRates, newRate];
-    setSpecialRates(updated);
-    localStorage.setItem(SPECIAL_RATES_KEY, JSON.stringify(updated));
-    setSpecialRateForm({ name: "", sea: "", air: "" });
-    success("Special rate added");
+    setAddingSpecialRate(true);
+    try {
+      const res = await axios.post("/api/special-rates", {
+        name: specialRateForm.name.trim(),
+        sea: isNaN(sea) ? 0 : sea,
+        air: isNaN(air) ? 0 : air,
+      });
+      setSpecialRates((prev) => [...prev, res.data.data]);
+      setSpecialRateForm({ name: "", sea: "", air: "" });
+      success("Special rate added");
+    } catch {
+      error("Failed to add special rate");
+    } finally {
+      setAddingSpecialRate(false);
+    }
   };
 
-  const deleteSpecialRate = (id: string) => {
-    const updated = specialRates.filter((r) => r.id !== id);
-    setSpecialRates(updated);
-    localStorage.setItem(SPECIAL_RATES_KEY, JSON.stringify(updated));
-    setConfirmDeleteSpecialId(null);
-    success("Special rate removed");
+  const deleteSpecialRate = async (id: string) => {
+    try {
+      await axios.delete(`/api/special-rates/${id}`);
+      setSpecialRates((prev) => prev.filter((r) => r.id !== id));
+      setConfirmDeleteSpecialId(null);
+      success("Special rate removed");
+    } catch {
+      error("Failed to remove special rate");
+    }
   };
 
   const tabs = [
@@ -272,36 +308,42 @@ export default function AdminSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <p className="text-sm text-gray-500">
-                  Set custom sea and air rates per customer package tier.
+                  Set custom sea and air rates per customer package tier. Saved to Airtable.
                 </p>
-                {(["basic", "business", "enterprise", "special"] as (keyof PackageRates)[]).map((pkg) => (
-                  <div key={pkg} className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${PACKAGE_COLORS[pkg]}`}>{PACKAGE_LABELS[pkg]}</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Input
-                        label="Sea Rate (USD/CBM)"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={String(pkgRates[pkg].sea)}
-                        onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], sea: parseFloat(e.target.value) || 0 } }))}
-                      />
-                      <Input
-                        label="Air Rate (USD/kg)"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={String(pkgRates[pkg].air)}
-                        onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], air: parseFloat(e.target.value) || 0 } }))}
-                      />
-                    </div>
+                {loadingPkgRates ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-brand-600 border-t-transparent" />
                   </div>
-                ))}
+                ) : (
+                  (["basic", "business", "enterprise", "special"] as (keyof PackageRates)[]).map((pkg) => (
+                    <div key={pkg} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${PACKAGE_COLORS[pkg]}`}>{PACKAGE_LABELS[pkg]}</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Input
+                          label="Sea Rate (USD/CBM)"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={String(pkgRates[pkg].sea)}
+                          onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], sea: parseFloat(e.target.value) || 0 } }))}
+                        />
+                        <Input
+                          label="Air Rate (USD/kg)"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={String(pkgRates[pkg].air)}
+                          onChange={(e) => setPkgRates((prev) => ({ ...prev, [pkg]: { ...prev[pkg], air: parseFloat(e.target.value) || 0 } }))}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
               </CardContent>
             </Card>
-            <Button onClick={savePackageRates} className="flex items-center gap-2">
+            <Button onClick={savePackageRates} loading={savingPkgRates} className="flex items-center gap-2">
               <Save className="h-4 w-4" />
               Save Package Rates
             </Button>
@@ -348,7 +390,7 @@ export default function AdminSettingsPage() {
                     onChange={(e) => setSpecialRateForm({ ...specialRateForm, air: e.target.value })}
                   />
                 </div>
-                <Button onClick={addSpecialRate} className="flex items-center gap-2">
+                <Button onClick={addSpecialRate} loading={addingSpecialRate} className="flex items-center gap-2">
                   <Plus className="h-4 w-4" />
                   Add Rate
                 </Button>
@@ -360,7 +402,11 @@ export default function AdminSettingsPage() {
                 <CardTitle>Special Rate List</CardTitle>
               </CardHeader>
               <CardContent>
-                {specialRates.length === 0 ? (
+                {loadingSpecialRates ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-brand-600 border-t-transparent" />
+                  </div>
+                ) : specialRates.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-6">No special rates yet. Add one above.</p>
                 ) : (
                   <div className="space-y-3">

@@ -14,9 +14,8 @@ import { ArrowLeft, Camera, X, Package, Loader2, ChevronLeft, ChevronRight, Colu
 import axios from "axios";
 import { uploadPhotos } from "@/lib/uploadPhotos";
 
-const CBM_LS_KEY = "pakk_exchange_rates";
-const SPECIAL_RATES_KEY = "pakk_special_rates";
 interface SpecialRate { id: string; name: string; sea: number; air: number; }
+interface PkgRates { basic?: { sea?: number; air?: number }; business?: { sea?: number; air?: number }; enterprise?: { sea?: number; air?: number }; special?: { sea?: number; air?: number } }
 
 function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number {
   if (!l || !w || !h) return 0;
@@ -24,12 +23,7 @@ function getCbm(l: number, w: number, h: number, unit: "cm" | "inches"): number 
   return l * w * h * 0.000016387;
 }
 
-function CbmDisplay({ length, width, height, unit, quantity, weight, shippingType, specialRate }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number; weight: number; shippingType: "air" | "sea"; specialRate?: SpecialRate }) {
-  let pkgRates: { basic?: { sea?: number; air?: number }; shippingRatePerCbm?: number } = {};
-  try {
-    pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
-  } catch {}
-
+function CbmDisplay({ length, width, height, unit, quantity, weight, shippingType, specialRate, pkgRates }: { length: number; width: number; height: number; unit: "cm" | "inches"; quantity: number; weight: number; shippingType: "air" | "sea"; specialRate?: SpecialRate; pkgRates: PkgRates }) {
   const stdRates = pkgRates.basic ?? { sea: 0, air: 0 };
   const rateLabel = specialRate ? specialRate.name : "Basic";
 
@@ -64,7 +58,7 @@ function CbmDisplay({ length, width, height, unit, quantity, weight, shippingTyp
   const cbm = getCbm(length, width, height, unit) * Math.max(1, quantity || 1);
   if (!cbm) return null;
 
-  const seaRate = specialRate ? specialRate.sea : (stdRates.sea || pkgRates.shippingRatePerCbm || 0);
+  const seaRate = specialRate ? specialRate.sea : (stdRates.sea || 0);
   const costGhs = seaRate ? cbm * seaRate : null;
 
   return (
@@ -123,6 +117,7 @@ export default function NewItemPage() {
   });
   const [isSpecialItem, setIsSpecialItem] = useState(false);
   const [specialRates, setSpecialRates] = useState<SpecialRate[]>([]);
+  const [pkgRates, setPkgRates] = useState<PkgRates>({ basic: { sea: 350, air: 8 }, business: { sea: 280, air: 6 }, enterprise: { sea: 450, air: 12 }, special: { sea: 500, air: 15 } });
   const [selectedSpecialRateId, setSelectedSpecialRateId] = useState("");
   const [pkgRatePerUnit, setPkgRatePerUnit] = useState<number | null>(null);
   const [pkgAmountCalc, setPkgAmountCalc] = useState<number | null>(null);
@@ -143,10 +138,8 @@ export default function NewItemPage() {
         if (match) setCustomerSearch(match.shippingMark);
       }
     });
-    try {
-      const saved = localStorage.getItem(SPECIAL_RATES_KEY);
-      if (saved) setSpecialRates(JSON.parse(saved));
-    } catch {}
+    axios.get("/api/special-rates").then((res) => setSpecialRates(res.data.data)).catch(() => {});
+    axios.get("/api/package-rates").then((res) => setPkgRates(res.data.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -159,29 +152,26 @@ export default function NewItemPage() {
 
   // Auto-fill estShippingPrice from customer package tier rates (all items)
   useEffect(() => {
-    try {
-      const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}");
-      const customer = customers.find((c) => c.id === form.customerId);
-      const tier = (customer?.package ?? "basic") as "basic" | "business" | "enterprise" | "special";
-      const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
-      const qty = Math.max(1, parseInt(form.quantity) || 1);
-      let costGhs = 0;
-      const ratePerUnit = form.shippingType === "air" ? (tierRates.air ?? 0) : (tierRates.sea ?? 0);
-      if (form.shippingType === "air") {
-        const w = parseFloat(form.weight) || 0;
-        if (w) costGhs = w * qty * tierRates.air;
-      } else {
-        const cbm = getCbm(parseFloat(form.length) || 0, parseFloat(form.width) || 0, parseFloat(form.height) || 0, form.dimensionUnit) * qty;
-        if (cbm) costGhs = cbm * tierRates.sea;
-      }
-      setPkgRatePerUnit(ratePerUnit > 0 ? ratePerUnit : null);
-      setPkgAmountCalc(costGhs > 0 ? costGhs : null);
-      // Only update estShippingPrice from pkg tier if no special rate selected
-      if (!selectedSpecialRateId) {
-        setForm((prev) => ({ ...prev, estShippingPrice: costGhs > 0 ? costGhs.toFixed(2) : "" }));
-      }
-    } catch {}
-  }, [form.customerId, customers, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity, selectedSpecialRateId]);
+    const customer = customers.find((c) => c.id === form.customerId);
+    const tier = (customer?.package ?? "basic") as "basic" | "business" | "enterprise" | "special";
+    const tierRates = pkgRates[tier] ?? { sea: 350, air: 8 };
+    const qty = Math.max(1, parseInt(form.quantity) || 1);
+    let cost = 0;
+    const ratePerUnit = form.shippingType === "air" ? (tierRates.air ?? 0) : (tierRates.sea ?? 0);
+    if (form.shippingType === "air") {
+      const w = parseFloat(form.weight) || 0;
+      if (w) cost = w * qty * (tierRates.air ?? 0);
+    } else {
+      const cbm = getCbm(parseFloat(form.length) || 0, parseFloat(form.width) || 0, parseFloat(form.height) || 0, form.dimensionUnit) * qty;
+      if (cbm) cost = cbm * (tierRates.sea ?? 0);
+    }
+    setPkgRatePerUnit(ratePerUnit > 0 ? ratePerUnit : null);
+    setPkgAmountCalc(cost > 0 ? cost : null);
+    // Only update estShippingPrice from pkg tier if no special rate selected
+    if (!selectedSpecialRateId) {
+      setForm((prev) => ({ ...prev, estShippingPrice: cost > 0 ? cost.toFixed(2) : "" }));
+    }
+  }, [form.customerId, customers, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity, selectedSpecialRateId, pkgRates]);
 
   // Auto-fill estShippingPrice when special rate + dimensions/weight are set
   useEffect(() => {
@@ -555,6 +545,7 @@ export default function NewItemPage() {
                   weight={parseFloat(form.weight) || 0}
                   shippingType={form.shippingType}
                   specialRate={specialRates.find((r) => r.id === selectedSpecialRateId)}
+                  pkgRates={pkgRates}
                 />
               </CardContent>
             </Card>

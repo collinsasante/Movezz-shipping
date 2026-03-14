@@ -90,6 +90,8 @@ export const TABLES = {
   USERS: "Users",
   SUPPLIERS: "Suppliers",
   WAREHOUSES: "Warehouses",
+  SPECIAL_RATES: "SpecialRates",
+  PACKAGE_RATES: "PackageRates",
 } as const;
 
 // ============================================================
@@ -1591,6 +1593,110 @@ export const warehousesApi = {
 
   async delete(id: string): Promise<void> {
     await deleteRecord(TABLES.WAREHOUSES, id);
+  },
+};
+
+// ============================================================
+// SPECIAL RATES API
+// ============================================================
+export interface SpecialRate {
+  id: string;
+  name: string;
+  sea: number;
+  air: number;
+}
+
+function mapSpecialRate(record: AirtableRecord<FieldSet>): SpecialRate {
+  const f = record.fields;
+  return {
+    id: record.id,
+    name: (f["Name"] as string) ?? "",
+    sea: (f["Sea"] as number) ?? 0,
+    air: (f["Air"] as number) ?? 0,
+  };
+}
+
+export const specialRatesApi = {
+  async list(): Promise<SpecialRate[]> {
+    const records = await getAllRecords(TABLES.SPECIAL_RATES);
+    return records.map(mapSpecialRate);
+  },
+
+  async create(input: { name: string; sea: number; air: number }): Promise<SpecialRate> {
+    const record = await createRecord(TABLES.SPECIAL_RATES, {
+      Name: input.name,
+      Sea: input.sea,
+      Air: input.air,
+    });
+    return mapSpecialRate(record);
+  },
+
+  async delete(id: string): Promise<void> {
+    await deleteRecord(TABLES.SPECIAL_RATES, id);
+  },
+};
+
+// ============================================================
+// PACKAGE RATES API
+// Stores one record per tier: basic, business, enterprise, special
+// ============================================================
+export interface PackageRateRecord {
+  id: string;
+  tier: string;
+  sea: number;
+  air: number;
+}
+
+export interface PackageRates {
+  basic: { sea: number; air: number };
+  business: { sea: number; air: number };
+  enterprise: { sea: number; air: number };
+  special: { sea: number; air: number };
+}
+
+export const DEFAULT_PACKAGE_RATES: PackageRates = {
+  basic: { sea: 350, air: 8 },
+  business: { sea: 280, air: 6 },
+  enterprise: { sea: 450, air: 12 },
+  special: { sea: 500, air: 15 },
+};
+
+function mapPackageRateRecord(record: AirtableRecord<FieldSet>): PackageRateRecord {
+  const f = record.fields;
+  return {
+    id: record.id,
+    tier: (f["Tier"] as string) ?? "",
+    sea: (f["Sea"] as number) ?? 0,
+    air: (f["Air"] as number) ?? 0,
+  };
+}
+
+export const packageRatesApi = {
+  async getAll(): Promise<PackageRates> {
+    const records = await getAllRecords(TABLES.PACKAGE_RATES);
+    const result: PackageRates = { ...DEFAULT_PACKAGE_RATES };
+    for (const r of records) {
+      const rec = mapPackageRateRecord(r);
+      const tier = rec.tier as keyof PackageRates;
+      if (tier in result) {
+        result[tier] = { sea: rec.sea, air: rec.air };
+      }
+    }
+    return result;
+  },
+
+  async upsertTier(tier: string, sea: number, air: number): Promise<void> {
+    const records = await getAllRecords(TABLES.PACKAGE_RATES, `{Tier} = '${escapeFormula(tier)}'`);
+    if (records.length > 0) {
+      await updateRecord(TABLES.PACKAGE_RATES, records[0].id, { Sea: sea, Air: air });
+    } else {
+      await createRecord(TABLES.PACKAGE_RATES, { Tier: tier, Sea: sea, Air: air });
+    }
+  },
+
+  async saveAll(rates: PackageRates): Promise<void> {
+    const tiers = Object.keys(rates) as (keyof PackageRates)[];
+    await Promise.all(tiers.map((tier) => packageRatesApi.upsertTier(tier, rates[tier].sea, rates[tier].air)));
   },
 };
 

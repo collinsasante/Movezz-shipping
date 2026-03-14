@@ -38,6 +38,17 @@ export default function AdminDashboardPage() {
   const [period, setPeriod] = useState<Period>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("pakk_exchange_rates");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.usdToGhs && parsed.usdToGhs > 0) setUsdToGhs(parsed.usdToGhs);
+      }
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const params: Record<string, string> = {};
@@ -107,16 +118,19 @@ export default function AdminDashboardPage() {
             {/* Summary cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
-                { title: "Revenue This Year", value: formatCurrency(report.revenueThisYear), sub: "Current calendar year", icon: <DollarSign className="h-5 w-5 text-blue-600" />, bg: "bg-blue-50" },
-                { title: "Outstanding", value: formatCurrency(report.pendingRevenue), sub: "Pending invoices", icon: <Clock className="h-5 w-5 text-amber-600" />, bg: "bg-amber-50" },
-                { title: "Total Invoices", value: report.totalOrders.toLocaleString(), sub: "All time", icon: <ShoppingCart className="h-5 w-5 text-blue-600" />, bg: "bg-blue-50" },
-              ].map(({ title, value, sub, icon, bg }) => (
+                { title: "Revenue This Year", value: formatCurrency(report.revenueThisYear), sub: "Current calendar year", icon: <DollarSign className="h-5 w-5 text-blue-600" />, bg: "bg-blue-50", ghsValue: null as number | null },
+                { title: "Outstanding", value: formatCurrency(report.pendingRevenue), sub: "Pending invoices", icon: <Clock className="h-5 w-5 text-amber-600" />, bg: "bg-amber-50", ghsValue: usdToGhs != null ? report.pendingRevenue * usdToGhs : null },
+                { title: "Total Invoices", value: report.totalOrders.toLocaleString(), sub: "All time", icon: <ShoppingCart className="h-5 w-5 text-blue-600" />, bg: "bg-blue-50", ghsValue: null as number | null },
+              ].map(({ title, value, sub, icon, bg, ghsValue }) => (
                 <Card key={title}>
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1">{title}</p>
                         <p className="text-2xl font-bold text-gray-900">{value}</p>
+                        {ghsValue != null && (
+                          <p className="text-sm font-semibold text-amber-700 mt-0.5">{formatCurrency(ghsValue, "GHS")}</p>
+                        )}
                         {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
                       </div>
                       <div className={`p-2.5 rounded-xl ${bg}`}>{icon}</div>

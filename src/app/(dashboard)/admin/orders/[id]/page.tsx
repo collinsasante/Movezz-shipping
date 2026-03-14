@@ -58,6 +58,19 @@ export default function AdminOrderDetailPage() {
   const [keepupBalance, setKeepupBalance] = useState<number | null>(null);
   const [keepupTotal, setKeepupTotal] = useState<number | null>(null);
 
+  // Exchange rate for USD→GHS conversion
+  const [usdToGhs, setUsdToGhs] = useState(1);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("pakk_exchange_rates");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.usdToGhs && parsed.usdToGhs > 0) setUsdToGhs(parsed.usdToGhs);
+      }
+    } catch {}
+  }, []);
+
   // Record Payment modal
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -152,15 +165,16 @@ export default function AdminOrderDetailPage() {
       success("Payment recorded");
       setPaymentModalOpen(false);
       setPaymentAmount("");
-      // Optimistically update payment figures
+      // Optimistically update payment figures (amounts in GHS)
+      const invoiceGhs = (order?.invoiceAmount ?? 0) * usdToGhs;
       const newPaid = (keepupPaid ?? 0) + amount;
-      const newBalance = Math.max(0, (keepupBalance ?? (order?.invoiceAmount ?? 0)) - amount);
-      const newTotal = keepupTotal ?? order?.invoiceAmount ?? null;
+      const newBalance = Math.max(0, (keepupBalance ?? invoiceGhs) - amount);
+      const newTotal = keepupTotal ?? (order?.invoiceAmount ?? null);
       setKeepupPaid(newPaid);
       setKeepupBalance(newBalance);
       setKeepupTotal(newTotal);
       // Update order status optimistically
-      const newStatus = amount >= (order?.invoiceAmount ?? 0) ? "Paid" : "Partial";
+      const newStatus = newPaid >= invoiceGhs ? "Paid" : "Partial";
       setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
     } catch {
       error("Failed to record payment");
@@ -329,7 +343,7 @@ export default function AdminOrderDetailPage() {
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <StatusBadge status={item.status} />
                           {itemPrices.get(item.id) != null && (
-                            <span className="text-xs font-semibold text-brand-700">{formatCurrency(itemPrices.get(item.id)!, "GHS")}</span>
+                            <span className="text-xs font-semibold text-brand-700">{formatCurrency(itemPrices.get(item.id)! * usdToGhs, "GHS")}</span>
                           )}
                         </div>
                       </button>
@@ -357,7 +371,7 @@ export default function AdminOrderDetailPage() {
                 </div>
                 <div className="flex justify-between items-center border-t border-gray-50 pt-3">
                   <span className="text-xs text-gray-400">Invoice Total</span>
-                  <span className="text-base font-bold text-gray-900">{formatCurrency(order.invoiceAmount, "GHS")}</span>
+                  <span className="text-base font-bold text-gray-900">{formatCurrency(order.invoiceAmount * usdToGhs, "GHS")}</span>
                 </div>
                 {order.createdBy && (
                   <div className="flex justify-between items-center">
@@ -371,7 +385,7 @@ export default function AdminOrderDetailPage() {
                     {keepupTotal != null && (
                       <div className="flex justify-between items-center text-xs">
                         <span className="text-gray-400">Invoice Total</span>
-                        <span className="font-semibold text-gray-800">{formatCurrency(keepupTotal, "GHS")}</span>
+                        <span className="font-semibold text-gray-800">{formatCurrency(keepupTotal * usdToGhs, "GHS")}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-center text-xs">
@@ -381,7 +395,7 @@ export default function AdminOrderDetailPage() {
                     <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5 mt-1">
                       <span className="text-gray-500 font-medium">Balance Due</span>
                       <span className={`font-bold ${(keepupBalance ?? 0) <= 0 ? "text-green-700" : "text-orange-600"}`}>
-                        {formatCurrency(Math.max(0, keepupBalance ?? (order.invoiceAmount - (keepupPaid ?? 0))), "GHS")}
+                        {formatCurrency(Math.max(0, keepupBalance ?? (order.invoiceAmount * usdToGhs - (keepupPaid ?? 0))), "GHS")}
                       </span>
                     </div>
                   </div>
