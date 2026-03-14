@@ -64,37 +64,6 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
 }
 
 
-function useShippingEstimate(item: Item | null, customerPackage: string) {
-  const [pkgEst, setPkgEst] = useState<{ label: string; amount: string; rateStr: string } | null>(null);
-  const [spEst, setSpEst] = useState<{ label: string; amount: string; rateStr: string } | null>(null);
-  useEffect(() => {
-    if (!item) { setPkgEst(null); setSpEst(null); return; }
-    try {
-      const it = item;
-      const pkgRates = JSON.parse(localStorage.getItem("pakk_package_rates") ?? "{}") as Record<string, { sea?: number; air?: number }>;
-      const specialRatesRaw = JSON.parse(localStorage.getItem("pakk_special_rates") ?? "[]") as { id: string; name: string; sea: number; air: number }[];
-      const qty = it.quantity ?? 1;
-      function calc(seaRate: number, airRate: number): number {
-        if (it.shippingType === "air" && it.weight) return it.weight * qty * airRate;
-        if (it.length && it.width && it.height) {
-          const f = it.dimensionUnit === "inches" ? 0.000016387 : 0.000001;
-          return it.length * it.width * it.height * f * qty * seaRate;
-        }
-        return 0;
-      }
-      const tierKey = ["basic", "business", "enterprise", "special"].includes(customerPackage.toLowerCase()) ? customerPackage : "basic";
-      const tierRates = pkgRates[tierKey] ?? { sea: 0, air: 0 };
-      const pkgCost = calc(tierRates.sea ?? 0, tierRates.air ?? 0);
-      setPkgEst(pkgCost > 0 ? { label: tierKey.charAt(0).toUpperCase() + tierKey.slice(1), amount: pkgCost.toFixed(2), rateStr: it.shippingType === "air" ? `$${tierRates.air}/kg` : `$${tierRates.sea}/m³` } : null);
-      const spMatch = it.specialRateName ? specialRatesRaw.find((r) => r.name.toLowerCase() === it.specialRateName!.toLowerCase()) : null;
-      if (spMatch) {
-        const spCost = calc(spMatch.sea, spMatch.air);
-        setSpEst(spCost > 0 ? { label: spMatch.name, amount: spCost.toFixed(2), rateStr: it.shippingType === "air" ? `$${spMatch.air}/kg` : `$${spMatch.sea}/m³` } : null);
-      } else setSpEst(null);
-    } catch { setPkgEst(null); setSpEst(null); }
-  }, [item, customerPackage]);
-  return { pkgEst, spEst };
-}
 
 export default function CustomerItemsPage() {
   const { error } = useToast();
@@ -110,8 +79,6 @@ export default function CustomerItemsPage() {
   const [dateRange, setDateRange] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const customerPackage = appUser?.package ?? "basic";
-  const { pkgEst, spEst } = useShippingEstimate(selectedItem, customerPackage);
 
   const load = useCallback(
     async (search?: string, status?: string, pageNum: number = 1) => {
@@ -330,46 +297,6 @@ export default function CustomerItemsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
                 {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
                 {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`$ ${selectedItem.estPrice.toFixed(2)}`} />}
-                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
-                {(selectedItem.pkgEstShipping != null || pkgEst) && (() => {
-                  const rateUnit = selectedItem.shippingType === "air" ? "kg" : "m³";
-                  const displayPkg = selectedItem.pkgEstShipping != null
-                    ? {
-                        amount: selectedItem.pkgEstShipping.toFixed(2),
-                        rateStr: selectedItem.pkgShippingRate != null ? `$${selectedItem.pkgShippingRate}/${rateUnit}` : pkgEst?.rateStr ?? "",
-                        label: pkgEst?.label ?? "Basic",
-                      }
-                    : pkgEst;
-                  const displaySpecial = (selectedItem.isSpecialItem && selectedItem.estShippingPrice != null && selectedItem.specialRateName)
-                    ? {
-                        amount: selectedItem.estShippingPrice.toFixed(2),
-                        rateStr: selectedItem.specialShippingRate != null ? `$${selectedItem.specialShippingRate}/${rateUnit}` : spEst?.rateStr ?? "",
-                        label: selectedItem.specialRateName,
-                      }
-                    : spEst;
-                  const total = displaySpecial ? displaySpecial.amount : displayPkg?.amount ?? "";
-                  return (
-                    <div className="mt-2 bg-brand-50 border border-brand-100 rounded-xl p-3 space-y-1.5">
-                      <p className="text-xs font-semibold text-brand-700">Shipping Estimate</p>
-                      {displayPkg && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-brand-600">{displayPkg.label} <span className="text-brand-400">({displayPkg.rateStr})</span></span>
-                          <span className="font-semibold text-brand-900">$ {displayPkg.amount}</span>
-                        </div>
-                      )}
-                      {displaySpecial && (
-                        <div className="flex justify-between text-xs">
-                          <span className="text-purple-600">{displaySpecial.label} <span className="text-purple-400">({displaySpecial.rateStr})</span></span>
-                          <span className="font-semibold text-purple-900">$ {displaySpecial.amount}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5">
-                        <span className="font-semibold text-brand-800">Est. Shipping Price</span>
-                        <span className="font-bold text-brand-900">$ {total}</span>
-                      </div>
-                    </div>
-                  );
-                })()}
                 {selectedItem.shippingType === "sea" && selectedItem.length && selectedItem.width && selectedItem.height ? (
                   <DetailRow
                     label="CBM"
