@@ -373,13 +373,13 @@ export default function AdminItemDetailPage() {
                       </div>
                       {specialEstimate && (
                         <div className="flex justify-between text-xs">
-                          <span className="text-purple-600">+ {specialEstimate.label} <span className="text-purple-400">({specialEstimate.rateStr})</span></span>
+                          <span className="text-purple-600">{specialEstimate.label} <span className="text-purple-400">({specialEstimate.rateStr})</span></span>
                           <span className="font-semibold text-purple-900">$ {specialEstimate.amount}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5 mt-0.5">
-                        <span className="font-semibold text-brand-800">Total Est.</span>
-                        <span className="font-bold text-brand-900">$ {(parseFloat(pkgEstimate.amount) + parseFloat(specialEstimate?.amount ?? "0")).toFixed(2)}</span>
+                        <span className="font-semibold text-brand-800">Est. Shipping Price</span>
+                        <span className="font-bold text-brand-900">$ {specialEstimate ? specialEstimate.amount : pkgEstimate.amount}</span>
                       </div>
                     </div>
                   </div>

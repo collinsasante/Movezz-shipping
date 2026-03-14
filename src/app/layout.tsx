@@ -20,6 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* Inline handler runs before any chunks load — catches ChunkLoadError during hydration */}
         <script dangerouslySetInnerHTML={{ __html: `
 (function(){window.addEventListener('error',function(e){var err=e.error;if(err&&(err.name==='ChunkLoadError'||(typeof err.message==='string'&&err.message.indexOf('Failed to load chunk')>-1))){var k='__cr_'+location.pathname;if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,'1');location.reload();}}});})();

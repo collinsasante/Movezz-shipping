@@ -340,13 +340,13 @@ export default function CustomerItemsPage() {
                     </div>
                     {spEst && (
                       <div className="flex justify-between text-xs">
-                        <span className="text-purple-600">+ {spEst.label} <span className="text-purple-400">({spEst.rateStr})</span></span>
+                        <span className="text-purple-600">{spEst.label} <span className="text-purple-400">({spEst.rateStr})</span></span>
                         <span className="font-semibold text-purple-900">$ {spEst.amount}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5">
-                      <span className="font-semibold text-brand-800">Total Est.</span>
-                      <span className="font-bold text-brand-900">$ {(parseFloat(pkgEst.amount) + parseFloat(spEst?.amount ?? "0")).toFixed(2)}</span>
+                      <span className="font-semibold text-brand-800">Est. Shipping Price</span>
+                      <span className="font-bold text-brand-900">$ {spEst ? spEst.amount : pkgEst.amount}</span>
                     </div>
                   </div>
                 )}
