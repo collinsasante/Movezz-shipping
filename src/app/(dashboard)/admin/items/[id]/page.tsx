@@ -404,10 +404,6 @@ export default function AdminItemDetailPage() {
                     </div>
                   );
                 })()}
-                {item.isSpecialItem && (
-                  <InfoRow icon={Package} label="Special Item" value="Yes" />
-                )}
-                <InfoRow icon={Calendar} label="Created" value={formatDate(item.createdAt)} />
                 {item.createdBy && (
                   <InfoRow icon={User} label="Created by" value={
                     item.createdBy.includes("@")

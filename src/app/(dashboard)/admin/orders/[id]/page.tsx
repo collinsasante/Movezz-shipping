@@ -394,16 +394,11 @@ export default function AdminOrderDetailPage() {
                     </div>
                     <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5 mt-1">
                       <span className="text-gray-500 font-medium">Balance Due</span>
-                      <span className={`font-bold ${(keepupBalance ?? 0) <= 0 ? "text-green-700" : "text-orange-600"}`}>
-                        {formatCurrency(Math.max(0, keepupBalance ?? (order.invoiceAmount * usdToGhs - (keepupPaid ?? 0))), "GHS")}
+                      <span className={`font-bold ${Math.max(0, order.invoiceAmount * usdToGhs - (keepupPaid ?? 0)) <= 0 ? "text-green-700" : "text-orange-600"}`}>
+                        {formatCurrency(Math.max(0, order.invoiceAmount * usdToGhs - (keepupPaid ?? 0)), "GHS")}
                       </span>
                     </div>
                   </div>
-                )}
-                {order.status === "Partial" && (
-                  <p className="text-xs text-orange-600 bg-orange-50 rounded-lg p-2">
-                    Partial payment received. Check Keepup for payment details.
-                  </p>
                 )}
                 {order.status === "Pending" && (
                   <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">
