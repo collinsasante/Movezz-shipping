@@ -360,7 +360,7 @@ export default function AdminItemDetailPage() {
                   <InfoRow icon={DollarSign} label="Est. Item Price" value={`$ ${item.estPrice.toFixed(2)}`} />
                 )}
                 {item.estShippingPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Shipping Cost" value={`$ ${item.estShippingPrice.toFixed(2)}`} />
+                  <InfoRow icon={DollarSign} label="Est. Shipping Price" value={`$ ${item.estShippingPrice.toFixed(2)}`} />
                 )}
                 {/* Live shipping estimate: package + special surcharge + total */}
                 {pkgEstimate && (

@@ -330,7 +330,7 @@ export default function CustomerItemsPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
                 {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
                 {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`$ ${selectedItem.estPrice.toFixed(2)}`} />}
-                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
+                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
                 {pkgEst && (
                   <div className="mt-2 bg-brand-50 border border-brand-100 rounded-xl p-3 space-y-1.5">
                     <p className="text-xs font-semibold text-brand-700">Shipping Estimate</p>
