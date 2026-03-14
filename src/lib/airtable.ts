@@ -269,6 +269,8 @@ function mapOrder(record: AirtableRecord<FieldSet>): Order {
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     keepupSaleId: (f["KeepupSaleId"] as string) ?? undefined,
     keepupLink: (f["KeepupLink"] as string) ?? undefined,
+    amountPaid: (f["AmountPaid"] as number) ?? undefined,
+    balanceDue: (f["BalanceDue"] as number) ?? undefined,
   };
 }
 
@@ -853,6 +855,8 @@ export const ordersApi = {
     if (input.status !== undefined) fields["Status"] = input.status;
     if (input.notes !== undefined) fields["Notes"] = input.notes;
     if (input.itemIds !== undefined) fields["Items"] = input.itemIds;
+    if (input.amountPaid !== undefined) fields["AmountPaid"] = input.amountPaid;
+    if (input.balanceDue !== undefined) fields["BalanceDue"] = input.balanceDue;
 
     const record = await updateRecord(TABLES.ORDERS, id, fields);
 

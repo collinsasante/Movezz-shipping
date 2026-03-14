@@ -186,6 +186,8 @@ export interface Order {
   keepupLink?: string;
   createdBy?: string;
   customerPhone?: string;
+  amountPaid?: number;
+  balanceDue?: number;
 }
 
 export interface CreateOrderInput {
@@ -203,6 +205,8 @@ export interface UpdateOrderInput {
   notes?: string;
   itemIds?: string[];
   paymentAmount?: number;
+  amountPaid?: number;
+  balanceDue?: number;
 }
 
 // ============================================================

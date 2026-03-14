@@ -129,15 +129,18 @@ export async function PATCH(
     const order = await ordersApi.update(id, parsed.data, user.email);
 
     // Record payment in Keepup if paymentAmount provided
-    if (parsed.data.paymentAmount !== undefined && order.keepupSaleId) {
-      try {
-        await recordKeepupPayment(order.keepupSaleId, parsed.data.paymentAmount);
-        // Determine status
-        const newStatus = parsed.data.paymentAmount >= order.invoiceAmount ? "Paid" : "Partial";
-        await ordersApi.update(id, { status: newStatus }, user.email);
-        order.status = newStatus;
-      } catch {
-        // Keepup payment record failed (non-fatal)
+    if (parsed.data.paymentAmount !== undefined) {
+      const newPaid = (order.amountPaid ?? 0) + parsed.data.paymentAmount;
+      const newBalance = Math.max(0, order.invoiceAmount - newPaid);
+      const newStatus = newPaid >= order.invoiceAmount ? "Paid" : "Partial";
+      // Save payment amounts to Airtable (always, regardless of Keepup)
+      await ordersApi.update(id, { status: newStatus, amountPaid: newPaid, balanceDue: newBalance }, user.email);
+      order.status = newStatus;
+      order.amountPaid = newPaid;
+      order.balanceDue = newBalance;
+      // Also record in Keepup (non-fatal)
+      if (order.keepupSaleId) {
+        try { await recordKeepupPayment(order.keepupSaleId, parsed.data.paymentAmount); } catch {}
       }
     }
 

@@ -63,34 +63,20 @@ export default function AdminOrderDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
 
-  const paymentCacheKey = `pakk_payment_${id}`;
-
   const load = useCallback(async () => {
     try {
       const res = await axios.get(`/api/orders/${id}`);
       const o: OrderDetail = res.data.data;
       setOrder(o);
-      // Prefer Keepup values if non-zero; otherwise fall back to localStorage cache
-      const apiPaid = o.keepupAmountPaid ?? null;
-      const apiBalance = o.keepupBalanceDue ?? null;
-      const apiTotal = o.keepupTotalAmount ?? null;
-      if ((apiPaid ?? 0) > 0 || apiTotal != null) {
-        setKeepupPaid(apiPaid);
-        setKeepupBalance(apiBalance);
-        setKeepupTotal(apiTotal);
-        // Update cache with fresh values
-        try { localStorage.setItem(paymentCacheKey, JSON.stringify({ paid: apiPaid, balance: apiBalance, total: apiTotal })); } catch {}
-      } else {
-        // Keepup returned 0/null — use cached values if available
-        try {
-          const cached = JSON.parse(localStorage.getItem(paymentCacheKey) ?? "null");
-          if (cached) {
-            setKeepupPaid(cached.paid);
-            setKeepupBalance(cached.balance);
-            setKeepupTotal(cached.total ?? apiTotal);
-          }
-        } catch {}
-      }
+      // Use Airtable amountPaid/balanceDue as source of truth; fall back to Keepup
+      const airtablePaid = o.amountPaid ?? null;
+      const airtableBalance = o.balanceDue ?? null;
+      const keepupPaidApi = o.keepupAmountPaid ?? null;
+      const keepupBalanceApi = o.keepupBalanceDue ?? null;
+      const keepupTotalApi = o.keepupTotalAmount ?? null;
+      setKeepupPaid(airtablePaid != null ? airtablePaid : keepupPaidApi);
+      setKeepupBalance(airtableBalance != null ? airtableBalance : keepupBalanceApi);
+      setKeepupTotal(keepupTotalApi ?? o.invoiceAmount);
       // Fetch customer phone + package tier
       if (o.customerId) {
         axios.get(`/api/customers/${o.customerId}`).then((cRes) => {
@@ -104,7 +90,7 @@ export default function AdminOrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, error, paymentCacheKey]);
+  }, [id, error]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -173,8 +159,6 @@ export default function AdminOrderDetailPage() {
       setKeepupPaid(newPaid);
       setKeepupBalance(newBalance);
       setKeepupTotal(newTotal);
-      // Persist to localStorage so values survive page refresh
-      try { localStorage.setItem(paymentCacheKey, JSON.stringify({ paid: newPaid, balance: newBalance, total: newTotal })); } catch {}
       // Update order status optimistically
       const newStatus = amount >= (order?.invoiceAmount ?? 0) ? "Paid" : "Partial";
       setOrder((prev) => prev ? { ...prev, status: newStatus } : prev);
