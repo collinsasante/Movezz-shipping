@@ -10,27 +10,11 @@ import { useToast } from "@/components/ui/toast";
 import type { Customer, Item } from "@/types";
 import { formatDate } from "@/lib/utils";
 
-const RATES_LS_KEY = "pakk_exchange_rates";
 const DRAFT_LS_KEY = "pakk_new_order_draft";
 
-function getCbm(item: Item): number {
-  const { length: l, width: w, height: h, dimensionUnit: unit } = item;
-  if (!l || !w || !h) return 0;
-  return unit === "inches"
-    ? l * w * h * 0.000016387
-    : l * w * h / 1_000_000;
-}
-
 function calcTotalGhs(items: Item[]): number {
-  try {
-    const stored = localStorage.getItem(RATES_LS_KEY);
-    if (!stored) return 0;
-    const { shippingRatePerCbm = 0, usdToGhs = 0 } = JSON.parse(stored);
-    const totalCbm = items.reduce((sum, item) => sum + getCbm(item), 0);
-    return Math.round(totalCbm * shippingRatePerCbm * usdToGhs * 100) / 100;
-  } catch {
-    return 0;
-  }
+  const total = items.reduce((sum, item) => sum + (item.estShippingPrice ?? 0), 0);
+  return Math.round(total * 100) / 100;
 }
 
 export default function NewOrderPage() {
@@ -374,19 +358,11 @@ export default function NewOrderPage() {
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      {(() => {
-                        try {
-                          const stored = localStorage.getItem(RATES_LS_KEY);
-                          const { shippingRatePerCbm = 0, usdToGhs = 0 } = stored ? JSON.parse(stored) : {};
-                          const cbm = getCbm(item);
-                          const ghs = Math.round(cbm * shippingRatePerCbm * usdToGhs * 100) / 100;
-                          return cbm > 0 ? (
-                            <span className="text-xs font-semibold text-brand-700">
-                              $ {ghs.toFixed(2)}
-                            </span>
-                          ) : null;
-                        } catch { return null; }
-                      })()}
+                      {item.estShippingPrice != null && (
+                        <span className="text-xs font-semibold text-brand-700">
+                          $ {item.estShippingPrice.toFixed(2)}
+                        </span>
+                      )}
                       <p className="text-xs text-gray-400">{item.status}</p>
                     </div>
                   </label>
