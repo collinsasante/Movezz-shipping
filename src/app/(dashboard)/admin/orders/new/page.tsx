@@ -370,11 +370,8 @@ export default function NewOrderPage() {
                     <div className="text-right shrink-0">
                       {item.estShippingPrice != null && (
                         <span className="text-xs font-semibold text-brand-700">
-                          $ {item.estShippingPrice.toFixed(2)}
+                          {usdToGhs != null ? formatCurrency(item.estShippingPrice * usdToGhs, "GHS") : `$ ${item.estShippingPrice.toFixed(2)}`}
                         </span>
-                      )}
-                      {item.estShippingPrice != null && usdToGhs != null && (
-                        <p className="text-xs text-amber-600 font-medium">{formatCurrency(item.estShippingPrice * usdToGhs, "GHS")}</p>
                       )}
                       <p className="text-xs text-gray-400">{item.status}</p>
                     </div>

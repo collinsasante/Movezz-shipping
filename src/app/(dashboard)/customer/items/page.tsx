@@ -7,7 +7,7 @@ import { SearchBar } from "@/components/shared/SearchBar";
 import { StatusBadge } from "@/components/ui/badge";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatCurrency } from "@/lib/utils";
 import { ITEM_STATUS_STEPS } from "@/lib/utils";
 import type { Item, ItemStatus, StatusHistory } from "@/types";
 import { Package, X, Hash } from "lucide-react";
@@ -53,12 +53,15 @@ function applyDateFilter<T>(items: T[], getDate: (item: T) => string | undefined
   });
 }
 
-function DetailRow({ label, value }: { label: string; value?: string | null }) {
+function DetailRow({ label, value, sub }: { label: string; value?: string | null; sub?: string }) {
   if (!value) return null;
   return (
     <div className="flex justify-between py-1.5">
       <span className="text-xs text-gray-500">{label}</span>
-      <span className="text-xs font-medium text-gray-800 text-right max-w-[60%] break-words">{value}</span>
+      <div className="text-right max-w-[60%]">
+        <span className="text-xs font-medium text-gray-800 break-words">{value}</span>
+        {sub && <p className="text-xs text-amber-600 font-medium">{sub}</p>}
+      </div>
     </div>
   );
 }
@@ -79,6 +82,14 @@ export default function CustomerItemsPage() {
   const [dateRange, setDateRange] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}");
+      if (parsed.usdToGhs && parsed.usdToGhs > 0) setUsdToGhs(parsed.usdToGhs);
+    } catch {}
+  }, []);
 
   const load = useCallback(
     async (search?: string, status?: string, pageNum: number = 1) => {
@@ -296,8 +307,8 @@ export default function CustomerItemsPage() {
               <div className="bg-gray-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Details</p>
                 {selectedItem.quantity && <DetailRow label="Quantity" value={String(selectedItem.quantity)} />}
-                {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`$ ${selectedItem.estPrice.toFixed(2)}`} />}
-                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} />}
+                {selectedItem.estPrice != null && <DetailRow label="Est. Item Price" value={`$ ${selectedItem.estPrice.toFixed(2)}`} sub={usdToGhs != null ? formatCurrency(selectedItem.estPrice * usdToGhs, "GHS") : undefined} />}
+                {selectedItem.estShippingPrice != null && <DetailRow label="Est. Shipping Price" value={`$ ${selectedItem.estShippingPrice.toFixed(2)}`} sub={usdToGhs != null ? formatCurrency(selectedItem.estShippingPrice * usdToGhs, "GHS") : undefined} />}
                 {selectedItem.shippingType === "sea" && selectedItem.length && selectedItem.width && selectedItem.height ? (
                   <DetailRow
                     label="CBM"

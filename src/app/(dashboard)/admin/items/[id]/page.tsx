@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusUpdateModal } from "@/components/shared/StatusUpdateModal";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import type { Item, StatusHistory } from "@/types";
 import {
   ArrowLeft,
@@ -44,7 +44,7 @@ function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label:
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs text-gray-400 font-medium">{label}</p>
-        <p className="text-sm text-gray-900 font-medium mt-0.5">{value ?? "—"}</p>
+        <div className="text-sm text-gray-900 font-medium mt-0.5">{value ?? "—"}</div>
       </div>
     </div>
   );
@@ -78,6 +78,14 @@ export default function AdminItemDetailPage() {
     notes: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}");
+      if (parsed.usdToGhs && parsed.usdToGhs > 0) setUsdToGhs(parsed.usdToGhs);
+    } catch {}
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -309,11 +317,17 @@ export default function AdminItemDetailPage() {
                   return <InfoRow icon={Package} label="CBM" value={`${cbm.toFixed(4)} m³`} />;
                 })() : null}
                 {item.estPrice != null && (
-                  <InfoRow icon={DollarSign} label="Est. Item Price" value={`$ ${item.estPrice.toFixed(2)}`} />
+                  <InfoRow icon={DollarSign} label="Est. Item Price" value={
+                    <div className="text-right">
+                      <div>$ {item.estPrice.toFixed(2)}</div>
+                      {usdToGhs != null && <div className="text-xs text-amber-600 font-medium">{formatCurrency(item.estPrice * usdToGhs, "GHS")}</div>}
+                    </div>
+                  } />
                 )}
                 {/* Shipping estimate box — uses values stored in Airtable at item creation */}
                 {(item.pkgEstShipping != null || item.estShippingPrice != null) && (() => {
                   const rateUnit = item.shippingType === "air" ? "kg" : "m³";
+                  const estTotal = item.estShippingPrice ?? item.pkgEstShipping ?? 0;
                   return (
                     <div className="py-3">
                       <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 space-y-1.5">
@@ -323,7 +337,10 @@ export default function AdminItemDetailPage() {
                             <span className="text-brand-600">
                               Package{item.pkgShippingRate != null ? <span className="text-brand-400"> (${item.pkgShippingRate}/{rateUnit})</span> : null}
                             </span>
-                            <span className="font-semibold text-brand-900">$ {item.pkgEstShipping.toFixed(2)}</span>
+                            <div className="text-right">
+                              <div className="font-semibold text-brand-900">$ {item.pkgEstShipping.toFixed(2)}</div>
+                              {usdToGhs != null && <div className="text-amber-600 font-medium">{formatCurrency(item.pkgEstShipping * usdToGhs, "GHS")}</div>}
+                            </div>
                           </div>
                         )}
                         {item.isSpecialItem && item.specialRateName && item.estShippingPrice != null && (
@@ -331,12 +348,18 @@ export default function AdminItemDetailPage() {
                             <span className="text-purple-600">
                               {item.specialRateName}{item.specialShippingRate != null ? <span className="text-purple-400"> (${item.specialShippingRate}/{rateUnit})</span> : null}
                             </span>
-                            <span className="font-semibold text-purple-900">$ {item.estShippingPrice.toFixed(2)}</span>
+                            <div className="text-right">
+                              <div className="font-semibold text-purple-900">$ {item.estShippingPrice.toFixed(2)}</div>
+                              {usdToGhs != null && <div className="text-amber-600 font-medium">{formatCurrency(item.estShippingPrice * usdToGhs, "GHS")}</div>}
+                            </div>
                           </div>
                         )}
                         <div className="flex justify-between text-xs border-t border-brand-100 pt-1.5 mt-0.5">
                           <span className="font-semibold text-brand-800">Est. Shipping Price</span>
-                          <span className="font-bold text-brand-900">$ {(item.estShippingPrice ?? item.pkgEstShipping ?? 0).toFixed(2)}</span>
+                          <div className="text-right">
+                            <div className="font-bold text-brand-900">$ {estTotal.toFixed(2)}</div>
+                            {usdToGhs != null && <div className="text-amber-600 font-medium">{formatCurrency(estTotal * usdToGhs, "GHS")}</div>}
+                          </div>
                         </div>
                       </div>
                     </div>
