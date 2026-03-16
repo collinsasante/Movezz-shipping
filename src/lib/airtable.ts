@@ -212,6 +212,7 @@ function mapCustomer(record: AirtableRecord<FieldSet>): Customer {
     package: (({ standard: "basic", discounted: "business", premium: "enterprise" } as Record<string, string>)[(f["CustomerPackage"] as string)] ?? (f["CustomerPackage"] as string) ?? undefined) as Customer["package"],
     exchangeRate: (f["ExchangeRate"] as number) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
+    preferredWarehouseId: (f["PreferredWarehouse"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
   };
 }
@@ -476,6 +477,11 @@ export const customersApi = {
 
   async linkFirebaseUid(id: string, uid: string): Promise<void> {
     await updateRecord(TABLES.CUSTOMERS, id, { FirebaseUID: uid });
+  },
+
+  async setPreferredWarehouse(id: string, warehouseId: string): Promise<void> {
+    await updateRecord(TABLES.CUSTOMERS, id, { PreferredWarehouse: warehouseId });
+    invalidateCustomerCache();
   },
 
   async delete(id: string): Promise<void> {
@@ -1185,6 +1191,7 @@ export const usersApi = {
       shippingMark: customer.shippingMark,
       shippingAddress: customer.shippingAddress,
       package: customer.package,
+      preferredWarehouseId: customer.preferredWarehouseId,
     };
   },
 

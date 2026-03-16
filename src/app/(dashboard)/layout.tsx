@@ -21,7 +21,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (appUser?.role !== "customer") return;
-    const savedId = localStorage.getItem("pakk_preferred_warehouse");
+    const savedId = localStorage.getItem("pakk_preferred_warehouse") ?? appUser.preferredWarehouseId ?? null;
     axios.get("/api/warehouses").then((res) => {
       const warehouses: { id: string; address: string }[] = res.data.data ?? [];
       const match = savedId
@@ -29,7 +29,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         : warehouses[0];
       if (match) setWarehouseAddress(match.address);
     }).catch(() => {});
-  }, [appUser?.role]);
+  }, [appUser?.role, appUser?.preferredWarehouseId]);
 
   const shippingMark = appUser?.shippingMark ?? "";
   const fullAddress = warehouseAddress ? `${warehouseAddress} (${shippingMark})` : shippingMark;

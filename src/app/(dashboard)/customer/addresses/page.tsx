@@ -22,8 +22,13 @@ export default function CustomerAddressesPage() {
       const list: Warehouse[] = res.data.data;
       setWarehouses(list);
       const saved = localStorage.getItem("pakk_preferred_warehouse");
-      const match = list.find((w) => w.id === saved);
-      setSelectedWarehouseId(match ? match.id : (list[0]?.id ?? null));
+      const serverPref = appUser?.preferredWarehouseId;
+      const preferred = saved ?? serverPref ?? null;
+      const match = preferred ? list.find((w) => w.id === preferred) : null;
+      const resolved = match ?? list[0] ?? null;
+      setSelectedWarehouseId(resolved?.id ?? null);
+      // Sync server preference to localStorage if localStorage was empty
+      if (!saved && resolved) localStorage.setItem("pakk_preferred_warehouse", resolved.id);
     } catch {
       error("Failed to load warehouses");
     } finally {
@@ -36,6 +41,8 @@ export default function CustomerAddressesPage() {
   const selectWarehouse = (id: string) => {
     setSelectedWarehouseId(id);
     localStorage.setItem("pakk_preferred_warehouse", id);
+    // Also persist to Airtable so preference survives across devices
+    axios.patch("/api/customers/me/warehouse", { warehouseId: id }).catch(() => {});
   };
 
   const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) ?? null;

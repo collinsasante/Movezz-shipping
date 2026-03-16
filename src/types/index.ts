@@ -45,6 +45,7 @@ export interface Customer {
   package?: CustomerPackage;
   exchangeRate?: number;
   notes?: string;
+  preferredWarehouseId?: string;
   createdAt: string;
   // Computed from linked records
   totalItems?: number;
@@ -69,6 +70,7 @@ export interface UpdateCustomerInput {
   package?: CustomerPackage;
   exchangeRate?: number | null;
   shippingAddress?: string;
+  preferredWarehouseId?: string;
 }
 
 // ============================================================
@@ -292,6 +294,7 @@ export interface AppUser {
   shippingMark?: string;
   shippingAddress?: string;
   package?: CustomerPackage;
+  preferredWarehouseId?: string;
   createdAt: string;
   lastLogin?: string;
 }
