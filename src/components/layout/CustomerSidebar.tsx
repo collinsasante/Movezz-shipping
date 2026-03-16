@@ -50,13 +50,13 @@ export function CustomerSidebar() {
   const shippingMark = appUser?.shippingMark ?? "";
 
   useEffect(() => {
-    const savedId = localStorage.getItem("pakk_preferred_warehouse");
-    if (!savedId) return;
+    const savedId = localStorage.getItem("pakk_preferred_warehouse") ?? appUser?.preferredWarehouseId ?? null;
     axios.get("/api/warehouses").then((res) => {
-      const match = res.data.data?.find((w: { id: string; address: string }) => w.id === savedId);
+      const warehouses: { id: string; address: string }[] = res.data.data ?? [];
+      const match = savedId ? warehouses.find((w) => w.id === savedId) ?? warehouses[0] : warehouses[0];
       if (match) setWarehouseAddress(match.address);
     }).catch(() => {});
-  }, []);
+  }, [appUser?.preferredWarehouseId]);
 
   const copyShippingMark = () => {
     if (!shippingMark) return;
