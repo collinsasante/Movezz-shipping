@@ -1,4 +1,4 @@
-// PATCH  /api/warehouses/[id]  — toggle active
+// PATCH  /api/warehouses/[id]  — toggle active OR update fields
 // DELETE /api/warehouses/[id]  — delete
 import { NextRequest } from "next/server";
 import { warehousesApi } from "@/lib/airtable";
@@ -11,7 +11,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   try {
     const body = await request.json();
-    const warehouse = await warehousesApi.toggleActive(id, body.isActive);
+    let warehouse;
+    if (body.isActive !== undefined && Object.keys(body).length === 1) {
+      warehouse = await warehousesApi.toggleActive(id, body.isActive);
+    } else {
+      warehouse = await warehousesApi.update(id, body);
+    }
     return Response.json({ success: true, data: warehouse });
   } catch {
     return serverErrorResponse("Failed to update warehouse");

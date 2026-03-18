@@ -916,6 +916,15 @@ export const containersApi = {
     return mapContainer(record);
   },
 
+  async getMany(ids: string[]): Promise<Container[]> {
+    if (ids.length === 0) return [];
+    const formula = ids.length === 1
+      ? `RECORD_ID() = '${ids[0]}'`
+      : `OR(${ids.map((id) => `RECORD_ID() = '${id}'`).join(",")})`;
+    const records = await getAllRecords(TABLES.CONTAINERS, formula);
+    return records.map(mapContainer);
+  },
+
   async create(
     input: CreateContainerInput,
     createdByEmail: string
@@ -1441,6 +1450,16 @@ export const dashboardApi = {
       ordersApi.getByCustomer(customerId),
     ]);
 
+    // Attach container ETA to items
+    const containerIds = [...new Set(items.map((i) => i.containerId).filter(Boolean) as string[])];
+    if (containerIds.length > 0) {
+      const containers = await containersApi.getMany(containerIds);
+      const etaMap = new Map(containers.map((c) => [c.id, c.eta] as [string, string | undefined]));
+      for (const item of items) {
+        if (item.containerId) item.containerEta = etaMap.get(item.containerId);
+      }
+    }
+
     const itemsByStatus = items.reduce(
       (acc, item) => {
         acc[item.status] = (acc[item.status] ?? 0) + 1;
@@ -1598,6 +1617,16 @@ export const warehousesApi = {
     return mapWarehouse(record);
   },
 
+  async update(id: string, input: Partial<{ name: string; address: string; country: string; phone: string }>): Promise<Warehouse> {
+    const fields: FieldSet = {};
+    if (input.name !== undefined) fields["Name"] = input.name;
+    if (input.address !== undefined) fields["Address"] = input.address;
+    if (input.country !== undefined) fields["Country"] = input.country;
+    if (input.phone !== undefined) fields["Phone"] = input.phone;
+    const record = await updateRecord(TABLES.WAREHOUSES, id, fields);
+    return mapWarehouse(record);
+  },
+
   async delete(id: string): Promise<void> {
     await deleteRecord(TABLES.WAREHOUSES, id);
   },
@@ -1631,6 +1660,15 @@ export const specialRatesApi = {
 
   async create(input: { name: string; sea: number; air: number }): Promise<SpecialRate> {
     const record = await createRecord(TABLES.SPECIAL_RATES, {
+      Name: input.name,
+      Sea: input.sea,
+      Air: input.air,
+    });
+    return mapSpecialRate(record);
+  },
+
+  async update(id: string, input: { name: string; sea: number; air: number }): Promise<SpecialRate> {
+    const record = await updateRecord(TABLES.SPECIAL_RATES, id, {
       Name: input.name,
       Sea: input.sea,
       Air: input.air,

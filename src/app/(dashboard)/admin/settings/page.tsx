@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import type { CustomerPackage } from "@/types";
-import { DollarSign, Save, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight, Tag } from "lucide-react";
+import { DollarSign, Save, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight, Tag, Pencil, X, Check } from "lucide-react";
 import axios from "axios";
 import type { Warehouse as WarehouseType } from "@/types";
 import type { SpecialRate, PackageRates } from "@/lib/airtable";
@@ -61,6 +61,14 @@ export default function AdminSettingsPage() {
   const [warehouseForm, setWarehouseForm] = useState({ name: "", address: "", country: "", phone: "" });
   const [savingWarehouse, setSavingWarehouse] = useState(false);
   const [confirmDeleteWarehouseId, setConfirmDeleteWarehouseId] = useState<string | null>(null);
+  const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
+  const [editWarehouseForm, setEditWarehouseForm] = useState({ name: "", address: "", country: "", phone: "" });
+  const [savingEditWarehouse, setSavingEditWarehouse] = useState(false);
+
+  // Special rates edit state
+  const [editingSpecialId, setEditingSpecialId] = useState<string | null>(null);
+  const [editSpecialForm, setEditSpecialForm] = useState({ name: "", sea: "", air: "" });
+  const [savingEditSpecial, setSavingEditSpecial] = useState(false);
 
   // Load exchange rate from localStorage
   useEffect(() => {
@@ -185,6 +193,29 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const saveEditWarehouse = async (id: string) => {
+    if (!editWarehouseForm.name.trim() || !editWarehouseForm.address.trim()) {
+      error("Name and address are required");
+      return;
+    }
+    setSavingEditWarehouse(true);
+    try {
+      const res = await axios.patch(`/api/warehouses/${id}`, {
+        name: editWarehouseForm.name.trim(),
+        address: editWarehouseForm.address.trim(),
+        country: editWarehouseForm.country.trim(),
+        phone: editWarehouseForm.phone.trim(),
+      });
+      setWarehouses((prev) => prev.map((w) => w.id === id ? res.data.data : w));
+      setEditingWarehouseId(null);
+      success("Warehouse updated");
+    } catch {
+      error("Failed to update warehouse");
+    } finally {
+      setSavingEditWarehouse(false);
+    }
+  };
+
   const addSpecialRate = async () => {
     if (!specialRateForm.name.trim()) { error("Rate name is required"); return; }
     const sea = parseFloat(specialRateForm.sea);
@@ -215,6 +246,27 @@ export default function AdminSettingsPage() {
       success("Special rate removed");
     } catch {
       error("Failed to remove special rate");
+    }
+  };
+
+  const saveEditSpecialRate = async (id: string) => {
+    if (!editSpecialForm.name.trim()) { error("Rate name is required"); return; }
+    const sea = parseFloat(editSpecialForm.sea);
+    const air = parseFloat(editSpecialForm.air);
+    setSavingEditSpecial(true);
+    try {
+      const res = await axios.patch(`/api/special-rates/${id}`, {
+        name: editSpecialForm.name.trim(),
+        sea: isNaN(sea) ? 0 : sea,
+        air: isNaN(air) ? 0 : air,
+      });
+      setSpecialRates((prev) => prev.map((r) => r.id === id ? res.data.data : r));
+      setEditingSpecialId(null);
+      success("Special rate updated");
+    } catch {
+      error("Failed to update special rate");
+    } finally {
+      setSavingEditSpecial(false);
     }
   };
 
@@ -411,7 +463,25 @@ export default function AdminSettingsPage() {
                 ) : (
                   <div className="space-y-3">
                     {specialRates.map((r) => (
-                      <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white">
+                      <div key={r.id} className="p-3 rounded-xl border border-gray-200 bg-white">
+                        {editingSpecialId === r.id ? (
+                          <div className="space-y-2">
+                            <Input label="Rate Name" value={editSpecialForm.name} onChange={(e) => setEditSpecialForm({ ...editSpecialForm, name: e.target.value })} />
+                            <div className="grid grid-cols-2 gap-2">
+                              <Input label="Sea (USD/CBM)" type="number" step="0.01" value={editSpecialForm.sea} onChange={(e) => setEditSpecialForm({ ...editSpecialForm, sea: e.target.value })} />
+                              <Input label="Air (USD/kg)" type="number" step="0.01" value={editSpecialForm.air} onChange={(e) => setEditSpecialForm({ ...editSpecialForm, air: e.target.value })} />
+                            </div>
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => saveEditSpecialRate(r.id)} loading={savingEditSpecial}>
+                                <Check className="h-3.5 w-3.5 mr-1" /> Save
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setEditingSpecialId(null)}>
+                                <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                        <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{r.name}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
@@ -419,6 +489,13 @@ export default function AdminSettingsPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => { setEditingSpecialId(r.id); setEditSpecialForm({ name: r.name, sea: String(r.sea), air: String(r.air) }); }}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                           {confirmDeleteSpecialId === r.id ? (
                             <>
                               <span className="text-xs text-red-600">Delete?</span>
@@ -445,6 +522,8 @@ export default function AdminSettingsPage() {
                             </button>
                           )}
                         </div>
+                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -512,13 +591,39 @@ export default function AdminSettingsPage() {
                 ) : (
                   <div className="space-y-3">
                     {warehouses.map((w) => (
-                      <div key={w.id} className={`flex items-start gap-3 p-3 rounded-xl border ${w.isActive ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-60"}`}>
+                      <div key={w.id} className={`p-3 rounded-xl border ${w.isActive ? "border-gray-200 bg-white" : "border-gray-100 bg-gray-50 opacity-60"}`}>
+                        {editingWarehouseId === w.id ? (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <Input label="Name" value={editWarehouseForm.name} onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, name: e.target.value })} />
+                              <Input label="Country" value={editWarehouseForm.country} onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, country: e.target.value })} />
+                            </div>
+                            <Input label="Address" value={editWarehouseForm.address} onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, address: e.target.value })} />
+                            <Input label="Phone" value={editWarehouseForm.phone} onChange={(e) => setEditWarehouseForm({ ...editWarehouseForm, phone: e.target.value })} />
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => saveEditWarehouse(w.id)} loading={savingEditWarehouse}>
+                                <Check className="h-3.5 w-3.5 mr-1" /> Save
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setEditingWarehouseId(null)}>
+                                <X className="h-3.5 w-3.5 mr-1" /> Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                        <div className="flex items-start gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{w.name}</p>
                           <p className="text-xs text-gray-500 mt-0.5">{w.address}</p>
                           {w.phone && <p className="text-xs text-gray-400 mt-0.5">{w.phone}</p>}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => { setEditingWarehouseId(w.id); setEditWarehouseForm({ name: w.name, address: w.address, country: w.country ?? "", phone: w.phone ?? "" }); }}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                           <button
                             onClick={() => toggleWarehouse(w.id, !w.isActive)}
                             className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
@@ -552,6 +657,8 @@ export default function AdminSettingsPage() {
                             </button>
                           )}
                         </div>
+                        </div>
+                        )}
                       </div>
                     ))}
                   </div>

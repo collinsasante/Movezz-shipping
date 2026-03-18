@@ -204,6 +204,11 @@ export default function SortingPage() {
                                   {item.customerShippingMark}
                                 </code>
                               )}
+                              {item.trackingNumber && (
+                                <code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded shrink-0">
+                                  {item.trackingNumber}
+                                </code>
+                              )}
                               {item.description && (
                                 <span className="text-xs text-gray-500 truncate">
                                   {item.description}

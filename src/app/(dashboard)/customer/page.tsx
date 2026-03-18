@@ -162,13 +162,13 @@ export default function CustomerDashboardPage() {
         {/* Stats — 4 cards: 2 cols mobile, 4 cols lg */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
-            title="Total Orders"
-            value={stats ? filteredOrderCount : "—"}
+            title="Total Packages"
+            value={stats ? filteredItemCount : "—"}
             subtitle={isFiltered ? "In period" : "All time"}
             icon={ShoppingCart}
             iconColor="text-purple-600"
             iconBg="bg-purple-50"
-            href="/customer/orders"
+            href="/customer/items"
           />
           <StatCard
             title="In Transit"

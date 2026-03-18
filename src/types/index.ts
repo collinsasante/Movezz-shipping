@@ -108,6 +108,7 @@ export interface Item {
   status: ItemStatus;
   containerId?: string;
   containerName?: string;
+  containerEta?: string;
   orderId?: string;
   orderRef?: string;
   isMissing: boolean;

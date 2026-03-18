@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
   useCallback,
+  useRef,
 } from "react";
 import { auth, onIdTokenChanged, signOut, type User } from "@/lib/firebase";
 import type { AppUser } from "@/types";
@@ -43,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(() => loadCachedUser());
   const [loading, setLoading] = useState(true);
+  // Track whether Firebase has ever resolved to a real user this session
+  const authResolved = useRef(false);
 
   const fetchAppUser = useCallback(async (user: User) => {
     try {
@@ -87,21 +90,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(user);
 
       if (user) {
+        authResolved.current = true;
         await fetchAppUser(user);
       } else {
-        // No Firebase user — check if there's a cookie session (e.g. dev bypass)
+        // No Firebase user — check if there's a cookie session
         try {
           const res = await axios.get("/api/auth/verify-cookie");
           if (res.data.success) {
+            authResolved.current = true;
             setAppUser(res.data.data);
             try { localStorage.setItem(USER_CACHE_KEY, JSON.stringify(res.data.data)); } catch {}
-          } else {
+          } else if (authResolved.current) {
+            // Was authenticated this session — this is a genuine sign-out
             setAppUser(null);
             try { localStorage.removeItem(USER_CACHE_KEY); } catch {}
           }
+          // else: first null before Firebase restored on mobile — keep cached user
         } catch {
-          setAppUser(null);
-          try { localStorage.removeItem(USER_CACHE_KEY); } catch {}
+          // Network/server error on cookie check — keep cached user, don't sign out
+          // Firebase will fire again with the user once it restores from IndexedDB
         }
       }
 
