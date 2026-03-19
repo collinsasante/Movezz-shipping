@@ -68,7 +68,7 @@ export function TrackingTimeline({
             </div>
 
             {/* Right column: text */}
-            <div className={cn("pb-1", compact ? "pb-1" : "pb-4", "min-w-0")}>
+            <div className={cn("min-w-0", compact ? "pb-1" : "pb-4")}>
               <p
                 className={cn(
                   "text-sm font-semibold leading-none",
@@ -79,13 +79,11 @@ export function TrackingTimeline({
               >
                 {step}
               </p>
-              {!compact && (
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {STATUS_DESCRIPTIONS[step]}
-                </p>
-              )}
+              <p className={cn("text-xs mt-0.5", isCompleted || isCurrent ? "text-gray-500" : "text-gray-300")}>
+                {STATUS_DESCRIPTIONS[step]}
+              </p>
               {historyEntry && (
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-brand-500 font-medium mt-1">
                   {formatDateTime(historyEntry.changedAt)}
                 </p>
               )}
