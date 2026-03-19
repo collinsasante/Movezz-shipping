@@ -1007,7 +1007,6 @@ export const containersApi = {
     const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
       "Shipped to Ghana": "Shipped to Ghana",
       "Arrived in Ghana": "Sorting",
-      "Completed": "Completed",
       // "Loading" has no corresponding item status — no cascade
     };
 

@@ -10,7 +10,7 @@ import {
 import { z } from "zod";
 
 const UpdateStatusSchema = z.object({
-  status: z.enum(["Loading", "Shipped to Ghana", "Arrived in Ghana", "Completed"]),
+  status: z.enum(["Loading", "Shipped to Ghana", "Arrived in Ghana"]),
   notes: z.string().optional(),
   arrivalDate: z.string().optional(),
 });

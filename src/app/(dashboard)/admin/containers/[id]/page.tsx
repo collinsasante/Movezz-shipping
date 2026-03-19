@@ -44,7 +44,6 @@ const STATUS_OPTIONS = [
   { value: "Loading", label: "Loading" },
   { value: "Shipped to Ghana", label: "Shipped to Ghana" },
   { value: "Arrived in Ghana", label: "Arrived in Ghana" },
-  { value: "Completed", label: "Completed" },
 ];
 
 export default function ContainerDetailPage() {

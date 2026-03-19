@@ -18,8 +18,7 @@ export type ItemStatus =
 export type ContainerStatus =
   | "Loading"
   | "Shipped to Ghana"
-  | "Arrived in Ghana"
-  | "Completed";
+  | "Arrived in Ghana";
 
 // ---- ORDER STATUS ----
 export type OrderStatus = "Pending" | "Partial" | "Paid";
