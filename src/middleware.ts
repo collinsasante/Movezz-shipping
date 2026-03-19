@@ -24,8 +24,8 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com", // Next.js requires unsafe-inline/eval in dev; tighten in prod with nonces
-      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://translate.googleapis.com",
+      "style-src 'self' 'unsafe-inline' https://www.gstatic.com",
       "img-src 'self' data: blob: https://res.cloudinary.com https://lh3.googleusercontent.com https://v5.airtableusercontent.com",
       "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://api.cloudinary.com",
       "font-src 'self'",
