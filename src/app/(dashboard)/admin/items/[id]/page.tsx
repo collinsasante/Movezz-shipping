@@ -471,19 +471,8 @@ export default function AdminItemDetailPage() {
               <h3 className="font-semibold text-gray-900 mb-4">Tracking</h3>
               <TrackingTimeline
                 currentStatus={item.status}
-                history={history.length > 0 ? history : (
-                  item.dateReceived ? [{
-                    id: "synthetic-received",
-                    recordType: "Item" as const,
-                    recordId: item.id,
-                    recordRef: item.itemRef ?? "",
-                    previousStatus: "",
-                    newStatus: "Arrived at Transit Warehouse",
-                    changedBy: "",
-                    changedByRole: "warehouse_staff" as const,
-                    changedAt: item.dateReceived,
-                  }] : []
-                )}
+                history={history}
+                dateReceived={item.dateReceived}
               />
             </div>
           </div>

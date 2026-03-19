@@ -7,6 +7,7 @@ interface TrackingTimelineProps {
   currentStatus: ItemStatus;
   history?: StatusHistory[];
   compact?: boolean;
+  dateReceived?: string;
 }
 
 const STATUS_DESCRIPTIONS: Record<ItemStatus, string> = {
@@ -22,6 +23,7 @@ export function TrackingTimeline({
   currentStatus,
   history = [],
   compact = false,
+  dateReceived,
 }: TrackingTimelineProps) {
   const currentIndex = ITEM_STATUS_STEPS.indexOf(currentStatus);
 
@@ -32,7 +34,10 @@ export function TrackingTimeline({
         const isCurrent = index === currentIndex;
         const isPending = index > currentIndex;
 
-        const historyEntry = history.find((h) => h.newStatus === step);
+        const historyEntry = history.find((h) => h.newStatus === step)
+          ?? (step === "Arrived at Transit Warehouse" && (isCompleted || isCurrent) && dateReceived
+            ? { changedAt: dateReceived } as StatusHistory
+            : undefined);
 
         return (
           <div key={step} className="flex gap-3">

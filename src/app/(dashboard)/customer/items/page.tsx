@@ -339,19 +339,8 @@ export default function CustomerItemsPage() {
                 ) : (
                   <TrackingTimeline
                     currentStatus={selectedItem.status}
-                    history={selectedHistory.length > 0 ? selectedHistory : (
-                      selectedItem.dateReceived ? [{
-                        id: "synthetic-received",
-                        recordType: "Item" as const,
-                        recordId: selectedItem.id,
-                        recordRef: selectedItem.itemRef ?? "",
-                        previousStatus: "",
-                        newStatus: "Arrived at Transit Warehouse",
-                        changedBy: "",
-                        changedByRole: "warehouse_staff" as const,
-                        changedAt: selectedItem.dateReceived,
-                      }] : []
-                    )}
+                    history={selectedHistory}
+                    dateReceived={selectedItem.dateReceived}
                   />
                 )}
               </div>

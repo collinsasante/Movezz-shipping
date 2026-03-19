@@ -320,6 +320,7 @@ export default function CustomerDashboardPage() {
                     <TrackingTimeline
                       currentStatus={selectedItem.status}
                       history={selectedHistory}
+                      dateReceived={selectedItem.dateReceived}
                     />
                   )}
                 </>
