@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { Header } from "@/components/layout/Header";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/ui/badge";
 import { TrackingTimeline } from "@/components/shared/TrackingTimeline";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import type { CustomerDashboardStats, Item } from "@/types";
+import type { CustomerDashboardStats, Item, StatusHistory } from "@/types";
 import {
   Package,
   ShoppingCart,
@@ -62,6 +62,8 @@ export default function CustomerDashboardPage() {
     } catch { /* ignore */ }
   }, []);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<StatusHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [period, setPeriod] = useState<Period>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -82,6 +84,23 @@ export default function CustomerDashboardPage() {
     };
     load();
   }, [error]);
+
+  const fetchHistory = useCallback(async (itemId: string) => {
+    setHistoryLoading(true);
+    try {
+      const res = await axios.get(`/api/items/${itemId}/history`);
+      setSelectedHistory(res.data.data ?? []);
+    } catch {
+      setSelectedHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedItem) fetchHistory(selectedItem.id);
+    else setSelectedHistory([]);
+  }, [selectedItem, fetchHistory]);
 
   // Deduplicate recentItems by tracking number, then apply period filter
   const deduplicatedItems = (() => {
@@ -291,10 +310,18 @@ export default function CustomerDashboardPage() {
                     </p>
                   </div>
 
-                  <TrackingTimeline
-                    currentStatus={selectedItem.status}
-                    compact
-                  />
+                  {historyLoading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-8 bg-gray-100 rounded-lg animate-pulse" />
+                      ))}
+                    </div>
+                  ) : (
+                    <TrackingTimeline
+                      currentStatus={selectedItem.status}
+                      history={selectedHistory}
+                    />
+                  )}
                 </>
               ) : (
                 <div className="text-center py-8">
