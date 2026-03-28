@@ -92,6 +92,7 @@ export const TABLES = {
   WAREHOUSES: "Warehouses",
   SPECIAL_RATES: "SpecialRates",
   PACKAGE_RATES: "PackageRates",
+  SETTINGS: "Settings",
 } as const;
 
 // ============================================================
@@ -1759,6 +1760,38 @@ export const packageRatesApi = {
   async saveAll(rates: PackageRates): Promise<void> {
     const tiers = Object.keys(rates) as (keyof PackageRates)[];
     await Promise.all(tiers.map((tier) => packageRatesApi.upsertTier(tier, rates[tier].sea, rates[tier].air)));
+  },
+};
+
+export interface AppSettings {
+  usdToGhs: number;
+  shippingRatePerCbm: number;
+}
+
+export const settingsApi = {
+  async get(): Promise<AppSettings | null> {
+    const records = await getAllRecords(TABLES.SETTINGS);
+    if (records.length === 0) return null;
+    const f = records[0].fields;
+    return {
+      usdToGhs: (f["UsdToGhs"] as number) ?? 1,
+      shippingRatePerCbm: (f["ShippingRatePerCbm"] as number) ?? 0,
+    };
+  },
+
+  async save(settings: AppSettings): Promise<void> {
+    const records = await getAllRecords(TABLES.SETTINGS);
+    if (records.length > 0) {
+      await updateRecord(TABLES.SETTINGS, records[0].id, {
+        UsdToGhs: settings.usdToGhs,
+        ShippingRatePerCbm: settings.shippingRatePerCbm,
+      });
+    } else {
+      await createRecord(TABLES.SETTINGS, {
+        UsdToGhs: settings.usdToGhs,
+        ShippingRatePerCbm: settings.shippingRatePerCbm,
+      });
+    }
   },
 };
 

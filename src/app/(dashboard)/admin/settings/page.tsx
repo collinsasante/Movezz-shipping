@@ -39,9 +39,10 @@ export default function AdminSettingsPage() {
   const { success, error } = useToast();
   const [activeTab, setActiveTab] = useState<"exchange" | "warehouses" | "special-rates">("exchange");
 
-  // Exchange rate (still localStorage — no Airtable table for this yet)
+  // Exchange rate
   const [defaultRate, setDefaultRate] = useState("12.5");
   const [shippingRatePerCbm, setShippingRatePerCbm] = useState("200");
+  const [savingRates, setSavingRates] = useState(false);
 
   // Package rates (Airtable)
   const [pkgRates, setPkgRates] = useState<PackageRates>(DEFAULT_PKG_RATES);
@@ -70,8 +71,9 @@ export default function AdminSettingsPage() {
   const [editSpecialForm, setEditSpecialForm] = useState({ name: "", sea: "", air: "" });
   const [savingEditSpecial, setSavingEditSpecial] = useState(false);
 
-  // Load exchange rate from localStorage
+  // Load exchange rate — Airtable takes priority over localStorage
   useEffect(() => {
+    // Load localStorage as immediate fallback
     try {
       const saved = localStorage.getItem(RATES_KEY);
       if (saved) {
@@ -80,6 +82,12 @@ export default function AdminSettingsPage() {
         if (parsed.shippingRatePerCbm) setShippingRatePerCbm(String(parsed.shippingRatePerCbm));
       }
     } catch {}
+    // Then load from Airtable and override
+    axios.get("/api/settings").then((res) => {
+      const s = res.data.data;
+      if (s?.usdToGhs) setDefaultRate(String(s.usdToGhs));
+      if (s?.shippingRatePerCbm) setShippingRatePerCbm(String(s.shippingRatePerCbm));
+    }).catch(() => {});
   }, []);
 
   // Load package rates from Airtable
@@ -117,7 +125,7 @@ export default function AdminSettingsPage() {
     if (activeTab === "warehouses") loadWarehouses();
   }, [activeTab]);
 
-  const saveDefaultRate = () => {
+  const saveDefaultRate = async () => {
     const usdToGhs = parseFloat(defaultRate);
     const ratePerCbm = parseFloat(shippingRatePerCbm);
     if (isNaN(usdToGhs) || usdToGhs <= 0) {
@@ -128,8 +136,17 @@ export default function AdminSettingsPage() {
       error("Invalid rate", "Please enter a valid shipping rate");
       return;
     }
-    localStorage.setItem(RATES_KEY, JSON.stringify({ usdToGhs, shippingRatePerCbm: ratePerCbm }));
-    success("Rates saved", `1 USD = ${usdToGhs} GHS · $${ratePerCbm}/CBM`);
+    setSavingRates(true);
+    try {
+      await axios.put("/api/settings", { usdToGhs, shippingRatePerCbm: ratePerCbm });
+      // Also keep localStorage in sync for offline/fast access
+      localStorage.setItem(RATES_KEY, JSON.stringify({ usdToGhs, shippingRatePerCbm: ratePerCbm }));
+      success("Rates saved", `1 USD = ${usdToGhs} GHS · $${ratePerCbm}/CBM`);
+    } catch {
+      error("Failed to save rates", "Could not save to Airtable");
+    } finally {
+      setSavingRates(false);
+    }
   };
 
   const savePackageRates = async () => {
@@ -346,7 +363,7 @@ export default function AdminSettingsPage() {
                 </div>
               </CardContent>
             </Card>
-            <Button onClick={saveDefaultRate} className="flex items-center gap-2">
+            <Button onClick={saveDefaultRate} loading={savingRates} className="flex items-center gap-2">
               <Save className="h-4 w-4" />
               Save Default Rates
             </Button>

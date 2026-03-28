@@ -62,6 +62,7 @@ export default function AdminOrderDetailPage() {
   const [usdToGhs, setUsdToGhs] = useState(1);
 
   useEffect(() => {
+    // Load from localStorage immediately as fallback
     try {
       const saved = localStorage.getItem("pakk_exchange_rates");
       if (saved) {
@@ -69,6 +70,11 @@ export default function AdminOrderDetailPage() {
         if (parsed.usdToGhs && parsed.usdToGhs > 0) setUsdToGhs(parsed.usdToGhs);
       }
     } catch {}
+    // Then load from Airtable and override
+    axios.get("/api/settings").then((res) => {
+      const s = res.data.data;
+      if (s?.usdToGhs && s.usdToGhs > 0) setUsdToGhs(s.usdToGhs);
+    }).catch(() => {});
   }, []);
 
   // Record Payment modal
