@@ -1,7 +1,7 @@
 // POST /api/orders/[id]/create-invoice — create Keepup invoice for an existing order
 // DELETE /api/orders/[id]/create-invoice — cancel Keepup invoice and clear from order
 import { NextRequest } from "next/server";
-import { ordersApi, customersApi, itemsApi } from "@/lib/airtable";
+import { ordersApi, customersApi, itemsApi, settingsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 import { createKeepupSale, cancelKeepupSale } from "@/lib/keepup";
 
@@ -16,7 +16,13 @@ export async function POST(
     const { id } = await params;
     const body = await request.json().catch(() => ({})) as { itemPriceMap?: Record<string, number> };
     const { itemPriceMap } = body;
-    const order = await ordersApi.getById(id);
+    const [order, appSettings] = await Promise.all([
+      ordersApi.getById(id),
+      settingsApi.get(),
+    ]);
+    const usdToGhs = appSettings?.usdToGhs && appSettings.usdToGhs > 0 ? appSettings.usdToGhs : 1;
+    // Invoice amount in GHS (what Keepup should bill the customer)
+    const invoiceAmountGhs = Math.round(order.invoiceAmount * usdToGhs * 100) / 100;
 
     // If invoice already exists, cancel it first then recreate (update flow)
     if (order.keepupSaleId) {
@@ -51,7 +57,7 @@ export async function POST(
       lineItems = [{
         item_name: `Freight - ${order.orderRef}`,
         quantity: 1,
-        price: Math.round(order.invoiceAmount * 100) / 100,
+        price: invoiceAmountGhs,
         item_type: "product",
       }];
     } else {
@@ -63,14 +69,14 @@ export async function POST(
         // Use client prices but adjust last item so sum matches invoice total (avoids rounding drift)
         const rawPrices = validItems.map((item) => itemPriceMap![item!.id]);
         const rawSum = rawPrices.reduce((s, p) => s + p, 0);
-        // Scale prices proportionally to match invoice amount
+        // Scale prices proportionally to match GHS invoice amount
         prices = rawPrices.map((p, i) =>
           i < rawPrices.length - 1
-            ? Math.round(order.invoiceAmount * (p / rawSum) * 100) / 100
+            ? Math.round(invoiceAmountGhs * (p / rawSum) * 100) / 100
             : 0
         );
         let running = prices.reduce((s, p) => s + p, 0);
-        prices[prices.length - 1] = Math.round((order.invoiceAmount - running) * 100) / 100;
+        prices[prices.length - 1] = Math.round((invoiceAmountGhs - running) * 100) / 100;
       } else {
         // Fallback: split proportionally by CBM (or equally if no CBM)
         const cbms = validItems.map((item) => getItemCbm(item!));
@@ -81,11 +87,11 @@ export async function POST(
         for (let i = 0; i < validItems.length; i++) {
           if (i < validItems.length - 1) {
             const proportion = useCbm ? cbms[i] / totalCbm : 1 / validItems.length;
-            const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
+            const p = Math.round(invoiceAmountGhs * proportion * 100) / 100;
             prices.push(p);
             runningSum += p;
           } else {
-            prices.push(Math.round((order.invoiceAmount - runningSum) * 100) / 100);
+            prices.push(Math.round((invoiceAmountGhs - runningSum) * 100) / 100);
           }
         }
       }
