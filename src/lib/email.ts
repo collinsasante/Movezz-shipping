@@ -48,7 +48,7 @@ function baseLayout(content: string, previewText = ""): string {
         <!-- Logo -->
         <tr>
           <td style="padding:0 0 24px;text-align:center;">
-            <img src="https://main.pakkmaxx.pages.dev/logowithtext.png" alt="PAKKmax" width="140" style="display:inline-block;border:0;height:auto;max-width:140px;" />
+            <img src="https://ship.pakkmax.com/logowithtext.png" alt="PAKKmax" width="140" style="display:inline-block;border:0;height:auto;max-width:140px;" />
           </td>
         </tr>
 
