@@ -2,7 +2,7 @@
 // FIREBASE AUTH - Server-side only (no firebase-admin SDK)
 // Uses jose + Google REST APIs — zero heavy Node.js dependencies
 // ============================================================
-import { jwtVerify, SignJWT, importPKCS8, importX509 } from "jose";
+import { SignJWT, importPKCS8 } from "jose";
 
 // Cloudflare context is stored in AsyncLocalStorage by OpenNext's init.js.
 // Reading directly from it is more reliable than process.env inside Workers,
@@ -29,49 +29,40 @@ const getPrivateKey = () => {
 const getBaseUrl = () => `https://identitytoolkit.googleapis.com/v1/projects/${getProjectId()}`;
 
 // ── JWKS via global fetch (createRemoteJWKSet uses https.get which unenv doesn't support)
-// ── X.509 cert cache (same approach as Firebase Admin SDK) ───────────────────
-const CERTS_URL =
-  "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
-let _certsCache: Record<string, string> | null = null;
-let _certsCacheTime = 0;
-const CERTS_TTL = 6 * 60 * 60 * 1000; // 6 h
-
-async function getCerts(): Promise<Record<string, string>> {
-  const now = Date.now();
-  if (_certsCache && now - _certsCacheTime < CERTS_TTL) return _certsCache;
-  const resp = await fetch(CERTS_URL);
-  if (!resp.ok) throw new Error(`Certs fetch failed: ${resp.status}`);
-  _certsCache = (await resp.json()) as Record<string, string>;
-  _certsCacheTime = now;
-  return _certsCache;
-}
-
-// ── Token Verification ────────────────────────────────────────────────────────
+// ── Token Verification via Firebase REST API ─────────────────────────────────
+// Local JWT verification (jose) has crypto compatibility issues in Cloudflare
+// Workers. Instead, we ask Firebase's own servers to validate the token —
+// this is authoritative, handles key rotation automatically, and detects
+// revoked tokens.
 
 export async function verifyIdToken(idToken: string) {
-  const projectId = getProjectId();
+  const apiKey = getEnvVar("NEXT_PUBLIC_FIREBASE_API_KEY");
+  if (!apiKey) throw new Error("NEXT_PUBLIC_FIREBASE_API_KEY is not configured");
 
-  // Decode header to get kid
-  const [headerB64] = idToken.split(".");
-  const header = JSON.parse(atob(headerB64.replace(/-/g, "+").replace(/_/g, "/")));
-  const kid: string = header.kid;
+  const resp = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    }
+  );
 
-  // Fetch X.509 certs and find the matching one by kid
-  const certs = await getCerts();
-  const cert = certs[kid];
-  if (!cert) throw new Error(`No certificate found for kid: ${kid}`);
+  if (!resp.ok) {
+    const err = (await resp.json()) as { error?: { message?: string } };
+    throw new Error(err.error?.message ?? "Token verification failed");
+  }
 
-  // Import the X.509 cert as a public key and verify
-  const publicKey = await importX509(cert, "RS256");
-  const { payload } = await jwtVerify(idToken, publicKey, {
-    issuer: `https://securetoken.google.com/${projectId}`,
-    audience: projectId,
-  });
+  const data = (await resp.json()) as {
+    users?: Array<{ localId: string; email?: string }>;
+  };
+  const user = data.users?.[0];
+  if (!user) throw new Error("No user found for token");
 
   return {
-    uid: payload.sub as string,
-    email: payload["email"] as string | undefined,
-    ...payload,
+    uid: user.localId,
+    email: user.email,
+    sub: user.localId,
   };
 }
 
