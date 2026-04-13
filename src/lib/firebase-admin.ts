@@ -36,21 +36,32 @@ const getBaseUrl = () => `https://identitytoolkit.googleapis.com/v1/projects/${g
 // revoked tokens.
 
 export async function verifyIdToken(idToken: string) {
-  const apiKey = getEnvVar("NEXT_PUBLIC_FIREBASE_API_KEY");
+  // Use dot-notation so Next.js inlines this at build time
+  // eslint-disable-next-line prefer-destructuring
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || getEnvVar("NEXT_PUBLIC_FIREBASE_API_KEY");
   if (!apiKey) throw new Error("NEXT_PUBLIC_FIREBASE_API_KEY is not configured");
 
-  const resp = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken }),
-    }
-  );
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  let resp: Response;
+  try {
+    resp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+        signal: controller.signal,
+      }
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!resp.ok) {
     const err = (await resp.json()) as { error?: { message?: string } };
-    throw new Error(err.error?.message ?? "Token verification failed");
+    throw new Error(err.error?.message ?? `Firebase lookup failed: ${resp.status}`);
   }
 
   const data = (await resp.json()) as {
