@@ -1,8 +1,8 @@
 // ============================================================
 // FIREBASE AUTH - Server-side only (no firebase-admin SDK)
-// Uses jose + Google REST APIs — zero heavy Node.js dependencies
+// Uses WebCrypto + Google REST APIs — works in Cloudflare Workers
+// (jose's Node.js path uses crypto.sign which unenv hasn't implemented)
 // ============================================================
-import { SignJWT, importPKCS8 } from "jose";
 
 // Cloudflare context is stored in AsyncLocalStorage by OpenNext's init.js.
 // Reading directly from it is more reliable than process.env inside Workers,
@@ -95,19 +95,43 @@ async function getAdminToken(): Promise<string> {
     );
   }
 
-  const key = await importPKCS8(privateKey, "RS256");
-  const nowSec = Math.floor(now / 1000);
+  // Use WebCrypto (crypto.subtle) directly — jose's Node.js path calls
+  // crypto.sign which unenv hasn't implemented in Cloudflare Workers.
+  const pemBody = privateKey
+    .replace(/-----BEGIN PRIVATE KEY-----/, "")
+    .replace(/-----END PRIVATE KEY-----/, "")
+    .replace(/\s+/g, "");
+  const derBytes = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    derBytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
 
-  const assertion = await new SignJWT({
+  const nowSec = Math.floor(now / 1000);
+  const b64url = (obj: object) =>
+    btoa(JSON.stringify(obj))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const header = b64url({ alg: "RS256", typ: "JWT" });
+  const payload = b64url({
+    iss: clientEmail,
+    sub: clientEmail,
+    aud: "https://oauth2.googleapis.com/token",
     scope: "https://www.googleapis.com/auth/identitytoolkit",
-  })
-    .setProtectedHeader({ alg: "RS256" })
-    .setIssuer(getClientEmail())
-    .setSubject(getClientEmail())
-    .setAudience("https://oauth2.googleapis.com/token")
-    .setIssuedAt(nowSec)
-    .setExpirationTime(nowSec + 3600)
-    .sign(key);
+    iat: nowSec,
+    exp: nowSec + 3600,
+  });
+  const signingInput = `${header}.${payload}`;
+  const sigBytes = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    cryptoKey,
+    new TextEncoder().encode(signingInput)
+  );
+  const sig = btoa(Array.from(new Uint8Array(sigBytes), (b) => String.fromCharCode(b)).join(""))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const assertion = `${signingInput}.${sig}`;
 
   const resp = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
