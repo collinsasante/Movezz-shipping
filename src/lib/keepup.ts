@@ -3,8 +3,16 @@
 
 const BASE = "https://api.keepup.store/v2.0";
 
+// Same Cloudflare context fallback used by firebase-admin.ts
+function getCfEnv(): Record<string, string | undefined> {
+  const ctx = (globalThis as Record<symbol, unknown>)[
+    Symbol.for("__cloudflare-context__")
+  ] as { env?: Record<string, string> } | undefined;
+  return ctx?.env ?? {};
+}
+
 function getKey(): string {
-  const key = process.env.KEEPUP_API_KEY;
+  const key = process.env.KEEPUP_API_KEY ?? getCfEnv()["KEEPUP_API_KEY"] ?? "";
   if (!key) throw new Error("KEEPUP_API_KEY is not set");
   return key;
 }
