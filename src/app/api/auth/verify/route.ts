@@ -31,9 +31,10 @@ export async function POST(request: NextRequest) {
     let decoded;
     try {
       decoded = await verifyIdToken(idToken);
-    } catch {
+    } catch (verifyErr) {
+      const detail = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
       return Response.json(
-        { success: false, error: "Invalid or expired token" },
+        { success: false, error: "Invalid or expired token", detail },
         { status: 401 }
       );
     }
