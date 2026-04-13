@@ -2,8 +2,7 @@
 // FIREBASE AUTH - Server-side only (no firebase-admin SDK)
 // Uses jose + Google REST APIs — zero heavy Node.js dependencies
 // ============================================================
-import { createLocalJWKSet, jwtVerify, SignJWT, importPKCS8 } from "jose";
-import type { JWTVerifyOptions } from "jose";
+import { jwtVerify, SignJWT, importPKCS8, importX509 } from "jose";
 
 // Cloudflare context is stored in AsyncLocalStorage by OpenNext's init.js.
 // Reading directly from it is more reliable than process.env inside Workers,
@@ -30,33 +29,45 @@ const getPrivateKey = () => {
 const getBaseUrl = () => `https://identitytoolkit.googleapis.com/v1/projects/${getProjectId()}`;
 
 // ── JWKS via global fetch (createRemoteJWKSet uses https.get which unenv doesn't support)
-const JWKS_URL =
-  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
-let _jwksCache: { keys: object[] } | null = null;
-let _jwksCacheTime = 0;
-const JWKS_TTL = 6 * 60 * 60 * 1000; // 6 h
+// ── X.509 cert cache (same approach as Firebase Admin SDK) ───────────────────
+const CERTS_URL =
+  "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+let _certsCache: Record<string, string> | null = null;
+let _certsCacheTime = 0;
+const CERTS_TTL = 6 * 60 * 60 * 1000; // 6 h
 
-async function getJWKS() {
+async function getCerts(): Promise<Record<string, string>> {
   const now = Date.now();
-  if (_jwksCache && now - _jwksCacheTime < JWKS_TTL) return _jwksCache;
-  const resp = await fetch(JWKS_URL);
-  if (!resp.ok) throw new Error(`JWKS fetch failed: ${resp.status}`);
-  _jwksCache = (await resp.json()) as { keys: object[] };
-  _jwksCacheTime = now;
-  return _jwksCache;
+  if (_certsCache && now - _certsCacheTime < CERTS_TTL) return _certsCache;
+  const resp = await fetch(CERTS_URL);
+  if (!resp.ok) throw new Error(`Certs fetch failed: ${resp.status}`);
+  _certsCache = (await resp.json()) as Record<string, string>;
+  _certsCacheTime = now;
+  return _certsCache;
 }
 
 // ── Token Verification ────────────────────────────────────────────────────────
 
 export async function verifyIdToken(idToken: string) {
   const projectId = getProjectId();
-  const jwks = await getJWKS();
-  const keySet = createLocalJWKSet(jwks as Parameters<typeof createLocalJWKSet>[0]);
-  const opts: JWTVerifyOptions = {
+
+  // Decode header to get kid
+  const [headerB64] = idToken.split(".");
+  const header = JSON.parse(atob(headerB64.replace(/-/g, "+").replace(/_/g, "/")));
+  const kid: string = header.kid;
+
+  // Fetch X.509 certs and find the matching one by kid
+  const certs = await getCerts();
+  const cert = certs[kid];
+  if (!cert) throw new Error(`No certificate found for kid: ${kid}`);
+
+  // Import the X.509 cert as a public key and verify
+  const publicKey = await importX509(cert, "RS256");
+  const { payload } = await jwtVerify(idToken, publicKey, {
     issuer: `https://securetoken.google.com/${projectId}`,
     audience: projectId,
-  };
-  const { payload } = await jwtVerify(idToken, keySet, opts);
+  });
+
   return {
     uid: payload.sub as string,
     email: payload["email"] as string | undefined,
