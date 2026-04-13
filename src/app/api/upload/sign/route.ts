@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { folder = "pakkmaxx/items" } = await request.json().catch(() => ({}));
+    const { folder = "movezz/items" } = await request.json().catch(() => ({}));
     const timestamp = Math.round(Date.now() / 1000);
 
     const signature = cloudinary.utils.api_sign_request(

@@ -61,8 +61,8 @@ export function AdminSidebar() {
       >
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <Image src="/logowithouttext.png" alt="PAKKmax" width={32} height={32} className="rounded-lg" />
-            <span className="font-bold text-lg tracking-tight">PAKKmax</span>
+            <Image src="/Logo.jpeg" alt="De-MOVEZZ LOGISTICS" width={32} height={32} className="rounded-lg" />
+            <span className="font-bold text-lg tracking-tight">De-MOVEZZ LOGISTICS</span>
           </div>
         )}
         {/* Mobile: X to close drawer | Desktop: chevron to collapse */}

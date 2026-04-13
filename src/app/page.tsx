@@ -29,9 +29,9 @@ export default function RootPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center">
-        <Image src="/logowithouttext.png" alt="PAKKmax" width={64} height={64} className="rounded-2xl mx-auto mb-4" />
+        <Image src="/Logo.jpeg" alt="De-MOVEZZ LOGISTICS" width={64} height={64} className="rounded-2xl mx-auto mb-4" />
         <Loader2 className="h-5 w-5 animate-spin text-brand-600 mx-auto mt-2" />
-        <p className="text-sm text-gray-500 mt-2">Loading PAKKmax...</p>
+        <p className="text-sm text-gray-500 mt-2">Loading De-MOVEZZ LOGISTICS...</p>
       </div>
     </div>
   );

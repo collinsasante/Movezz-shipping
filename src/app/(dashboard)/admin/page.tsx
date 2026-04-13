@@ -83,7 +83,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Admin Dashboard" subtitle="Overview of PAKKmax operations" />
+      <Header title="Admin Dashboard" subtitle="Overview of De-MOVEZZ LOGISTICS operations" />
 
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
         {/* Date filter */}

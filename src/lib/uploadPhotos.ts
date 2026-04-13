@@ -17,7 +17,7 @@ export async function uploadPhotos(files: File[]): Promise<UploadedPhoto[]> {
   const signRes = await fetch("/api/upload/sign", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ folder: "pakkmaxx/items" }),
+    body: JSON.stringify({ folder: "movezz/items" }),
   });
 
   if (!signRes.ok) throw new Error("Failed to get upload signature");

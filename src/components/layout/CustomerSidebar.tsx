@@ -80,8 +80,8 @@ export function CustomerSidebar() {
       {/* Logo */}
       <div className="flex items-center justify-between h-14 lg:h-16 px-5 border-b border-gray-100 shrink-0">
         <div className="flex items-center gap-2">
-          <Image src="/logowithouttext.png" alt="PAKKmax" width={32} height={32} className="rounded-lg" />
-          <span className="font-bold text-lg tracking-tight text-gray-900">PAKKmax</span>
+          <Image src="/Logo.jpeg" alt="De-MOVEZZ LOGISTICS" width={32} height={32} className="rounded-lg" />
+          <span className="font-bold text-lg tracking-tight text-gray-900">De-MOVEZZ LOGISTICS</span>
         </div>
         <button
           onClick={closeSidebar}

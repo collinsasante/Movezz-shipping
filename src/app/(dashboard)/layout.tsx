@@ -23,14 +23,21 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (appUser?.role !== "customer") return;
-    const savedId = localStorage.getItem("pakk_preferred_warehouse") ?? appUser.preferredWarehouseId ?? null;
-    axios.get("/api/warehouses").then((res) => {
-      const warehouses: { id: string; address: string }[] = res.data.data ?? [];
-      const match = savedId
-        ? warehouses.find((w) => w.id === savedId) ?? warehouses[0]
-        : warehouses[0];
-      if (match) setWarehouseAddress(match.address);
-    }).catch(() => {});
+    const savedId =
+      localStorage.getItem("pakk_preferred_warehouse") ??
+      appUser.preferredWarehouseId ??
+      null;
+    axios
+      .get("/api/warehouses")
+      .then((res) => {
+        const warehouses: { id: string; address: string }[] =
+          res.data.data ?? [];
+        const match = savedId
+          ? (warehouses.find((w) => w.id === savedId) ?? warehouses[0])
+          : warehouses[0];
+        if (match) setWarehouseAddress(match.address);
+      })
+      .catch(() => {});
   }, [appUser?.role, appUser?.preferredWarehouseId]);
 
   const shippingMark = appUser?.shippingMark ?? "";
@@ -40,10 +47,13 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   const copyMark = () => {
     if (!shippingMark) return;
-    navigator.clipboard.writeText(fullAddress).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+    navigator.clipboard
+      .writeText(fullAddress)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {});
   };
 
   // Show spinner until mounted (prevents server/client hydration mismatch from localStorage cache)
@@ -100,9 +110,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Sidebar */}
-      {(appUser.role === "super_admin" || appUser.role === "warehouse_staff") && (
-        <AdminSidebar />
-      )}
+      {(appUser.role === "super_admin" ||
+        appUser.role === "warehouse_staff") && <AdminSidebar />}
       {appUser.role === "customer" && <CustomerSidebar />}
 
       {/* Main content — pb-16 on mobile to clear bottom nav */}
@@ -111,15 +120,23 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         {appUser.role === "customer" && shippingMark && (
           <div className="lg:hidden shrink-0 bg-brand-50 border-b border-brand-100 px-4 py-2 flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] text-brand-600 font-semibold uppercase tracking-wide leading-none mb-0.5">Your Shipping Address</p>
-              <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">{fullAddress}</code>
+              <p className="text-[10px] text-brand-600 font-semibold uppercase tracking-wide leading-none mb-0.5">
+                Your Shipping Address
+              </p>
+              <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">
+                {fullAddress}
+              </code>
             </div>
             <button
               onClick={copyMark}
               className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-500 transition-colors"
               aria-label="Copy shipping address"
             >
-              {copied ? <CheckCheck className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              {copied ? (
+                <CheckCheck className="h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
             </button>
           </div>
         )}
@@ -127,9 +144,8 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Bottom navigation — mobile only */}
-      {(appUser.role === "super_admin" || appUser.role === "warehouse_staff") && (
-        <AdminBottomNav />
-      )}
+      {(appUser.role === "super_admin" ||
+        appUser.role === "warehouse_staff") && <AdminBottomNav />}
       {appUser.role === "customer" && <CustomerBottomNav />}
 
       {appUser.role === "customer" && <WhatsAppButton />}

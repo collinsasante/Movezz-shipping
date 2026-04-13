@@ -9,18 +9,18 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // ---- Shipping Mark Generator ----
-// Format: PAKKMAXX-{LAST4DIGITS}-{FIRSTNAME}
-// Example: PAKKMAXX-4821-COLLINS
+// Format: MOVEZZ-{LAST4DIGITS}-{FIRSTNAME}
+// Example: MOVEZZ-4821-COLLINS
 export function generateShippingMark(name: string, phone: string): string {
   const firstName = name.trim().split(" ")[0].toUpperCase().replace(/[^A-Z]/g, "");
   const last4 = phone.replace(/\D/g, "").slice(-4);
-  return `PAKKMAXX-${last4}-${firstName}`;
+  return `MOVEZZ-${last4}-${firstName}`;
 }
 
 // ---- Shipping Address Generator ----
 // A unique readable address based on shipping mark
 export function generateShippingAddress(shippingMark: string): string {
-  return `${shippingMark}, PAKKmax Warehouse, Accra, Ghana`;
+  return `${shippingMark}, A-Z Bulk Warehouse, Amrahia, Adenta-Dodowa Road`;
 }
 
 // ---- Auto ID Generators ----
@@ -129,7 +129,7 @@ export function buildWhatsAppMessage(
   orderRef: string,
   newStatus: ItemStatus | string
 ): string {
-  return `Hello ${customerName}, your package ${orderRef} is now *${newStatus}*. Thank you for choosing PAKKmax! 📦`;
+  return `Hello ${customerName}, your package ${orderRef} is now *${newStatus}*. Thank you for choosing De-MOVEZZ LOGISTICS! 📦`;
 }
 
 // ---- Phone Number Normalizer ----

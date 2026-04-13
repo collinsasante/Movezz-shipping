@@ -1,5 +1,5 @@
 // ============================================================
-// PAKKmax Email System — powered by Resend
+// De-MOVEZZ LOGISTICS Email System — powered by Resend
 // ============================================================
 // Docs: https://resend.com/docs
 // Set RESEND_API_KEY and EMAIL_FROM in your environment.
@@ -9,7 +9,7 @@ import { Resend } from "resend";
 
 const getResend = () => new Resend(process.env.RESEND_API_KEY);
 const EMAIL_FROM = () =>
-  process.env.EMAIL_FROM ?? "PAKKmax <noreply@pakkmaxx.com>";
+  process.env.EMAIL_FROM ?? "De-MOVEZZ LOGISTICS <noreply@pakkmaxx.com>";
 
 // ---- Core send helper (HTML string) ----
 export async function sendEmail(
@@ -48,7 +48,7 @@ function baseLayout(content: string, previewText = ""): string {
         <!-- Logo -->
         <tr>
           <td style="padding:0 0 24px;text-align:center;">
-            <img src="https://ship.pakkmax.com/logowithtext.png" alt="PAKKmax" width="140" style="display:inline-block;border:0;height:auto;max-width:140px;" />
+            <img src="https://res.cloudinary.com/dow5ohgj9/image/upload/movezz/logo.jpg" alt="De-MOVEZZ LOGISTICS" width="160" style="display:inline-block;border:0;height:auto;max-width:160px;" />
           </td>
         </tr>
 
@@ -62,8 +62,10 @@ function baseLayout(content: string, previewText = ""): string {
         <!-- Footer -->
         <tr>
           <td style="padding:28px 0 0;text-align:center;">
-            <p style="margin:0 0 6px;font-size:12px;color:#86868b;line-height:1.6;">Copyright &copy; ${new Date().getFullYear()} PAKKmax. All rights reserved.</p>
-            <p style="margin:0;font-size:12px;color:#86868b;">China &rarr; Ghana Freight Forwarding</p>
+            <p style="margin:0 0 6px;font-size:12px;color:#86868b;line-height:1.6;">Copyright &copy; ${new Date().getFullYear()} De-MOVEZZ LOGISTICS. All rights reserved.</p>
+            <p style="margin:0 0 4px;font-size:12px;color:#86868b;">China &rarr; Ghana Freight Forwarding</p>
+            <p style="margin:0 0 2px;font-size:12px;color:#86868b;">Amrahia, Adenta&ndash;Dodowa Road, A&ndash;Z Bulk Warehouse</p>
+            <p style="margin:0;font-size:12px;color:#86868b;">Tel: 0544752701</p>
           </td>
         </tr>
 
@@ -77,7 +79,7 @@ function baseLayout(content: string, previewText = ""): string {
 function ctaButton(url: string, label: string): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
     <tr>
-      <td style="border-radius:980px;background-color:#0071e3;">
+      <td style="border-radius:980px;background-color:#f59e0b;">
         <a href="${url}" target="_blank" style="display:inline-block;padding:12px 28px;font-size:15px;font-weight:500;color:#fff;text-decoration:none;border-radius:980px;letter-spacing:-0.2px;">${label}</a>
       </td>
     </tr>
@@ -135,14 +137,14 @@ export async function sendWelcomeEmail(
 ): Promise<void> {
   const firstName = customerName.split(" ")[0];
   const html = baseLayout(
-    `<h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Welcome to PAKKmax, ${firstName}!</h1>
+    `<h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;text-align:center;">Welcome to De-MOVEZZ LOGISTICS, ${firstName}!</h1>
       <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#4b5563;text-align:center;">Your account is ready. Here's your unique shipping mark — use it on every package you send to our warehouse in China.</p>
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-        <tr><td style="background-color:#f5f3ff;border:2px dashed #8b5cf6;border-radius:12px;padding:20px;text-align:center;">
-          <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:0.5px;">Your Shipping Mark</p>
-          <p style="margin:0;font-size:22px;font-weight:800;color:#4c1d95;font-family:monospace;letter-spacing:2px;">${shippingMark}</p>
-          <p style="margin:8px 0 0;font-size:12px;color:#7c3aed;">Write this on every package you ship to us</p>
+        <tr><td style="background-color:#fffbeb;border:2px dashed #f59e0b;border-radius:12px;padding:20px;text-align:center;">
+          <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;">Your Shipping Mark</p>
+          <p style="margin:0;font-size:22px;font-weight:800;color:#92400e;font-family:monospace;letter-spacing:2px;">${shippingMark}</p>
+          <p style="margin:8px 0 0;font-size:12px;color:#d97706;">Write this on every package you ship to us</p>
         </td></tr>
       </table>
 
@@ -157,9 +159,9 @@ export async function sendWelcomeEmail(
           </table>
         </td></tr>
       </table>`,
-    `Welcome to PAKKmax! Your shipping mark is ${shippingMark}`,
+    `Welcome to De-MOVEZZ LOGISTICS! Your shipping mark is ${shippingMark}`,
   );
-  await sendEmail(to, "Welcome to PAKKmax  — Here's your shipping mark", html);
+  await sendEmail(to, "Welcome to De-MOVEZZ LOGISTICS — Here's your shipping mark", html);
 }
 
 // ============================================================
@@ -196,7 +198,7 @@ export async function sendInvoiceCreatedEmail(opts: {
       <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#4b5563;text-align:center;">Hi ${firstName}, an invoice has been created for your shipment. Please review and complete payment at your earliest convenience.</p>
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-        <tr><td style="background-color:#6d28d9;padding:14px 20px;">
+        <tr><td style="background-color:#d97706;padding:14px 20px;">
           <p style="margin:0;font-size:11px;font-weight:600;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;">Invoice Reference</p>
           <p style="margin:4px 0 0;font-size:18px;font-weight:800;color:#fff;font-family:monospace;">${orderRef}</p>
         </td></tr>
@@ -205,7 +207,7 @@ export async function sendInvoiceCreatedEmail(opts: {
             ${infoRow("Invoice Date", invoiceDate)}
             ${infoRow("Items", `${itemCount} item${itemCount !== 1 ? "s" : ""}`)}
             ${infoRow("Status", statusPill("Pending"))}
-            ${infoRow("Amount Due", `<span style="font-size:18px;font-weight:800;color:#6d28d9;">${amountStr}</span>`)}
+            ${infoRow("Amount Due", `<span style="font-size:18px;font-weight:800;color:#d97706;">${amountStr}</span>`)}
             ${notes ? infoRow("Notes", notes) : ""}
           </table>
         </td></tr>
@@ -302,7 +304,7 @@ export async function sendItemStatusEmail(opts: {
     },
     Completed: {
       headline: "Package Delivered",
-      body: "Your package has been successfully delivered. Thanks for shipping with PAKKmax!",
+      body: "Your package has been successfully delivered. Thanks for shipping with De-MOVEZZ LOGISTICS!",
     },
   };
 
@@ -316,7 +318,7 @@ export async function sendItemStatusEmail(opts: {
       <p style="margin:0 0 28px;font-size:15px;line-height:1.7;color:#4b5563;text-align:center;">Hi ${firstName}, ${msg.body}</p>
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-        <tr><td style="background-color:#6d28d9;padding:14px 20px;">
+        <tr><td style="background-color:#d97706;padding:14px 20px;">
           <p style="margin:0;font-size:11px;font-weight:600;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;">Package Details</p>
           <p style="margin:4px 0 0;font-size:16px;font-weight:800;color:#fff;font-family:monospace;">${itemRef}</p>
         </td></tr>
@@ -342,15 +344,15 @@ export async function sendPasswordResetEmail(
 ): Promise<void> {
   const html = baseLayout(
     `<h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#1d1d1f;letter-spacing:-0.5px;">Reset your password.</h1>
-      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">We received a request to reset the password for your PAKKmax account.</p>
+      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">We received a request to reset the password for your De-MOVEZZ LOGISTICS account.</p>
       <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#86868b;">This link expires in 1 hour. If you didn't request this, you can ignore this email — your account remains secure.</p>
       ${ctaButton(resetUrl, "Reset Password")}
       <hr style="border:none;border-top:1px solid #e5e5ea;margin:0 0 24px;" />
       <p style="margin:0;font-size:12px;color:#86868b;line-height:1.6;">If the button above doesn't work, copy and paste this link into your browser:<br/>
-      <a href="${resetUrl}" style="color:#0071e3;word-break:break-all;text-decoration:none;">${resetUrl}</a></p>`,
-    "Reset your PAKKmax password",
+      <a href="${resetUrl}" style="color:#d97706;word-break:break-all;text-decoration:none;">${resetUrl}</a></p>`,
+    "Reset your De-MOVEZZ LOGISTICS password",
   );
-  await sendEmail(to, "Reset your PAKKmax password", html);
+  await sendEmail(to, "Reset your De-MOVEZZ LOGISTICS password", html);
 }
 
 // ============================================================
@@ -364,13 +366,13 @@ export async function sendEmailVerificationEmail(
   const firstName = customerName.split(" ")[0];
   const html = baseLayout(
     `<h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#1d1d1f;letter-spacing:-0.5px;">Verify your email, ${firstName}.</h1>
-      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">You're almost set to start using PAKKmax.</p>
+      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">You're almost set to start using De-MOVEZZ LOGISTICS.</p>
       <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#86868b;">Click the button below to verify your email address and activate your account. This link expires in 48 hours.</p>
       ${ctaButton(verifyUrl, "Verify Email Address")}
       <hr style="border:none;border-top:1px solid #e5e5ea;margin:0 0 24px;" />
       <p style="margin:0;font-size:12px;color:#86868b;line-height:1.6;">If the button above doesn't work, copy and paste this link into your browser:<br/>
-      <a href="${verifyUrl}" style="color:#0071e3;word-break:break-all;text-decoration:none;">${verifyUrl}</a></p>`,
-    "Verify your PAKKmax email address",
+      <a href="${verifyUrl}" style="color:#d97706;word-break:break-all;text-decoration:none;">${verifyUrl}</a></p>`,
+    "Verify your De-MOVEZZ LOGISTICS email address",
   );
   await sendEmail(to, "Verify your email address", html);
 }

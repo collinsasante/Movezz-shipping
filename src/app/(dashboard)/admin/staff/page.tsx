@@ -258,7 +258,7 @@ export default function StaffPage() {
             <Input
               label="Email Address"
               type="email"
-              placeholder="user@pakkmaxx.com"
+              placeholder="user@movezz.com"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               required

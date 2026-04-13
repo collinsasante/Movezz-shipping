@@ -66,7 +66,7 @@ export default function CustomerInvoicePage() {
             <FileText className="h-10 w-10 text-gray-200" />
             <div>
               <p className="text-gray-500 font-medium">Invoice not available yet</p>
-              <p className="text-sm text-gray-400 mt-1">Contact PAKKmax for details.</p>
+              <p className="text-sm text-gray-400 mt-1">Contact De-MOVEZZ LOGISTICS for details.</p>
             </div>
             {order?.keepupSaleId && (
               <a

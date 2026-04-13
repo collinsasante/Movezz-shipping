@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         data: { customer, user: appUser },
-        message: `Welcome to PAKKmax! Your shipping mark is ${customer.shippingMark}`,
+        message: `Welcome to De-MOVEZZ LOGISTICS! Your shipping mark is ${customer.shippingMark}`,
       },
       { status: 201 }
     );
