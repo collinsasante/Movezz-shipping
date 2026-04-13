@@ -11,7 +11,7 @@
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && wrangler dev",
     "cf:deploy": "opennextjs-cloudflare build && node scripts/cf-pages-deploy.mjs",
-    "ci:build": "opennextjs-cloudflare build && node scripts/cf-pages-ci.mjs"
+    "ci:build": "node_modules/.bin/opennextjs-cloudflare build && node scripts/cf-pages-ci.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
