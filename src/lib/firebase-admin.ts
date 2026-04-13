@@ -87,7 +87,15 @@ async function getAdminToken(): Promise<string> {
     return _cachedToken.token;
   }
 
-  const key = await importPKCS8(getPrivateKey(), "RS256");
+  const privateKey = getPrivateKey();
+  const clientEmail = getClientEmail();
+  if (!privateKey || !clientEmail) {
+    throw new Error(
+      `Firebase service account not configured — FIREBASE_PRIVATE_KEY=${privateKey ? "set" : "MISSING"}, FIREBASE_CLIENT_EMAIL=${clientEmail ? "set" : "MISSING"}`
+    );
+  }
+
+  const key = await importPKCS8(privateKey, "RS256");
   const nowSec = Math.floor(now / 1000);
 
   const assertion = await new SignJWT({
