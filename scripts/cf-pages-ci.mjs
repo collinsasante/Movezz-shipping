@@ -131,7 +131,7 @@ export default {
           h.set("Cache-Control", "no-cache, must-revalidate");
           nextResp = new Response(nextResp.body, { status: nextResp.status, statusText: nextResp.statusText, headers: h });
         }
-        if (nextResp.status >= 500) {
+        if (nextResp.status >= 500 && !path.startsWith("/api/")) {
           const logs = capturedErrors.join("\\n");
           return errorPage(
             "Next.js returned " + nextResp.status + " for " + path,

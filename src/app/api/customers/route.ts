@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
+    console.error("[POST /api/customers] unhandled error:", detail);
     return Response.json(
       { success: false, error: "Failed to create customer", detail },
       { status: 500 }
