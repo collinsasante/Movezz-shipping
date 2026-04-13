@@ -12,7 +12,7 @@ const OPENNEXT = ".open-next";
 
 function mergeOldFiles(src, dest) {
   if (!existsSync(src)) return;
-  mkdirSync(dest, { recursive: true });
+  mkdirSync(dest, { recursive: true, dereference: true });
   for (const entry of readdirSync(src, { withFileTypes: true })) {
     const s = join(src, entry.name);
     const d = join(dest, entry.name);
@@ -27,14 +27,14 @@ const OLD_STATIC = ".old-static-backup";
 const prevStatic = join(STAGING, "_next", "static");
 if (existsSync(prevStatic)) {
   rmSync(OLD_STATIC, { recursive: true, force: true });
-  cpSync(prevStatic, OLD_STATIC, { recursive: true });
+  cpSync(prevStatic, OLD_STATIC, { recursive: true, dereference: true });
   console.log("✅ Backed up previous _next/static for chunk continuity");
 }
 
 rmSync(STAGING, { recursive: true, force: true });
-mkdirSync(STAGING, { recursive: true });
+mkdirSync(STAGING, { recursive: true, dereference: true });
 
-cpSync(join(OPENNEXT, "assets"), STAGING, { recursive: true });
+cpSync(join(OPENNEXT, "assets"), STAGING, { recursive: true, dereference: true });
 
 if (existsSync(OLD_STATIC)) {
   mergeOldFiles(OLD_STATIC, join(STAGING, "_next", "static"));
@@ -163,7 +163,7 @@ writeFileSync(join(STAGING, "_headers"), `\
 
 for (const dir of ["cloudflare", "middleware", "server-functions", ".build", "cloudflare-templates"]) {
   const src = join(OPENNEXT, dir);
-  if (existsSync(src)) cpSync(src, join(STAGING, dir), { recursive: true });
+  if (existsSync(src)) cpSync(src, join(STAGING, dir), { recursive: true, dereference: true });
 }
 
 console.log("✅ Staging ready:", STAGING);
