@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: "Signup failed. Please try again.",
-        ...(process.env.NODE_ENV === "development" && { detail: msg }),
+        detail: msg,
       },
       { status: 500 }
     );
