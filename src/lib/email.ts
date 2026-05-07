@@ -7,9 +7,20 @@
 // ============================================================
 import { Resend } from "resend";
 
-const getResend = () => new Resend(process.env.RESEND_API_KEY);
+function getCfEnv(): Record<string, string | undefined> {
+  const ctx = (globalThis as Record<symbol, unknown>)[
+    Symbol.for("__cloudflare-context__")
+  ] as { env?: Record<string, string> } | undefined;
+  return ctx?.env ?? {};
+}
+
+function getEnvVar(key: string): string | undefined {
+  return process.env[key] ?? getCfEnv()[key];
+}
+
+const getResend = () => new Resend(getEnvVar("RESEND_API_KEY"));
 const EMAIL_FROM = () =>
-  process.env.EMAIL_FROM ?? "De-MOVEZZ LOGISTICS <noreply@pakkmaxx.com>";
+  getEnvVar("EMAIL_FROM") ?? "De-MOVEZZ LOGISTICS <noreply@ship.gomovezz.com>";
 
 // ---- Core send helper (HTML string) ----
 export async function sendEmail(
@@ -17,7 +28,7 @@ export async function sendEmail(
   subject: string,
   html: string,
 ): Promise<void> {
-  if (!process.env.RESEND_API_KEY) return;
+  if (!getEnvVar("RESEND_API_KEY")) return;
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: EMAIL_FROM(),
