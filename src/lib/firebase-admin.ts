@@ -230,11 +230,13 @@ export async function getFirebaseUser(uid: string) {
 // ── Email ─────────────────────────────────────────────────────────────────────
 
 function getAppUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    getCfEnv()["NEXT_PUBLIC_APP_URL"] ??
-    "https://ship.gomovezz.com"
-  );
+  const url =
+    process.env.APP_URL ??
+    getCfEnv()["APP_URL"] ??
+    "https://ship.gomovezz.com";
+  // Never let a localhost value escape to production email links
+  if (url.includes("localhost")) return "https://ship.gomovezz.com";
+  return url;
 }
 
 // Rewrites a Firebase-hosted oobLink to our custom /auth/action page,
