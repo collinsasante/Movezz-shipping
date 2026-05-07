@@ -229,6 +229,34 @@ export async function getFirebaseUser(uid: string) {
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 
+function getAppUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ??
+    getCfEnv()["NEXT_PUBLIC_APP_URL"] ??
+    "https://ship.gomovezz.com"
+  );
+}
+
+// Rewrites a Firebase-hosted oobLink to our custom /auth/action page,
+// preserving the oobCode, apiKey, and lang params Firebase embedded.
+function rewriteToCustomDomain(oobLink: string, mode: string): string {
+  try {
+    const src = new URL(oobLink);
+    const oobCode = src.searchParams.get("oobCode");
+    const apiKey = src.searchParams.get("apiKey");
+    const lang = src.searchParams.get("lang") ?? "en";
+    if (!oobCode) return oobLink;
+    const dest = new URL(`${getAppUrl()}/auth/action`);
+    dest.searchParams.set("mode", mode);
+    dest.searchParams.set("oobCode", oobCode);
+    if (apiKey) dest.searchParams.set("apiKey", apiKey);
+    dest.searchParams.set("lang", lang);
+    return dest.toString();
+  } catch {
+    return oobLink;
+  }
+}
+
 /**
  * Generates a Firebase email verification link WITHOUT sending Firebase's own email.
  * Uses the admin token + returnOobLink=true so we can send our custom HTML email instead.
@@ -255,7 +283,7 @@ export async function generateEmailVerificationLink(email: string): Promise<stri
 
   const data = (await resp.json()) as { oobLink?: string };
   if (!data.oobLink) throw new Error("No verification link returned");
-  return data.oobLink;
+  return rewriteToCustomDomain(data.oobLink, "verifyEmail");
 }
 
 /**
@@ -284,7 +312,7 @@ export async function generatePasswordResetLink(email: string): Promise<string> 
 
   const data = (await resp.json()) as { oobLink?: string };
   if (!data.oobLink) throw new Error("No password reset link returned");
-  return data.oobLink;
+  return rewriteToCustomDomain(data.oobLink, "resetPassword");
 }
 
 // setCustomClaims is a no-op — roles are sourced from Airtable, not JWT claims
