@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 // ROUTE PROTECTION MIDDLEWARE
 // ============================================================
 
-const PUBLIC_PATHS = ["/login", "/reset-password", "/auth", "/api/auth"];
+const PUBLIC_PATHS = ["/login", "/reset-password", "/auth", "/api/auth", "/onboard", "/api/onboard"];
 
 const ROLE_ROUTES: Record<string, string[]> = {
   "/admin": ["super_admin", "warehouse_staff"],

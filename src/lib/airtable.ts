@@ -93,6 +93,7 @@ export const TABLES = {
   SPECIAL_RATES: "SpecialRates",
   PACKAGE_RATES: "PackageRates",
   SETTINGS: "Settings",
+  PENDING_REGISTRATIONS: "PendingRegistrations",
 } as const;
 
 // ============================================================
@@ -1273,6 +1274,71 @@ export const usersApi = {
   async deleteByCustomerId(customerId: string): Promise<void> {
     const records = await getAllRecords(TABLES.USERS, `FIND('${escapeFormula(customerId)}', ARRAYJOIN({CustomerRecord}))`);
     await Promise.all(records.map((r) => deleteRecord(TABLES.USERS, r.id)));
+  },
+};
+
+// ============================================================
+// PENDING REGISTRATIONS API
+// ============================================================
+export interface PendingRegistration {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  existingMark: string;
+  location: string;
+  status: "Pending" | "Created";
+  submittedAt: string;
+  notes?: string;
+}
+
+function parsePendingRegistration(record: AirtableRecord<FieldSet>): PendingRegistration {
+  const f = record.fields;
+  return {
+    id: record.id,
+    name: (f["Name"] as string) ?? "",
+    phone: (f["Phone"] as string) ?? "",
+    email: (f["Email"] as string) ?? "",
+    existingMark: (f["ExistingMark"] as string) ?? "",
+    location: (f["Location"] as string) ?? "",
+    status: ((f["Status"] as string) ?? "Pending") as "Pending" | "Created",
+    submittedAt: (f["SubmittedAt"] as string) ?? "",
+    notes: (f["Notes"] as string) ?? undefined,
+  };
+}
+
+export const pendingRegistrationsApi = {
+  async list(status?: "Pending" | "Created"): Promise<PendingRegistration[]> {
+    const formula = status ? `{Status} = '${status}'` : undefined;
+    const records = await getAllRecords(TABLES.PENDING_REGISTRATIONS, formula, [
+      { field: "SubmittedAt", direction: "desc" },
+    ]);
+    return records.map(parsePendingRegistration);
+  },
+
+  async create(data: {
+    name: string;
+    phone: string;
+    email: string;
+    existingMark: string;
+    location: string;
+    notes?: string;
+  }): Promise<PendingRegistration> {
+    const record = await createRecord(TABLES.PENDING_REGISTRATIONS, {
+      Name: data.name,
+      Phone: data.phone,
+      Email: data.email,
+      ExistingMark: data.existingMark,
+      Location: data.location,
+      Status: "Pending",
+      SubmittedAt: new Date().toISOString(),
+      ...(data.notes ? { Notes: data.notes } : {}),
+    });
+    return parsePendingRegistration(record);
+  },
+
+  async markCreated(id: string): Promise<void> {
+    await updateRecord(TABLES.PENDING_REGISTRATIONS, id, { Status: "Created" });
   },
 };
 
