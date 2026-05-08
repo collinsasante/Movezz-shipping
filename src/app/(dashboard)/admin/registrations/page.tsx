@@ -94,6 +94,10 @@ export default function RegistrationsPage() {
     }
   };
 
+  useEffect(() => {
+    fetchRegistrations();
+  }, [fetchRegistrations]);
+
   const allSelected = registrations.length > 0 && selected.size === registrations.length;
   const someSelected = selected.size > 0 && !allSelected;
   const pending = registrations.filter((r) => r.status === "Pending").length;

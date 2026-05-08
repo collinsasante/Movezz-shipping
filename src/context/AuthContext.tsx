@@ -10,7 +10,7 @@ import React, {
 } from "react";
 import { auth, onIdTokenChanged, signOut, type User } from "@/lib/firebase";
 import type { AppUser } from "@/types";
-import axios from "axios";
+import axios, { type InternalAxiosRequestConfig } from "axios";
 
 interface AuthContextValue {
   firebaseUser: User | null;
@@ -46,6 +46,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   // Track whether Firebase has ever resolved to a real user this session
   const authResolved = useRef(false);
+  // Always-current reference to the Firebase user for use inside interceptors
+  const firebaseUserRef = useRef<User | null>(null);
 
   const fetchAppUser = useCallback(async (user: User) => {
     try {
@@ -82,11 +84,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [firebaseUser, fetchAppUser]);
 
+  // Global axios 401 interceptor — when any API call gets a 401 due to an
+  // expired cookie, refresh the Firebase token, update the cookie, then retry.
+  useEffect(() => {
+    const id = axios.interceptors.response.use(
+      (res) => res,
+      async (err) => {
+        if (!axios.isAxiosError(err) || err.response?.status !== 401) {
+          return Promise.reject(err);
+        }
+        const cfg = err.config as InternalAxiosRequestConfig & { _retry?: boolean };
+        // Don't retry auth endpoints (would loop) or already-retried requests
+        if (!cfg || cfg._retry || (cfg.url ?? "").includes("/api/auth/")) {
+          return Promise.reject(err);
+        }
+        const user = firebaseUserRef.current;
+        if (!user) return Promise.reject(err);
+        try {
+          const idToken = await user.getIdToken(true);
+          await axios.post("/api/auth/verify", { idToken });
+          cfg._retry = true;
+          return axios(cfg);
+        } catch {
+          return Promise.reject(err);
+        }
+      }
+    );
+    return () => axios.interceptors.response.eject(id);
+  }, []);
+
   useEffect(() => {
     // onIdTokenChanged fires on sign-in, sign-out, AND every time Firebase
     // silently refreshes the ID token (~every 59 min). This keeps the HttpOnly
     // cookie up-to-date so users are never kicked out mid-session.
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
+      firebaseUserRef.current = user;
       setFirebaseUser(user);
 
       if (user) {

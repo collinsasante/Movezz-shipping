@@ -19,7 +19,6 @@ import {
   ShieldCheck,
   Settings,
   X,
-  ClipboardList,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -31,7 +30,6 @@ const navItems = [
   { href: "/admin/orders", label: "Invoices", icon: ShoppingCart },
   { href: "/admin/sorting", label: "Sorting", icon: SortAsc },
 { href: "/admin/staff", label: "Staff", icon: ShieldCheck },
-  { href: "/admin/registrations", label: "Registrations", icon: ClipboardList },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
