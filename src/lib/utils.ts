@@ -12,9 +12,11 @@ export function cn(...inputs: ClassValue[]) {
 // Format: MOVEZZ-{LAST4DIGITS}-{FIRSTNAME}
 // Example: MOVEZZ-4821-COLLINS
 export function generateShippingMark(name: string, phone: string): string {
-  const firstName = name.trim().split(" ")[0].toUpperCase().replace(/[^A-Z]/g, "");
+  const parts = name.trim().split(/\s+/);
+  const firstInitial = (parts[0] ?? "").replace(/[^A-Za-z]/g, "")[0]?.toUpperCase() ?? "X";
+  const lastInitial = (parts[1] ?? "").replace(/[^A-Za-z]/g, "")[0]?.toUpperCase() ?? "X";
   const last4 = phone.replace(/\D/g, "").slice(-4);
-  return `MOVEZZ-${last4}-${firstName}`;
+  return `MOVEZZ-${firstInitial}${lastInitial}${last4}`;
 }
 
 // ---- Shipping Address Generator ----
