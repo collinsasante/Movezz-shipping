@@ -87,15 +87,11 @@ export default function ContainerDetailPage() {
   const loadDialogItems = useCallback(async (search = "") => {
     setDialogLoading(true);
     try {
-      const params = search.length >= 1 ? { search } : {};
+      const params: Record<string, string> = { status: "Arrived at Transit Warehouse" };
+      if (search.length >= 1) params.search = search;
       const res = await axios.get("/api/items", { params });
       const all: Item[] = res.data.data;
-      // Filter out items already in this container and items with terminal statuses
-      setDialogItems(
-        all
-          .filter((item) => !container?.items?.some((ci) => ci.id === item.id))
-          .filter((item) => !["Ready for Pickup", "Completed", "Arrived in Ghana", "Sorting"].includes(item.status))
-      );
+      setDialogItems(all.filter((item) => !container?.items?.some((ci) => ci.id === item.id)));
     } catch {
       setDialogItems([]);
     } finally {

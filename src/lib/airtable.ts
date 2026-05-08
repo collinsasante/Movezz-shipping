@@ -364,7 +364,7 @@ export const customersApi = {
     if (params.search) {
       const s = escapeFormula(params.search.toLowerCase());
       formulas.push(
-        `OR(SEARCH('${s}', LOWER({Name})), SEARCH('${s}', LOWER({Email})), SEARCH('${s}', LOWER({ShippingMark})))`
+        `OR(SEARCH('${s}', LOWER({Name})), SEARCH('${s}', LOWER({Email})), SEARCH('${s}', LOWER({ShippingMark})), SEARCH('${s}', LOWER({Phone})))`
       );
     }
     const formula =
@@ -523,6 +523,19 @@ export const itemsApi = {
     if (params.orderId)
       items = items.filter((item) => item.orderId === params.orderId);
 
+    // Resolve customer names before searching so customerName/customerShippingMark
+    // are populated and search by customer name or shipping mark works correctly.
+    if (items.some((item) => item.customerId && !item.customerName)) {
+      const allCustomers = await customersApi.list();
+      const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
+      items = items.map((item) => ({
+        ...item,
+        customerName: item.customerName ?? customerMap.get(item.customerId)?.name,
+        customerShippingMark:
+          item.customerShippingMark ?? customerMap.get(item.customerId)?.shippingMark,
+      }));
+    }
+
     // JS filter for search on lookup fields (shipping mark, customer name)
     if (params.search) {
       const s = params.search.toLowerCase();
@@ -534,19 +547,6 @@ export const itemsApi = {
           item.customerShippingMark?.toLowerCase().includes(s) ||
           item.customerName?.toLowerCase().includes(s)
       );
-    }
-
-    // CustomerName/CustomerShippingMark lookup fields may not exist in the base.
-    // If any item is missing a name, batch-resolve from the Customers table.
-    if (items.some((item) => item.customerId && !item.customerName)) {
-      const allCustomers = await customersApi.list();
-      const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
-      return items.map((item) => ({
-        ...item,
-        customerName: item.customerName ?? customerMap.get(item.customerId)?.name,
-        customerShippingMark:
-          item.customerShippingMark ?? customerMap.get(item.customerId)?.shippingMark,
-      }));
     }
 
     return items;
