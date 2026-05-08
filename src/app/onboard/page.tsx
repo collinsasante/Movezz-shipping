@@ -5,15 +5,7 @@ export const dynamic = "force-dynamic";
 import React, { useState } from "react";
 import Image from "next/image";
 import axios from "axios";
-
-const COUNTRY_CODES = [
-  { code: "+233", label: "🇬🇭 +233" },
-  { code: "+1", label: "🇺🇸 +1" },
-  { code: "+44", label: "🇬🇧 +44" },
-  { code: "+86", label: "🇨🇳 +86" },
-  { code: "+234", label: "🇳🇬 +234" },
-  { code: "+27", label: "🇿🇦 +27" },
-];
+import { COUNTRY_CODES } from "@/lib/countryCodes";
 
 export default function OnboardPage() {
   const [step, setStep] = useState<"form" | "success">("form");
