@@ -363,8 +363,14 @@ export const customersApi = {
     if (params.status) formulas.push(`{Status} = '${params.status}'`);
     if (params.search) {
       const s = escapeFormula(params.search.toLowerCase());
+      // Normalize Ghana country code prefix so "+233244..." matches "0244..."
+      const sNorm = escapeFormula(s.replace(/^\+233/, "0").replace(/^00233/, "0"));
+      const phoneClause =
+        s === sNorm
+          ? `SEARCH('${s}', LOWER({Phone}))`
+          : `OR(SEARCH('${s}', LOWER({Phone})), SEARCH('${sNorm}', LOWER({Phone})))`;
       formulas.push(
-        `OR(SEARCH('${s}', LOWER({Name})), SEARCH('${s}', LOWER({Email})), SEARCH('${s}', LOWER({ShippingMark})), SEARCH('${s}', LOWER({Phone})))`
+        `OR(SEARCH('${s}', LOWER({Name})), SEARCH('${s}', LOWER({Email})), SEARCH('${s}', LOWER({ShippingMark})), ${phoneClause})`
       );
     }
     const formula =

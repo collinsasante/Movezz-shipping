@@ -91,7 +91,7 @@ export default function ContainerDetailPage() {
       if (search.length >= 1) params.search = search;
       const res = await axios.get("/api/items", { params });
       const all: Item[] = res.data.data;
-      setDialogItems(all.filter((item) => !container?.items?.some((ci) => ci.id === item.id)));
+      setDialogItems(all.filter((item) => !item.containerId));
     } catch {
       setDialogItems([]);
     } finally {
