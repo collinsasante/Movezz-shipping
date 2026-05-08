@@ -1286,9 +1286,12 @@ export const whatsAppApi = {
     const cfEnv = ctx?.env ?? {};
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN ?? cfEnv["WHATSAPP_ACCESS_TOKEN"];
     const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID ?? cfEnv["WHATSAPP_PHONE_NUMBER_ID"];
-    if (!accessToken || !phoneNumberId) return;
+    if (!accessToken || !phoneNumberId) {
+      console.warn("[WhatsApp] WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not configured — skipping send");
+      return;
+    }
     const phoneNumber = phone.replace(/\D/g, "");
-    await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+    const res = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -1301,6 +1304,10 @@ export const whatsAppApi = {
         text: { body: message },
       }),
     });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[WhatsApp] send failed (${res.status}):`, body);
+    }
   },
 
   async sendNotification(payload: {

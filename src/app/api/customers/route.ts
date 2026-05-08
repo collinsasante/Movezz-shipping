@@ -129,14 +129,16 @@ export async function POST(request: NextRequest) {
 
     // 6. Send welcome email + password setup link + WhatsApp (non-fatal)
     let emailSent = false;
+    let whatsAppSent = false;
     try {
       await sendWelcomeEmail(email, name, customer.shippingMark);
       const resetUrl = await generatePasswordResetLink(email);
-      await Promise.all([
+      const [, waResult] = await Promise.allSettled([
         sendPasswordResetEmail(email, resetUrl),
         whatsAppApi.sendWelcome(phone, name, customer.shippingMark, resetUrl),
       ]);
       emailSent = true;
+      whatsAppSent = waResult.status === "fulfilled";
     } catch {
       // non-fatal
     }
@@ -144,7 +146,7 @@ export async function POST(request: NextRequest) {
     return Response.json(
       {
         success: true,
-        data: { customer, emailSent },
+        data: { customer, emailSent, whatsAppSent },
         message: `Customer ${customer.shippingMark} created successfully`,
       },
       { status: 201 }
