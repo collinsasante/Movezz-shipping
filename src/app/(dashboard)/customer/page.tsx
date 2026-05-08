@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Truck,
   CheckCircle,
+  MessageCircle,
 } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
@@ -153,6 +154,21 @@ export default function CustomerDashboardPage() {
       />
 
       <div className="flex-1 p-4 sm:p-6 space-y-5 overflow-y-auto">
+        {/* WhatsApp contact banner */}
+        <a
+          href="https://wa.me/233544752701"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 w-full px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 hover:bg-green-100 transition-colors"
+        >
+          <MessageCircle className="h-5 w-5 shrink-0 text-green-600" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">Chat with us on WhatsApp</p>
+            <p className="text-xs text-green-600">+233 544 752 701</p>
+          </div>
+          <span className="text-xs text-green-500 shrink-0">Tap to chat →</span>
+        </a>
+
         {/* Period filter — above cards so it affects them */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 overflow-x-auto pb-0.5 no-scrollbar">
