@@ -21,6 +21,8 @@ export default function OnboardPage() {
   const [error, setError] = useState("");
   const [phoneCode, setPhoneCode] = useState("+233");
   const [phoneLocal, setPhoneLocal] = useState("");
+  const [phone2Code, setPhone2Code] = useState("+233");
+  const [phone2Local, setPhone2Local] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -37,6 +39,7 @@ export default function OnboardPage() {
       await axios.post("/api/onboard", {
         ...form,
         phone: `${phoneCode}${phoneLocal}`,
+        phone2: phone2Local ? `${phone2Code}${phone2Local}` : undefined,
       });
       setStep("success");
     } catch (err: unknown) {
@@ -114,7 +117,7 @@ export default function OnboardPage() {
               />
             </div>
 
-            {/* Phone */}
+            {/* Phone 1 */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp Phone Number <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
@@ -133,6 +136,32 @@ export default function OnboardPage() {
                   value={phoneLocal}
                   onChange={(e) => setPhoneLocal(e.target.value)}
                   required
+                  className="flex-1 h-11 px-4 rounded-lg bg-gray-100 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0"
+                />
+              </div>
+            </div>
+
+            {/* Phone 2 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Alternative Phone Number
+                <span className="ml-1.5 text-xs font-normal text-gray-400">(optional)</span>
+              </label>
+              <div className="flex gap-2">
+                <select
+                  value={phone2Code}
+                  onChange={(e) => setPhone2Code(e.target.value)}
+                  className="h-11 px-3 rounded-lg bg-gray-100 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0 shrink-0"
+                >
+                  {COUNTRY_CODES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.label}</option>
+                  ))}
+                </select>
+                <input
+                  type="tel"
+                  placeholder="0244111651"
+                  value={phone2Local}
+                  onChange={(e) => setPhone2Local(e.target.value)}
                   className="flex-1 h-11 px-4 rounded-lg bg-gray-100 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0"
                 />
               </div>
@@ -168,7 +197,7 @@ export default function OnboardPage() {
 
             {/* Location */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Location / Pickup Address <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Location <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 placeholder="e.g. Accra, Ghana"

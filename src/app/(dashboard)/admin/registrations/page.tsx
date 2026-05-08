@@ -16,6 +16,7 @@ function CopyButton({ reg }: { reg: PendingRegistration }) {
     const text = [
       `Name: ${reg.name}`,
       `Phone: ${reg.phone}`,
+      reg.phone2 ? `Phone 2: ${reg.phone2}` : null,
       `Email: ${reg.email}`,
       reg.existingMark ? `Existing Mark: ${reg.existingMark}` : null,
       `Location: ${reg.location}`,
@@ -182,6 +183,7 @@ export default function RegistrationsPage() {
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-gray-500">
                     <span>{reg.phone}</span>
+                    {reg.phone2 && <span>{reg.phone2}</span>}
                     <span>{reg.email}</span>
                     <span>{reg.location}</span>
                   </div>

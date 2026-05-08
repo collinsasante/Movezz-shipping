@@ -1284,6 +1284,7 @@ export interface PendingRegistration {
   id: string;
   name: string;
   phone: string;
+  phone2?: string;
   email: string;
   existingMark: string;
   location: string;
@@ -1298,12 +1299,13 @@ function parsePendingRegistration(record: AirtableRecord<FieldSet>): PendingRegi
     id: record.id,
     name: (f["Name"] as string) ?? "",
     phone: (f["Phone"] as string) ?? "",
+    phone2: (f["Phone2"] as string) || undefined,
     email: (f["Email"] as string) ?? "",
     existingMark: (f["ExistingMark"] as string) ?? "",
     location: (f["Location"] as string) ?? "",
     status: ((f["Status"] as string) ?? "Pending") as "Pending" | "Created",
     submittedAt: (f["SubmittedAt"] as string) ?? "",
-    notes: (f["Notes"] as string) ?? undefined,
+    notes: (f["Notes"] as string) || undefined,
   };
 }
 
@@ -1319,6 +1321,7 @@ export const pendingRegistrationsApi = {
   async create(data: {
     name: string;
     phone: string;
+    phone2?: string;
     email: string;
     existingMark: string;
     location: string;
@@ -1327,6 +1330,7 @@ export const pendingRegistrationsApi = {
     const record = await createRecord(TABLES.PENDING_REGISTRATIONS, {
       Name: data.name,
       Phone: data.phone,
+      ...(data.phone2 ? { Phone2: data.phone2 } : {}),
       Email: data.email,
       ExistingMark: data.existingMark,
       Location: data.location,
