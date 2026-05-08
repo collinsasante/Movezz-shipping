@@ -8,7 +8,6 @@ import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CustomerSidebar } from "@/components/layout/CustomerSidebar";
 import { AdminBottomNav } from "@/components/layout/AdminBottomNav";
 import { CustomerBottomNav } from "@/components/layout/CustomerBottomNav";
-import { WhatsAppButton } from "@/components/shared/WhatsAppButton";
 import { Loader2, Copy, CheckCheck } from "lucide-react";
 import axios from "axios";
 
@@ -147,8 +146,6 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       {(appUser.role === "super_admin" ||
         appUser.role === "warehouse_staff") && <AdminBottomNav />}
       {appUser.role === "customer" && <CustomerBottomNav />}
-
-      {appUser.role === "customer" && <WhatsAppButton />}
     </div>
   );
 }
