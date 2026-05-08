@@ -55,14 +55,17 @@ function CreateAccountButton({
   const create = async () => {
     setState("loading");
     setErrMsg("");
+    const payload = {
+      name: reg.name,
+      phone: reg.phone,
+      email: reg.email,
+      shippingAddress: reg.location || undefined,
+      notes: reg.notes || undefined,
+    };
+    console.log("[CreateAccount] sending payload:", payload);
     try {
-      const res = await axios.post("/api/customers", {
-        name: reg.name,
-        phone: reg.phone,
-        email: reg.email,
-        shippingAddress: reg.location || undefined,
-        notes: reg.notes || undefined,
-      });
+      const res = await axios.post("/api/customers", payload);
+      console.log("[CreateAccount] response:", res.status, res.data);
       const mark = res.data.data?.customer?.shippingMark ?? "";
       setShippingMark(mark);
       setState("done");
@@ -71,6 +74,7 @@ function CreateAccountButton({
       const msg = axios.isAxiosError(err)
         ? err.response?.data?.error ?? "Failed to create account"
         : "Failed to create account";
+      console.error("[CreateAccount] error:", msg, axios.isAxiosError(err) ? err.response?.data : err);
       setErrMsg(msg);
       setState("error");
     }
@@ -89,10 +93,7 @@ function CreateAccountButton({
     return (
       <div className="flex flex-col items-end gap-1">
         <span className="text-xs text-red-600">{errMsg}</span>
-        <button
-          onClick={create}
-          className="text-xs text-red-600 underline hover:no-underline"
-        >
+        <button onClick={create} className="text-xs text-red-600 underline hover:no-underline">
           Retry
         </button>
       </div>
@@ -100,18 +101,23 @@ function CreateAccountButton({
   }
 
   return (
-    <button
-      onClick={create}
-      disabled={state === "loading"}
-      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors disabled:opacity-50"
-    >
-      {state === "loading" ? (
-        <div className="h-3.5 w-3.5 rounded-full border border-white border-t-transparent animate-spin" />
-      ) : (
-        <UserPlus className="h-3.5 w-3.5" />
-      )}
-      {state === "loading" ? "Creating..." : "Create Account"}
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button
+        onClick={create}
+        disabled={state === "loading"}
+        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors disabled:opacity-50"
+      >
+        {state === "loading" ? (
+          <div className="h-3.5 w-3.5 rounded-full border border-white border-t-transparent animate-spin" />
+        ) : (
+          <UserPlus className="h-3.5 w-3.5" />
+        )}
+        {state === "loading" ? "Creating..." : "Create Account"}
+      </button>
+      <span className="text-[10px] text-gray-400 text-right leading-tight">
+        {reg.phone} · {reg.email}
+      </span>
+    </div>
   );
 }
 
@@ -139,14 +145,16 @@ export default function RegistrationsPage() {
   }, [fetchRegistrations]);
 
   const handleCreated = useCallback(async (id: string, shippingMark: string) => {
+    console.log("[handleCreated] marking registration as created:", id, shippingMark);
     try {
-      await axios.patch(`/api/admin/registrations/${id}`);
+      const patchRes = await axios.patch(`/api/admin/registrations/${id}`);
+      console.log("[handleCreated] patch response:", patchRes.status, patchRes.data);
       success("Account created", shippingMark ? `Shipping mark: ${shippingMark}` : undefined);
       setRegistrations((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: "Created" } : r))
       );
-    } catch {
-      // mark-created failed silently — account was still created
+    } catch (err) {
+      console.error("[handleCreated] patch failed:", axios.isAxiosError(err) ? err.response?.data : err);
     }
   }, [success]);
 
