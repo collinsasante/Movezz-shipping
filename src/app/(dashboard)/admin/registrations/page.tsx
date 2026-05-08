@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
 import { useToast } from "@/components/ui/toast";
-import { ClipboardCopy, Check, RefreshCw, UserPlus } from "lucide-react";
+import { ClipboardCopy, Check, RefreshCw, UserPlus, Trash2 } from "lucide-react";
 import axios from "axios";
 import type { PendingRegistration } from "@/lib/airtable";
 
@@ -11,7 +11,6 @@ type Filter = "Pending" | "Created" | "All";
 
 function CopyButton({ reg }: { reg: PendingRegistration }) {
   const [copied, setCopied] = useState(false);
-
   const copy = () => {
     const text = [
       `Name: ${reg.name}`,
@@ -28,7 +27,6 @@ function CopyButton({ reg }: { reg: PendingRegistration }) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
   return (
     <button
       onClick={copy}
@@ -93,9 +91,7 @@ function CreateAccountButton({
     return (
       <div className="flex flex-col items-end gap-1">
         <span className="text-xs text-red-600">{errMsg}</span>
-        <button onClick={create} className="text-xs text-red-600 underline hover:no-underline">
-          Retry
-        </button>
+        <button onClick={create} className="text-xs text-red-600 underline hover:no-underline">Retry</button>
       </div>
     );
   }
@@ -126,9 +122,12 @@ export default function RegistrationsPage() {
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
   const [filter, setFilter] = useState<Filter>("Pending");
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const fetchRegistrations = useCallback(async () => {
     setLoading(true);
+    setSelected(new Set());
     try {
       const params = filter !== "All" ? { status: filter } : {};
       const res = await axios.get("/api/admin/registrations", { params });
@@ -158,17 +157,49 @@ export default function RegistrationsPage() {
     }
   }, [success]);
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selected.size === registrations.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(registrations.map((r) => r.id)));
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (selected.size === 0) return;
+    setDeleting(true);
+    try {
+      await Promise.all(
+        [...selected].map((id) => axios.delete(`/api/admin/registrations/${id}`))
+      );
+      success("Deleted", `${selected.size} registration${selected.size > 1 ? "s" : ""} deleted`);
+      setRegistrations((prev) => prev.filter((r) => !selected.has(r.id)));
+      setSelected(new Set());
+    } catch {
+      error("Error", "Failed to delete some registrations");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const allSelected = registrations.length > 0 && selected.size === registrations.length;
+  const someSelected = selected.size > 0 && !allSelected;
   const pending = registrations.filter((r) => r.status === "Pending").length;
 
   return (
     <div className="flex flex-col h-full">
-      <Header
-        title="Registrations"
-        subtitle="Customer self-registration submissions"
-      />
+      <Header title="Registrations" subtitle="Customer self-registration submissions" />
 
       <div className="flex-1 p-6 overflow-auto">
-        {/* Filter tabs + actions row */}
+        {/* Top bar */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {(["Pending", "Created", "All"] as Filter[]).map((f) => (
@@ -176,9 +207,7 @@ export default function RegistrationsPage() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  filter === f
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
+                  filter === f ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
                 }`}
               >
                 {f}
@@ -190,7 +219,22 @@ export default function RegistrationsPage() {
               </button>
             ))}
           </div>
+
           <div className="flex items-center gap-2">
+            {selected.size > 0 && (
+              <button
+                onClick={deleteSelected}
+                disabled={deleting}
+                className="flex items-center gap-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {deleting ? (
+                  <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Delete {selected.size} selected
+              </button>
+            )}
             <button
               onClick={fetchRegistrations}
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
@@ -223,16 +267,38 @@ export default function RegistrationsPage() {
             <p className="text-xs text-gray-400 mt-1">Share the registration form link with your customers.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-1">
+            {/* Select-all row */}
+            <div className="flex items-center gap-3 px-4 py-2">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                onChange={toggleAll}
+                className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
+              />
+              <span className="text-xs text-gray-400">
+                {selected.size > 0 ? `${selected.size} of ${registrations.length} selected` : `Select all ${registrations.length}`}
+              </span>
+            </div>
+
             {registrations.map((reg) => (
               <div
                 key={reg.id}
-                className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4"
+                className={`bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4 transition-colors ${
+                  selected.has(reg.id) ? "border-gray-400 bg-gray-50" : "border-gray-200"
+                }`}
               >
-                {/* Status dot */}
-                <div className="shrink-0 mt-1">
+                {/* Checkbox */}
+                <div className="shrink-0 flex items-start gap-2 mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(reg.id)}
+                    onChange={() => toggleSelect(reg.id)}
+                    className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
+                  />
                   <span
-                    className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                    className={`inline-flex h-2.5 w-2.5 rounded-full mt-1 ${
                       reg.status === "Pending" ? "bg-amber-400" : "bg-green-500"
                     }`}
                   />
@@ -247,13 +313,9 @@ export default function RegistrationsPage() {
                         {reg.existingMark}
                       </code>
                     )}
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        reg.status === "Pending"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-green-100 text-green-700"
-                      }`}
-                    >
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      reg.status === "Pending" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
+                    }`}>
                       {reg.status}
                     </span>
                   </div>
@@ -263,9 +325,7 @@ export default function RegistrationsPage() {
                     <span>{reg.email}</span>
                     <span>{reg.location}</span>
                   </div>
-                  {reg.notes && (
-                    <p className="text-xs text-gray-400 italic">{reg.notes}</p>
-                  )}
+                  {reg.notes && <p className="text-xs text-gray-400 italic">{reg.notes}</p>}
                   <p className="text-xs text-gray-300">
                     {reg.submittedAt ? new Date(reg.submittedAt).toLocaleString() : ""}
                   </p>

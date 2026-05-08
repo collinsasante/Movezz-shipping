@@ -1,4 +1,5 @@
 // PATCH /api/admin/registrations/[id] — mark registration as Created
+// DELETE /api/admin/registrations/[id] — delete a registration
 import { NextRequest } from "next/server";
 import { pendingRegistrationsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
@@ -16,5 +17,21 @@ export async function PATCH(
     return Response.json({ success: true });
   } catch {
     return serverErrorResponse("Failed to update registration");
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  if (authResult instanceof Response) return authResult;
+
+  try {
+    const { id } = await params;
+    await pendingRegistrationsApi.delete(id);
+    return Response.json({ success: true });
+  } catch {
+    return serverErrorResponse("Failed to delete registration");
   }
 }

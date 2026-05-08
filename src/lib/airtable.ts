@@ -1344,6 +1344,10 @@ export const pendingRegistrationsApi = {
   async markCreated(id: string): Promise<void> {
     await updateRecord(TABLES.PENDING_REGISTRATIONS, id, { Status: "Created" });
   },
+
+  async delete(id: string): Promise<void> {
+    await deleteRecord(TABLES.PENDING_REGISTRATIONS, id);
+  },
 };
 
 // ============================================================
