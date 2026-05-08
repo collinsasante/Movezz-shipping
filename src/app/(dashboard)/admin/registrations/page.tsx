@@ -39,88 +39,10 @@ function CopyButton({ reg }: { reg: PendingRegistration }) {
   );
 }
 
-function CreateAccountButton({
-  reg,
-  onCreated,
-}: {
-  reg: PendingRegistration;
-  onCreated: (id: string, shippingMark: string) => void;
-}) {
-  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [shippingMark, setShippingMark] = useState("");
-  const [errMsg, setErrMsg] = useState("");
-
-  const create = async () => {
-    setState("loading");
-    setErrMsg("");
-    const payload = {
-      name: reg.name,
-      phone: reg.phone,
-      email: reg.email,
-      shippingAddress: reg.location || undefined,
-      notes: reg.notes || undefined,
-    };
-    console.log("[CreateAccount] sending payload:", payload);
-    try {
-      const res = await axios.post("/api/customers", payload);
-      console.log("[CreateAccount] response:", res.status, res.data);
-      const mark = res.data.data?.customer?.shippingMark ?? "";
-      setShippingMark(mark);
-      setState("done");
-      onCreated(reg.id, mark);
-    } catch (err: unknown) {
-      const msg = axios.isAxiosError(err)
-        ? err.response?.data?.error ?? "Failed to create account"
-        : "Failed to create account";
-      console.error("[CreateAccount] error:", msg, axios.isAxiosError(err) ? err.response?.data : err);
-      setErrMsg(msg);
-      setState("error");
-    }
-  };
-
-  if (state === "done") {
-    return (
-      <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-50 text-green-700 font-medium">
-        <Check className="h-3.5 w-3.5" />
-        {shippingMark || "Created"}
-      </div>
-    );
-  }
-
-  if (state === "error") {
-    return (
-      <div className="flex flex-col items-end gap-1">
-        <span className="text-xs text-red-600">{errMsg}</span>
-        <button onClick={create} className="text-xs text-red-600 underline hover:no-underline">Retry</button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <button
-        onClick={create}
-        disabled={state === "loading"}
-        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors disabled:opacity-50"
-      >
-        {state === "loading" ? (
-          <div className="h-3.5 w-3.5 rounded-full border border-white border-t-transparent animate-spin" />
-        ) : (
-          <UserPlus className="h-3.5 w-3.5" />
-        )}
-        {state === "loading" ? "Creating..." : "Create Account"}
-      </button>
-      <span className="text-[10px] text-gray-400 text-right leading-tight">
-        {reg.phone} · {reg.email}
-      </span>
-    </div>
-  );
-}
-
 export default function RegistrationsPage() {
   const { success, error } = useToast();
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
-  const [filter, setFilter] = useState<Filter>("Pending");
+  const [filter, setFilter] = useState<Filter>("All");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -138,24 +60,6 @@ export default function RegistrationsPage() {
       setLoading(false);
     }
   }, [filter, error]);
-
-  useEffect(() => {
-    fetchRegistrations();
-  }, [fetchRegistrations]);
-
-  const handleCreated = useCallback(async (id: string, shippingMark: string) => {
-    console.log("[handleCreated] marking registration as created:", id, shippingMark);
-    try {
-      const patchRes = await axios.patch(`/api/admin/registrations/${id}`);
-      console.log("[handleCreated] patch response:", patchRes.status, patchRes.data);
-      success("Account created", shippingMark ? `Shipping mark: ${shippingMark}` : undefined);
-      setRegistrations((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, status: "Created" } : r))
-      );
-    } catch (err) {
-      console.error("[handleCreated] patch failed:", axios.isAxiosError(err) ? err.response?.data : err);
-    }
-  }, [success]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -196,7 +100,7 @@ export default function RegistrationsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Registrations" subtitle="Customer self-registration submissions" />
+      <Header title="Registrations" subtitle="Accounts created via the onboarding form" />
 
       <div className="flex-1 p-6 overflow-auto">
         {/* Top bar */}
@@ -334,9 +238,6 @@ export default function RegistrationsPage() {
                 {/* Actions */}
                 <div className="flex items-center gap-2 shrink-0">
                   <CopyButton reg={reg} />
-                  {reg.status === "Pending" && (
-                    <CreateAccountButton reg={reg} onCreated={handleCreated} />
-                  )}
                 </div>
               </div>
             ))}

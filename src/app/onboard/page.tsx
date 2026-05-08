@@ -48,30 +48,36 @@ export default function OnboardPage() {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm text-center space-y-5">
-          <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto">
-            <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto">
+            <svg className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">You&apos;re Registered!</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Check Your Email</h2>
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-              Your details have been submitted. We will create your account and send a
-              password setup link to your email shortly.
+              Your account has been created. We&apos;ve sent a password setup link to{" "}
+              <span className="font-medium text-gray-700">{form.email}</span>.
             </p>
           </div>
-          <div className="bg-gray-50 rounded-xl p-4 text-left space-y-1">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">What happens next</p>
-            <ul className="text-sm text-gray-600 space-y-1.5 mt-2">
-              <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">✓</span>Our team reviews your submission</li>
-              <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">✓</span>Your account is created in the system</li>
-              <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">✓</span>You receive a password setup email</li>
-              <li className="flex items-start gap-2"><span className="text-green-500 mt-0.5">✓</span>Log in and start tracking your shipments</li>
+          <div className="bg-blue-50 rounded-xl p-4 text-left space-y-2">
+            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Next steps</p>
+            <ul className="text-sm text-gray-600 space-y-1.5 mt-1">
+              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">1.</span>Open the email from De-MOVEZZ LOGISTICS</li>
+              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">2.</span>Click the password setup link</li>
+              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">3.</span>Set your password and log in</li>
             </ul>
           </div>
           <p className="text-xs text-gray-400">
-            Questions? Contact us on WhatsApp or email.
+            Didn&apos;t receive the email? Check your spam folder or{" "}
+            <a href="/reset-password" className="text-gray-700 font-medium hover:underline">request a new link</a>.
           </p>
+          <a
+            href="/login"
+            className="block w-full h-11 bg-gray-900 text-white rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors leading-[44px]"
+          >
+            Go to Login
+          </a>
         </div>
       </div>
     );
