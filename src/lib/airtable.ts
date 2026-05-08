@@ -1281,6 +1281,28 @@ export const usersApi = {
 // Uses WhatsApp Business API directly OR triggers Airtable automation
 // ============================================================
 export const whatsAppApi = {
+  async _send(phone: string, message: string): Promise<void> {
+    const ctx = (globalThis as Record<symbol, unknown>)[Symbol.for("__cloudflare-context__")] as { env?: Record<string, string> } | undefined;
+    const cfEnv = ctx?.env ?? {};
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN ?? cfEnv["WHATSAPP_ACCESS_TOKEN"];
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID ?? cfEnv["WHATSAPP_PHONE_NUMBER_ID"];
+    if (!accessToken || !phoneNumberId) return;
+    const phoneNumber = phone.replace(/\D/g, "");
+    await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: phoneNumber,
+        type: "text",
+        text: { body: message },
+      }),
+    });
+  },
+
   async sendNotification(payload: {
     phone: string;
     customerName: string;
@@ -1288,35 +1310,26 @@ export const whatsAppApi = {
     newStatus: string;
     message: string;
   }): Promise<void> {
-    // Option 1: Direct WhatsApp Business API
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    try {
+      await whatsAppApi._send(payload.phone, payload.message);
+    } catch {
+      // non-critical
+    }
+  },
 
-    if (accessToken && phoneNumberId) {
-      try {
-        const phoneNumber = payload.phone.replace(/\D/g, "");
-        const response = await fetch(
-          `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              messaging_product: "whatsapp",
-              to: phoneNumber,
-              type: "text",
-              text: { body: payload.message },
-            }),
-          }
-        );
-
-      } catch {
-        // Failed to send WhatsApp message (non-critical)
-      }
-    } else {
-      // Airtable automation handles WhatsApp notifications via status change triggers
+  async sendWelcome(phone: string, name: string, shippingMark: string, resetUrl: string): Promise<void> {
+    const firstName = name.trim().split(/\s+/)[0];
+    const message =
+      `Hello ${firstName}! 👋 Welcome to *De-MOVEZZ LOGISTICS*.\n\n` +
+      `Your account has been created.\n` +
+      `🔖 Shipping Mark: *${shippingMark}*\n\n` +
+      `Set up your password using the link below so you can log in and track your shipments:\n` +
+      `${resetUrl}\n\n` +
+      `_This link expires in 24 hours. Contact us if you need a new one._`;
+    try {
+      await whatsAppApi._send(phone, message);
+    } catch {
+      // non-critical
     }
   },
 };
