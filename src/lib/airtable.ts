@@ -1303,7 +1303,7 @@ function parsePendingRegistration(record: AirtableRecord<FieldSet>): PendingRegi
     email: (f["Email"] as string) ?? "",
     existingMark: (f["ExistingMark"] as string) ?? "",
     location: (f["Location"] as string) ?? "",
-    status: ((f["Status"] as string) ?? "Pending") as "Pending" | "Created",
+    status: ((f["Status"] as string) === "Created" ? "Created" : "Pending"),
     submittedAt: (f["SubmittedAt"] as string) ?? "",
     notes: (f["Notes"] as string) || undefined,
   };
