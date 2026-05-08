@@ -194,16 +194,18 @@ export default function LoginPage() {
       <div className="w-full h-full flex overflow-hidden">
         {/* ── Left panel ── */}
         <div className="hidden lg:flex lg:w-[48%] flex-col justify-between p-10 relative overflow-hidden">
-          {/* Background image */}
-          <Image
-            src="/auth-bg.png"
-            alt=""
-            fill
-            className="object-cover"
-            priority
-          />
+          {/* Background video */}
+          <div className="absolute inset-0 overflow-hidden">
+            <iframe
+              src="https://www.youtube.com/embed/FikkQTfbaOs?autoplay=1&mute=1&loop=1&playlist=FikkQTfbaOs&controls=0&disablekb=1&modestbranding=1&showinfo=0&rel=0"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 min-w-full min-h-full w-[177.78vh] h-[56.25vw]"
+              style={{ border: "none", pointerEvents: "none" }}
+              allow="autoplay; fullscreen"
+              allowFullScreen
+            />
+          </div>
           {/* Dark overlay for text legibility */}
-          <div className="absolute inset-0 bg-black/40" />
+          <div className="absolute inset-0 bg-black/50" />
 
           {/* Top label */}
           <div className="relative z-10 flex items-center gap-3">
