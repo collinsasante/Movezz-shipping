@@ -198,8 +198,18 @@ export default function LoginPage() {
           <div className="absolute inset-0 overflow-hidden">
             <iframe
               src="https://www.youtube.com/embed/FikkQTfbaOs?autoplay=1&mute=1&loop=1&playlist=FikkQTfbaOs&controls=0&disablekb=1&modestbranding=1&showinfo=0&rel=0"
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 min-w-full min-h-full w-[177.78vh] h-[56.25vw]"
-              style={{ border: "none", pointerEvents: "none" }}
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                width: "177.78vh",
+                height: "100vh",
+                minWidth: "100%",
+                minHeight: "100%",
+                border: "none",
+                pointerEvents: "none",
+              }}
               allow="autoplay; fullscreen"
               allowFullScreen
             />
