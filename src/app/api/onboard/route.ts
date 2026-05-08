@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
 
     const reg = await pendingRegistrationsApi.create(parsed.data);
     return Response.json({ success: true, data: { id: reg.id } }, { status: 201 });
-  } catch {
-    return Response.json({ success: false, error: "Failed to save registration. Please try again." }, { status: 500 });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[POST /api/onboard]", detail);
+    return Response.json({ success: false, error: "Failed to save registration. Please try again.", detail }, { status: 500 });
   }
 }
