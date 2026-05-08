@@ -41,12 +41,85 @@ function CopyButton({ reg }: { reg: PendingRegistration }) {
   );
 }
 
+function CreateAccountButton({
+  reg,
+  onCreated,
+}: {
+  reg: PendingRegistration;
+  onCreated: (id: string, shippingMark: string) => void;
+}) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [shippingMark, setShippingMark] = useState("");
+  const [errMsg, setErrMsg] = useState("");
+
+  const create = async () => {
+    setState("loading");
+    setErrMsg("");
+    try {
+      const res = await axios.post("/api/customers", {
+        name: reg.name,
+        phone: reg.phone,
+        email: reg.email,
+        shippingAddress: reg.location || undefined,
+        notes: reg.notes || undefined,
+      });
+      const mark = res.data.data?.customer?.shippingMark ?? "";
+      setShippingMark(mark);
+      setState("done");
+      onCreated(reg.id, mark);
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.error ?? "Failed to create account"
+        : "Failed to create account";
+      setErrMsg(msg);
+      setState("error");
+    }
+  };
+
+  if (state === "done") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-green-50 text-green-700 font-medium">
+        <Check className="h-3.5 w-3.5" />
+        {shippingMark || "Created"}
+      </div>
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <span className="text-xs text-red-600">{errMsg}</span>
+        <button
+          onClick={create}
+          className="text-xs text-red-600 underline hover:no-underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={create}
+      disabled={state === "loading"}
+      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors disabled:opacity-50"
+    >
+      {state === "loading" ? (
+        <div className="h-3.5 w-3.5 rounded-full border border-white border-t-transparent animate-spin" />
+      ) : (
+        <UserPlus className="h-3.5 w-3.5" />
+      )}
+      {state === "loading" ? "Creating..." : "Create Account"}
+    </button>
+  );
+}
+
 export default function RegistrationsPage() {
   const { success, error } = useToast();
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
   const [filter, setFilter] = useState<Filter>("Pending");
   const [loading, setLoading] = useState(true);
-  const [markingId, setMarkingId] = useState<string | null>(null);
 
   const fetchRegistrations = useCallback(async () => {
     setLoading(true);
@@ -65,20 +138,17 @@ export default function RegistrationsPage() {
     fetchRegistrations();
   }, [fetchRegistrations]);
 
-  const markCreated = async (id: string, name: string) => {
-    setMarkingId(id);
+  const handleCreated = useCallback(async (id: string, shippingMark: string) => {
     try {
       await axios.patch(`/api/admin/registrations/${id}`);
-      success("Done", `${name}'s registration marked as created`);
+      success("Account created", shippingMark ? `Shipping mark: ${shippingMark}` : undefined);
       setRegistrations((prev) =>
         prev.map((r) => (r.id === id ? { ...r, status: "Created" } : r))
       );
     } catch {
-      error("Error", "Failed to update status");
-    } finally {
-      setMarkingId(null);
+      // mark-created failed silently — account was still created
     }
-  };
+  }, [success]);
 
   const pending = registrations.filter((r) => r.status === "Pending").length;
 
@@ -142,9 +212,7 @@ export default function RegistrationsPage() {
               <UserPlus className="h-6 w-6 text-gray-400" />
             </div>
             <p className="text-sm text-gray-500">No {filter !== "All" ? filter.toLowerCase() : ""} registrations yet.</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Share the registration form link with your customers.
-            </p>
+            <p className="text-xs text-gray-400 mt-1">Share the registration form link with your customers.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -199,18 +267,7 @@ export default function RegistrationsPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   <CopyButton reg={reg} />
                   {reg.status === "Pending" && (
-                    <button
-                      onClick={() => markCreated(reg.id, reg.name)}
-                      disabled={markingId === reg.id}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors disabled:opacity-50"
-                    >
-                      {markingId === reg.id ? (
-                        <div className="h-3.5 w-3.5 rounded-full border border-white border-t-transparent animate-spin" />
-                      ) : (
-                        <Check className="h-3.5 w-3.5" />
-                      )}
-                      Mark Created
-                    </button>
+                    <CreateAccountButton reg={reg} onCreated={handleCreated} />
                   )}
                 </div>
               </div>
