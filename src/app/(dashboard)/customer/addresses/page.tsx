@@ -8,6 +8,8 @@ import type { Warehouse } from "@/types";
 import { Warehouse as WarehouseIcon, Copy, CheckCheck } from "lucide-react";
 import axios from "axios";
 
+const DEFAULT_WAREHOUSE = { id: "__default__", name: "Guangzhou", address: "广东省中山市民众镇三墩村三益路183号转", isActive: true, createdAt: "" };
+
 export default function CustomerAddressesPage() {
   const { appUser } = useAuth();
   const { error } = useToast();
@@ -19,18 +21,19 @@ export default function CustomerAddressesPage() {
   const load = useCallback(async () => {
     try {
       const res = await axios.get("/api/warehouses");
-      const list: Warehouse[] = res.data.data;
-      setWarehouses(list);
+      const list: Warehouse[] = res.data.data ?? [];
+      const withDefault = list.length > 0 ? list : [DEFAULT_WAREHOUSE as Warehouse];
+      setWarehouses(withDefault);
       const saved = localStorage.getItem("pakk_preferred_warehouse");
       const serverPref = appUser?.preferredWarehouseId;
       const preferred = saved ?? serverPref ?? null;
-      const match = preferred ? list.find((w) => w.id === preferred) : null;
-      const resolved = match ?? list[0] ?? null;
+      const match = preferred ? withDefault.find((w) => w.id === preferred) : null;
+      const resolved = match ?? withDefault[0];
       setSelectedWarehouseId(resolved?.id ?? null);
-      // Sync server preference to localStorage if localStorage was empty
       if (!saved && resolved) localStorage.setItem("pakk_preferred_warehouse", resolved.id);
     } catch {
-      error("Failed to load warehouses");
+      setWarehouses([DEFAULT_WAREHOUSE as Warehouse]);
+      setSelectedWarehouseId(DEFAULT_WAREHOUSE.id);
     } finally {
       setLoading(false);
     }
@@ -86,10 +89,10 @@ export default function CustomerAddressesPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900">{selectedWarehouse.name}</p>
-                    <p className="text-sm text-gray-600 mt-0.5 break-all">
+                    <p className="text-sm text-gray-600 mt-0.5 break-all font-mono">
                       {selectedWarehouse.address}{appUser?.shippingMark ? ` (${appUser.shippingMark})` : ""}
                     </p>
-                    {selectedWarehouse.phone && <p className="text-xs text-gray-500 mt-0.5">{selectedWarehouse.phone}</p>}
+                    {selectedWarehouse.phone && <p className="text-xs text-gray-500 mt-1">{selectedWarehouse.phone}</p>}
                   </div>
                   <button
                     onClick={() => copyWarehouseAddress(selectedWarehouse)}

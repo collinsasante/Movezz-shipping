@@ -18,10 +18,13 @@ import {
   Warehouse,
   Copy,
   CheckCheck,
+  MessageCircle,
 } from "lucide-react";
 import Image from "next/image";
 import axios from "axios";
 import type { CustomerPackage } from "@/types";
+
+const DEFAULT_WAREHOUSE = { name: "Guangzhou", address: "广东省中山市民众镇三墩村三益路183号转" };
 
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
   basic: "Basic",
@@ -45,22 +48,22 @@ export function CustomerSidebar() {
   const { appUser, signOut } = useAuth();
   const { open, closeSidebar } = useSidebar();
   const [copied, setCopied] = useState(false);
-  const [warehouseAddress, setWarehouseAddress] = useState<string | null>(null);
+  const [warehouse, setWarehouse] = useState<{ name: string; address: string }>(DEFAULT_WAREHOUSE);
 
   const shippingMark = appUser?.shippingMark ?? "";
 
   useEffect(() => {
     const savedId = localStorage.getItem("pakk_preferred_warehouse") ?? appUser?.preferredWarehouseId ?? null;
     axios.get("/api/warehouses").then((res) => {
-      const warehouses: { id: string; address: string }[] = res.data.data ?? [];
+      const warehouses: { id: string; name: string; address: string }[] = res.data.data ?? [];
       const match = savedId ? warehouses.find((w) => w.id === savedId) ?? warehouses[0] : warehouses[0];
-      if (match) setWarehouseAddress(match.address);
+      if (match) setWarehouse({ name: match.name, address: match.address });
     }).catch(() => {});
   }, [appUser?.preferredWarehouseId]);
 
   const copyShippingMark = () => {
     if (!shippingMark) return;
-    const text = warehouseAddress ? `${warehouseAddress} (${shippingMark})` : shippingMark;
+    const text = `${warehouse.address}${shippingMark ? ` (${shippingMark})` : ""}`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -103,10 +106,9 @@ export function CustomerSidebar() {
         )}
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">
-              {warehouseAddress
-                ? `${warehouseAddress}${shippingMark ? ` (${shippingMark})` : ""}`
-                : (shippingMark || "Loading...")}
+            <p className="text-xs font-semibold text-brand-800 mb-0.5">{warehouse.name}</p>
+            <code className="text-xs font-mono text-brand-700 break-all leading-relaxed">
+              {warehouse.address}{shippingMark ? ` (${shippingMark})` : ""}
             </code>
           </div>
           {shippingMark && (
@@ -159,6 +161,16 @@ export function CustomerSidebar() {
           </p>
           <p className="text-xs text-gray-500 truncate">{accountType}</p>
         </div>
+        <a
+          href="https://wa.me/233544752701"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={closeSidebar}
+          className="flex items-center gap-2 w-full px-4 py-3 text-sm text-green-600 hover:bg-green-50 transition-colors border-t border-gray-100"
+        >
+          <MessageCircle className="h-4 w-4" />
+          Chat on WhatsApp
+        </a>
         <button
           onClick={() => { closeSidebar(); signOut(); }}
           className="flex items-center gap-2 w-full px-4 py-3 text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors border-t border-gray-100"
