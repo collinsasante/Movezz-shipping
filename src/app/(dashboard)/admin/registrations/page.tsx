@@ -86,20 +86,11 @@ export default function RegistrationsPage() {
       <Header
         title="Registrations"
         subtitle="Customer self-registration submissions"
-        action={
-          <button
-            onClick={fetchRegistrations}
-            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
-        }
       />
 
       <div className="flex-1 p-6 overflow-auto">
-        {/* Filter tabs + count */}
-        <div className="flex items-center justify-between mb-5">
+        {/* Filter tabs + actions row */}
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
             {(["Pending", "Created", "All"] as Filter[]).map((f) => (
               <button
@@ -120,15 +111,24 @@ export default function RegistrationsPage() {
               </button>
             ))}
           </div>
-          <a
-            href="/onboard"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
-          >
-            <UserPlus className="h-4 w-4" />
-            Open Registration Form
-          </a>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchRegistrations}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </button>
+            <a
+              href="/onboard"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
+            >
+              <UserPlus className="h-4 w-4" />
+              Open Form
+            </a>
+          </div>
         </div>
 
         {loading ? (
