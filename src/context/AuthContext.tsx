@@ -123,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (user) {
         authResolved.current = true;
+        if (!appUser) setLoading(true);
         await fetchAppUser(user);
       } else {
         // No Firebase user — check if there's a cookie session

@@ -102,7 +102,7 @@ export default function EditCustomerPage() {
 
       <div className="flex-1 p-6 max-w-2xl">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push(`/admin/customers/${id}`)}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -175,7 +175,7 @@ export default function EditCustomerPage() {
           </Card>
 
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
+            <Button type="button" variant="outline" onClick={() => router.push(`/admin/customers/${id}`)}>
               Cancel
             </Button>
             <Button type="submit" loading={saving} className="flex-1">

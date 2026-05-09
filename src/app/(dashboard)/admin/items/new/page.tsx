@@ -299,7 +299,10 @@ export default function NewItemPage() {
         <div className={splitView && photoPreviews.length > 0 ? "flex-1 overflow-y-auto p-4 sm:p-6" : "p-4 sm:p-6 max-w-2xl mx-auto w-full"}>
           <div className="flex items-center justify-between mb-6">
             <button
-              onClick={() => router.back()}
+              onClick={() => {
+                const cid = searchParams?.get("customerId");
+                router.push(cid ? `/admin/customers/${cid}` : "/admin/items");
+              }}
               className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -625,7 +628,10 @@ export default function NewItemPage() {
             </Card>
 
             <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={() => router.back()}>
+              <Button type="button" variant="outline" onClick={() => {
+                const cid = searchParams?.get("customerId");
+                router.push(cid ? `/admin/customers/${cid}` : "/admin/items");
+              }}>
                 Cancel
               </Button>
               <Button type="submit" loading={isSubmitting} className="flex-1">

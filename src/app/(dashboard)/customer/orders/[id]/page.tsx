@@ -24,7 +24,7 @@ export default function CustomerInvoicePage() {
       {/* Top bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 shrink-0">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/customer/orders')}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />

@@ -191,7 +191,7 @@ export default function NewSupplierPage() {
                 <Button type="submit" disabled={saving}>
                   {saving ? "Saving..." : "Add Supplier"}
                 </Button>
-                <Button type="button" variant="outline" onClick={() => router.back()}>
+                <Button type="button" variant="outline" onClick={() => router.push('/admin/suppliers')}>
                   Cancel
                 </Button>
               </div>

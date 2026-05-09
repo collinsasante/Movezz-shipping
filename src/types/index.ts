@@ -70,6 +70,7 @@ export interface UpdateCustomerInput {
   exchangeRate?: number | null;
   shippingAddress?: string;
   preferredWarehouseId?: string;
+  shippingMark?: string;
 }
 
 // ============================================================

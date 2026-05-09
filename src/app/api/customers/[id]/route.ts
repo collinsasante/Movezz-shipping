@@ -22,6 +22,7 @@ const UpdateCustomerSchema = z.object({
   package: z.enum(["basic", "business", "enterprise", "special"]).optional(),
   exchangeRate: z.number().positive().optional().nullable(),
   shippingAddress: z.string().max(500).optional(),
+  shippingMark: z.string().min(1).max(50).optional(),
 });
 
 // GET /api/customers/[id]

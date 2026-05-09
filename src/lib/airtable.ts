@@ -452,22 +452,29 @@ export const customersApi = {
     updatedByEmail: string
   ): Promise<Customer> {
     const fields: FieldSet = {};
-    if (input.name !== undefined) {
-      fields["Name"] = input.name;
-      // Regenerate shipping mark if name changed
-      const existing = await getRecord(TABLES.CUSTOMERS, id);
-      const phone = (existing.fields["Phone"] as string) ?? "";
-      const newMark = generateShippingMark(input.name, phone);
-      fields["ShippingMark"] = newMark;
-      fields["ShippingAddress"] = generateShippingAddress(newMark);
-    }
-    if (input.phone !== undefined) {
-      fields["Phone"] = input.phone;
-      const existing = await getRecord(TABLES.CUSTOMERS, id);
-      const name = (existing.fields["Name"] as string) ?? "";
-      const newMark = generateShippingMark(name, input.phone);
-      fields["ShippingMark"] = newMark;
-      fields["ShippingAddress"] = generateShippingAddress(newMark);
+    if (input.shippingMark !== undefined) {
+      // Explicit shipping mark override — skip auto-generation
+      fields["ShippingMark"] = input.shippingMark;
+      if (input.name !== undefined) fields["Name"] = input.name;
+      if (input.phone !== undefined) fields["Phone"] = input.phone;
+    } else {
+      if (input.name !== undefined) {
+        fields["Name"] = input.name;
+        // Regenerate shipping mark if name changed
+        const existing = await getRecord(TABLES.CUSTOMERS, id);
+        const phone = (existing.fields["Phone"] as string) ?? "";
+        const newMark = generateShippingMark(input.name, phone);
+        fields["ShippingMark"] = newMark;
+        fields["ShippingAddress"] = generateShippingAddress(newMark);
+      }
+      if (input.phone !== undefined) {
+        fields["Phone"] = input.phone;
+        const existing = await getRecord(TABLES.CUSTOMERS, id);
+        const name = (existing.fields["Name"] as string) ?? "";
+        const newMark = generateShippingMark(name, input.phone);
+        fields["ShippingMark"] = newMark;
+        fields["ShippingAddress"] = generateShippingAddress(newMark);
+      }
     }
     if (input.email !== undefined) fields["Email"] = input.email;
     if (input.notes !== undefined) fields["Notes"] = input.notes;

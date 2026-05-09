@@ -22,6 +22,8 @@ import {
   Check,
   X,
   Trash2,
+  Search,
+  Hash,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,7 +46,8 @@ export default function CustomerDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "basic" | "business" | "enterprise" | "special" | "" });
+  const [itemSearch, setItemSearch] = useState("");
+  const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "basic" | "business" | "enterprise" | "special" | "", shippingMark: "" });
   const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
@@ -70,6 +73,7 @@ export default function CustomerDetailPage() {
             shippingType: c.shippingType ?? "",
             shippingAddress: c.shippingAddress ?? "",
             package: c.package ?? "",
+            shippingMark: c.shippingMark ?? "",
           });
           setEditing(true);
         }
@@ -93,6 +97,7 @@ export default function CustomerDetailPage() {
       shippingType: customer.shippingType ?? "",
       shippingAddress: customer.shippingAddress ?? "",
       package: customer.package ?? "",
+      shippingMark: customer.shippingMark ?? "",
     });
     setEditing(true);
   };
@@ -105,6 +110,7 @@ export default function CustomerDetailPage() {
         shippingType: editForm.shippingType || undefined,
         shippingAddress: editForm.shippingAddress || undefined,
         package: editForm.package || undefined,
+        shippingMark: editForm.shippingMark || undefined,
       });
       setCustomer((prev) => prev ? { ...prev, ...res.data.data } : prev);
       success("Customer updated");
@@ -152,7 +158,7 @@ export default function CustomerDetailPage() {
       <div className="flex-1 p-6 space-y-6 overflow-y-auto">
         <div className="flex items-center justify-between">
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push('/admin/customers')}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -221,6 +227,15 @@ export default function CustomerDetailPage() {
                   <Input label="Full Name" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
                   <Input label="Phone" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
                   <Input label="Email" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                  <div>
+                    <Input
+                      label="Shipping Mark"
+                      value={editForm.shippingMark}
+                      onChange={(e) => setEditForm({ ...editForm, shippingMark: e.target.value.toUpperCase() })}
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Overrides auto-generated mark. Leave as-is to keep current.</p>
+                  </div>
                   <Input label="Shipping Address" value={editForm.shippingAddress} onChange={(e) => setEditForm({ ...editForm, shippingAddress: e.target.value })} />
                   <div className="grid grid-cols-2 gap-3">
                     <Select
@@ -317,15 +332,27 @@ export default function CustomerDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900">Items</h3>
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    router.push(`/admin/items/new?customerId=${id}`)
-                  }
-                >
-                  <Package className="h-3.5 w-3.5 mr-1.5" />
-                  Add Item
-                </Button>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                    <input
+                      type="search"
+                      placeholder="Search items..."
+                      value={itemSearch}
+                      onChange={(e) => setItemSearch(e.target.value)}
+                      className="h-8 pl-8 pr-3 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 w-44"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      router.push(`/admin/items/new?customerId=${id}`)
+                    }
+                  >
+                    <Package className="h-3.5 w-3.5 mr-1.5" />
+                    Add Item
+                  </Button>
+                </div>
               </div>
               <DataTable
                 columns={[
@@ -348,10 +375,22 @@ export default function CustomerDetailPage() {
                     ),
                   },
                   {
+                    key: "trackingNumber",
+                    header: "Tracking #",
+                    render: (item) => item.trackingNumber ? (
+                      <div className="flex items-center gap-1">
+                        <Hash className="h-3 w-3 text-gray-400 shrink-0" />
+                        <span className="text-xs font-mono text-gray-600">{item.trackingNumber}</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    ),
+                  },
+                  {
                     key: "weight",
                     header: "Weight",
                     render: (item) => (
-                      <span className="text-sm">{item.weight} kg</span>
+                      <span className="text-sm">{item.weight ? `${item.weight} kg` : "—"}</span>
                     ),
                   },
                   {
@@ -369,7 +408,15 @@ export default function CustomerDetailPage() {
                     ),
                   },
                 ]}
-                data={customer.items ?? []}
+                data={(customer.items ?? []).filter((item) => {
+                  if (!itemSearch) return true;
+                  const q = itemSearch.toLowerCase();
+                  return (
+                    item.itemRef?.toLowerCase().includes(q) ||
+                    item.description?.toLowerCase().includes(q) ||
+                    (item.trackingNumber ?? "").toLowerCase().includes(q)
+                  );
+                })}
                 keyExtractor={(item) => item.id}
                 emptyMessage="No items yet"
                 onRowClick={(item) =>
