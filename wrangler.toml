@@ -6,3 +6,8 @@ pages_build_output_dir = ".pages-deploy"
 
 [vars]
 NODE_ENV = "production"
+
+# Cloudflare Pages GitHub CI build settings
+# Build command:  npm install && npm run ci:build
+# Build output:   .pages-deploy
+# Node version:   18 (or 20)
