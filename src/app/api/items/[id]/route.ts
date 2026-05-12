@@ -30,6 +30,7 @@ const UpdateItemSchema = z.object({
   dimensionUnit: z.enum(["cm", "inches"]).optional(),
   quantity: z.number().int().positive().max(10_000).optional(),
   status: z.string().max(100).optional(),
+  dateReceived: z.string().max(50).optional(),
 });
 
 // GET /api/items/[id]

@@ -74,6 +74,8 @@ export default function AdminItemDetailPage() {
     width: "",
     height: "",
     dimensionUnit: "cm" as "cm" | "inches",
+    quantity: "",
+    shippingType: "sea" as "air" | "sea",
     trackingNumber: "",
     dateReceived: "",
     notes: "",
@@ -134,11 +136,13 @@ export default function AdminItemDetailPage() {
     if (!item) return;
     setEditForm({
       description: item.description ?? "",
-      weight: String(item.weight),
+      weight: item.weight != null ? String(item.weight) : "",
       length: item.length != null ? String(item.length) : "",
       width: item.width != null ? String(item.width) : "",
       height: item.height != null ? String(item.height) : "",
       dimensionUnit: item.dimensionUnit ?? "cm",
+      quantity: item.quantity != null ? String(item.quantity) : "",
+      shippingType: item.shippingType ?? "sea",
       trackingNumber: item.trackingNumber ?? "",
       dateReceived: item.dateReceived?.split("T")[0] ?? "",
       notes: item.notes ?? "",
@@ -156,7 +160,10 @@ export default function AdminItemDetailPage() {
         width: editForm.width ? parseFloat(editForm.width) : undefined,
         height: editForm.height ? parseFloat(editForm.height) : undefined,
         dimensionUnit: editForm.dimensionUnit,
+        quantity: editForm.quantity ? parseInt(editForm.quantity) : undefined,
+        shippingType: editForm.shippingType,
         trackingNumber: editForm.trackingNumber || undefined,
+        dateReceived: editForm.dateReceived || undefined,
         notes: editForm.notes || undefined,
       });
       success("Item updated");
@@ -532,60 +539,92 @@ export default function AdminItemDetailPage() {
               onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
               rows={2}
             />
+
+            {/* Measurements */}
+            <div className="rounded-xl border border-gray-100 p-3 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Measurements</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  label="Freight Type"
+                  value={editForm.shippingType}
+                  onChange={(e) => setEditForm({ ...editForm, shippingType: e.target.value as "air" | "sea" })}
+                  options={[
+                    { value: "sea", label: "Sea (CBM)" },
+                    { value: "air", label: "Air (Weight)" },
+                  ]}
+                />
+                <Select
+                  label="Unit"
+                  value={editForm.dimensionUnit}
+                  onChange={(e) => setEditForm({ ...editForm, dimensionUnit: e.target.value as "cm" | "inches" })}
+                  options={[
+                    { value: "cm", label: "cm" },
+                    { value: "inches", label: "inches" },
+                  ]}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Weight (kg)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={editForm.weight}
+                  onChange={(e) => setEditForm({ ...editForm, weight: e.target.value })}
+                />
+                <Input
+                  label="Quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="1"
+                  value={editForm.quantity}
+                  onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  label={`L (${editForm.dimensionUnit})`}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="0"
+                  value={editForm.length}
+                  onChange={(e) => setEditForm({ ...editForm, length: e.target.value })}
+                />
+                <Input
+                  label={`W (${editForm.dimensionUnit})`}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="0"
+                  value={editForm.width}
+                  onChange={(e) => setEditForm({ ...editForm, width: e.target.value })}
+                />
+                <Input
+                  label={`H (${editForm.dimensionUnit})`}
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="0"
+                  value={editForm.height}
+                  onChange={(e) => setEditForm({ ...editForm, height: e.target.value })}
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Weight (kg)"
-                type="number"
-                step="0.01"
-                min="0"
-                value={editForm.weight}
-                onChange={(e) => setEditForm({ ...editForm, weight: e.target.value })}
-              />
               <Input
                 label="Date Received"
                 type="date"
                 value={editForm.dateReceived}
                 onChange={(e) => setEditForm({ ...editForm, dateReceived: e.target.value })}
               />
-            </div>
-            <Input
-              label="Tracking Number (optional)"
-              value={editForm.trackingNumber}
-              onChange={(e) => setEditForm({ ...editForm, trackingNumber: e.target.value })}
-            />
-            <Select
-              label="Dimension Unit"
-              value={editForm.dimensionUnit}
-              onChange={(e) => setEditForm({ ...editForm, dimensionUnit: e.target.value as "cm" | "inches" })}
-              options={[
-                { value: "cm", label: "Centimeters (cm)" },
-                { value: "inches", label: "Inches" },
-              ]}
-            />
-            <div className="grid grid-cols-3 gap-3">
               <Input
-                label={`Length (${editForm.dimensionUnit})`}
-                type="number"
-                step="0.1"
-                min="0"
-                value={editForm.length}
-                onChange={(e) => setEditForm({ ...editForm, length: e.target.value })}
-              />
-              <Input
-                label={`Width (${editForm.dimensionUnit})`}
-                type="number"
-                step="0.1"
-                min="0"
-                value={editForm.width}
-                onChange={(e) => setEditForm({ ...editForm, width: e.target.value })}
-              />
-              <Input
-                label={`Height (${editForm.dimensionUnit})`}
-                type="number"
-                step="0.1"
-                min="0"
-                value={editForm.height}
-                onChange={(e) => setEditForm({ ...editForm, height: e.target.value })}
+                label="Tracking Number (optional)"
+                value={editForm.trackingNumber}
+                onChange={(e) => setEditForm({ ...editForm, trackingNumber: e.target.value })}
               />
             </div>
             <Textarea

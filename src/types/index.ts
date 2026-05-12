@@ -168,6 +168,7 @@ export interface UpdateItemInput {
   shippingType?: "air" | "sea";
   specialRateName?: string;
   status?: string;
+  dateReceived?: string;
 }
 
 // ============================================================

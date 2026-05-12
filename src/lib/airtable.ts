@@ -659,6 +659,7 @@ export const itemsApi = {
     if (input.shippingType !== undefined) fields["FreightType"] = input.shippingType;
     if (input.dimensionUnit !== undefined) fields["DimensionUnit"] = input.dimensionUnit;
     if (input.specialRateName !== undefined) fields["specialRateName"] = input.specialRateName;
+    if (input.dateReceived !== undefined) fields["DateReceived"] = input.dateReceived;
     if (input.photoUrls !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
