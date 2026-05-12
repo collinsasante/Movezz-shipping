@@ -277,7 +277,11 @@ export default function NewItemPage() {
 
       const res = await axios.post("/api/items", payload);
       success("Item received!", res.data.message);
-      router.push(`/admin/items/${res.data.data.id}`);
+      const returnTo = searchParams?.get("returnTo");
+      const dest = returnTo
+        ? `/admin/items/${res.data.data.id}?returnTo=${encodeURIComponent(returnTo)}`
+        : `/admin/items/${res.data.data.id}`;
+      router.push(dest);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
         ? err.response?.data?.error ?? "Failed to create item"

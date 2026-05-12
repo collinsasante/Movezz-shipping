@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label:
 export default function AdminItemDetailPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const { success, error } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,7 +121,8 @@ export default function AdminItemDetailPage() {
     try {
       await axios.delete(`/api/items/${id}`);
       success("Item deleted");
-      router.push("/admin/items");
+      const returnTo = searchParams.get("returnTo");
+      router.push(returnTo ?? "/admin/items");
     } catch {
       error("Failed to delete item");
       setDeleting(false);
@@ -224,7 +226,10 @@ export default function AdminItemDetailPage() {
         {/* Top bar: back + actions */}
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <button
-            onClick={() => router.push("/admin/items")}
+            onClick={() => {
+              const returnTo = searchParams.get("returnTo");
+              router.push(returnTo ?? "/admin/items");
+            }}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />

@@ -53,7 +53,8 @@ export default function NewContainerPage() {
     <div className="flex flex-col h-full">
       <Header title="New Container" subtitle="Create a new shipping container" />
 
-      <div className="flex-1 p-6 max-w-xl">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="max-w-xl mx-auto">
         <button
           onClick={() => router.push('/admin/containers')}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 mb-6 transition-colors"
@@ -117,7 +118,7 @@ export default function NewContainerPage() {
             </ol>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 pb-8">
             <Button type="button" variant="outline" onClick={() => router.push('/admin/containers')}>
               Cancel
             </Button>
@@ -126,6 +127,7 @@ export default function NewContainerPage() {
             </Button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

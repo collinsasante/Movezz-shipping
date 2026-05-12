@@ -346,7 +346,7 @@ export default function CustomerDetailPage() {
                   <Button
                     size="sm"
                     onClick={() =>
-                      router.push(`/admin/items/new?customerId=${id}`)
+                      router.push(`/admin/items/new?customerId=${id}&returnTo=/admin/customers/${id}`)
                     }
                   >
                     <Package className="h-3.5 w-3.5 mr-1.5" />
@@ -420,7 +420,7 @@ export default function CustomerDetailPage() {
                 keyExtractor={(item) => item.id}
                 emptyMessage="No items yet"
                 onRowClick={(item) =>
-                  router.push(`/admin/items/${item.id}`)
+                  router.push(`/admin/items/${item.id}?returnTo=/admin/customers/${id}`)
                 }
               />
             </div>
