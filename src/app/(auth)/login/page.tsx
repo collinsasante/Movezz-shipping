@@ -49,6 +49,7 @@ function LoginForm() {
       const fbUser  = await signIn(email, password);
       const idToken = await fbUser.getIdToken();
       const res     = await axios.post("/api/auth/verify", { idToken });
+      try { localStorage.setItem("pakk_user_cache", JSON.stringify(res.data.data.user)); } catch {}
       goToDashboard(res.data.data.user.role);
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
@@ -72,6 +73,7 @@ function LoginForm() {
           throw err;
         });
       if (res) {
+        try { localStorage.setItem("pakk_user_cache", JSON.stringify(res.data.data.user)); } catch {}
         goToDashboard(res.data.data.user.role);
       } else {
         toastError("Account not found", "Your account hasn't been set up yet. Contact your administrator.");

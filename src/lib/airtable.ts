@@ -912,7 +912,7 @@ export const containersApi = {
     if (params.search) {
       const s = escapeFormula(params.search.toLowerCase());
       formulas.push(
-        `OR(SEARCH('${s}', LOWER({ContainerID})), SEARCH('${s}', LOWER({Name})))`
+        `OR(SEARCH('${s}', LOWER({ContainerID})), SEARCH('${s}', LOWER({Name})), SEARCH('${s}', LOWER({TrackingNumber})))`
       );
     }
 
