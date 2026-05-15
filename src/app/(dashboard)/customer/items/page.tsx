@@ -322,7 +322,7 @@ export default function CustomerItemsPage() {
                 )}
                 <DetailRow label="Date Received" value={formatDate(selectedItem.dateReceived)} />
                 {selectedItem.trackingNumber && <DetailRow label="Tracking Number" value={selectedItem.trackingNumber} />}
-                {selectedItem.containerEta && <DetailRow label="ETA" value={selectedItem.containerEta} />}
+                {selectedItem.containerEta && <DetailRow label="ETA" value={formatDate(selectedItem.containerEta)} />}
                 {selectedItem.orderRef && <DetailRow label="Invoice" value={selectedItem.orderRef} />}
                 {selectedItem.notes && <DetailRow label="Notes" value={selectedItem.notes} />}
               </div>
