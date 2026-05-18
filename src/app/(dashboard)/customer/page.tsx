@@ -337,6 +337,7 @@ export default function CustomerDashboardPage() {
                       currentStatus={selectedItem.status}
                       history={selectedHistory}
                       dateReceived={selectedItem.dateReceived}
+                      containerEta={selectedItem.containerEta}
                     />
                   )}
                 </>

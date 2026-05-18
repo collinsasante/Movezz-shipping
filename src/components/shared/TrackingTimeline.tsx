@@ -1,5 +1,5 @@
 import React from "react";
-import { ITEM_STATUS_STEPS, formatDateTime, cn } from "@/lib/utils";
+import { ITEM_STATUS_STEPS, formatDateTime, formatDate, cn } from "@/lib/utils";
 import type { ItemStatus, StatusHistory } from "@/types";
 import { CheckCircle2, Circle, Clock } from "lucide-react";
 
@@ -8,6 +8,7 @@ interface TrackingTimelineProps {
   history?: StatusHistory[];
   compact?: boolean;
   dateReceived?: string;
+  containerEta?: string;
 }
 
 const STATUS_DESCRIPTIONS: Record<ItemStatus, string> = {
@@ -24,6 +25,7 @@ export function TrackingTimeline({
   history = [],
   compact = false,
   dateReceived,
+  containerEta,
 }: TrackingTimelineProps) {
   const currentIndex = ITEM_STATUS_STEPS.indexOf(currentStatus);
 
@@ -90,6 +92,11 @@ export function TrackingTimeline({
               {historyEntry && (
                 <p className="text-xs text-brand-500 font-medium mt-1">
                   {formatDateTime(historyEntry.changedAt)}
+                </p>
+              )}
+              {step === "Shipped to Ghana" && containerEta && (
+                <p className="text-xs text-amber-600 font-semibold mt-1">
+                  ETA: {formatDate(containerEta)}
                 </p>
               )}
             </div>

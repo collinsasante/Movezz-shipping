@@ -218,7 +218,7 @@ export default function CustomerTrackingPage() {
                     ))}
                   </div>
                 ) : (
-                  <TrackingTimeline currentStatus={selectedItem.status} history={selectedHistory} dateReceived={selectedItem.dateReceived} />
+                  <TrackingTimeline currentStatus={selectedItem.status} history={selectedHistory} dateReceived={selectedItem.dateReceived} containerEta={selectedItem.containerEta} />
                 )}
               </div>
             </div>

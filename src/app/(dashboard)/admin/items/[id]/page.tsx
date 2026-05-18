@@ -485,6 +485,7 @@ export default function AdminItemDetailPage() {
                 currentStatus={item.status}
                 history={history}
                 dateReceived={item.dateReceived}
+                containerEta={item.containerEta}
               />
             </div>
           </div>

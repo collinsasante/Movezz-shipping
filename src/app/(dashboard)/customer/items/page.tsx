@@ -341,6 +341,7 @@ export default function CustomerItemsPage() {
                     currentStatus={selectedItem.status}
                     history={selectedHistory}
                     dateReceived={selectedItem.dateReceived}
+                    containerEta={selectedItem.containerEta}
                   />
                 )}
               </div>
