@@ -2,7 +2,7 @@
 // PATCH  /api/items/[id]  — update item fields
 // DELETE /api/items/[id]  — delete item
 import { NextRequest } from "next/server";
-import { itemsApi } from "@/lib/airtable";
+import { itemsApi, containersApi } from "@/lib/airtable";
 import {
   requireAuth,
   serverErrorResponse,
@@ -56,6 +56,14 @@ export async function GET(
         { success: false, error: "Access denied" },
         { status: 403 }
       );
+    }
+
+    // Attach container ETA
+    if (item.containerId) {
+      try {
+        const container = await containersApi.getById(item.containerId);
+        item.containerEta = container.eta;
+      } catch { /* ignore — item still returns without ETA */ }
     }
 
     return Response.json({
