@@ -17,6 +17,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const { open, closeSidebar } = useSidebar();
   const [copied, setCopied] = useState(false);
   const [warehouseAddress, setWarehouseAddress] = useState<string | null>(null);
+  const [warehousePhone, setWarehousePhone] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -29,12 +30,15 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
     axios
       .get("/api/warehouses")
       .then((res) => {
-        const warehouses: { id: string; address: string }[] =
+        const warehouses: { id: string; address: string; phone?: string }[] =
           res.data.data ?? [];
         const match = savedId
           ? (warehouses.find((w) => w.id === savedId) ?? warehouses[0])
           : warehouses[0];
-        if (match) setWarehouseAddress(match.address);
+        if (match) {
+          setWarehouseAddress(match.address);
+          setWarehousePhone(match.phone ?? null);
+        }
       })
       .catch(() => {});
   }, [appUser?.role, appUser?.preferredWarehouseId]);
@@ -125,6 +129,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
               <code className="text-xs font-mono font-bold text-brand-800 break-all leading-relaxed">
                 {fullAddress}
               </code>
+              {warehousePhone && (
+                <p className="text-[10px] font-mono text-brand-700 mt-0.5">{warehousePhone}</p>
+              )}
             </div>
             <button
               onClick={copyMark}

@@ -123,6 +123,9 @@ export default function NewItemPage() {
   const [pkgAmountCalc, setPkgAmountCalc] = useState<number | null>(null);
   const [specialSearch, setSpecialSearch] = useState("");
 
+  const [cbmInputMode, setCbmInputMode] = useState<"dimensions" | "direct">("dimensions");
+  const [directCbm, setDirectCbm] = useState("");
+
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
@@ -192,6 +195,26 @@ export default function NewItemPage() {
       }
     } catch {}
   }, [selectedSpecialRateId, specialRates, form.shippingType, form.length, form.width, form.height, form.dimensionUnit, form.weight, form.quantity]);
+
+  // Reset to dimensions mode when switching to air freight
+  useEffect(() => {
+    if (form.shippingType === "air") {
+      setCbmInputMode("dimensions");
+      setDirectCbm("");
+    }
+  }, [form.shippingType]);
+
+  // Sync directCbm → form dimensions so pricing effects work automatically
+  useEffect(() => {
+    if (cbmInputMode !== "direct") return;
+    const val = parseFloat(directCbm) || 0;
+    if (val <= 0) {
+      setForm((prev) => ({ ...prev, length: "", width: "", height: "", dimensionUnit: "cm" }));
+      return;
+    }
+    const side = Math.cbrt(val * 1_000_000).toFixed(6);
+    setForm((prev) => ({ ...prev, length: side, width: side, height: side, dimensionUnit: "cm" }));
+  }, [cbmInputMode, directCbm]);
 
   const filteredCustomers = customers.filter((c) => {
     const q = customerSearch.toLowerCase();
@@ -497,43 +520,82 @@ export default function NewItemPage() {
                 <CardTitle>Dimensions (optional)</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Select
-                  label="Unit"
-                  options={[
-                    { value: "cm", label: "Centimeters (cm)" },
-                    { value: "inches", label: "Inches" },
-                  ]}
-                  value={form.dimensionUnit}
-                  onChange={(e) =>
-                    setForm({ ...form, dimensionUnit: e.target.value as "cm" | "inches" })
-                  }
-                />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {form.shippingType === "sea" && (
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((prev) => ({ ...prev, length: "", width: "", height: "" }));
+                        setDirectCbm("");
+                        setCbmInputMode("dimensions");
+                      }}
+                      className={`flex-1 py-2 text-center transition-colors ${cbmInputMode === "dimensions" ? "bg-brand-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                    >
+                      Enter Dimensions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((prev) => ({ ...prev, length: "", width: "", height: "" }));
+                        setCbmInputMode("direct");
+                      }}
+                      className={`flex-1 py-2 text-center transition-colors ${cbmInputMode === "direct" ? "bg-brand-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                    >
+                      Enter CBM Directly
+                    </button>
+                  </div>
+                )}
+                {cbmInputMode === "direct" ? (
                   <Input
-                    label={`Length (${form.dimensionUnit})`}
+                    label="CBM (m³)"
                     type="number"
-                    step="0.1"
+                    step="0.0001"
                     min="0"
-                    value={form.length}
-                    onChange={(e) => setForm({ ...form, length: e.target.value })}
+                    placeholder="0.0000"
+                    value={directCbm}
+                    onChange={(e) => setDirectCbm(e.target.value)}
                   />
-                  <Input
-                    label={`Width (${form.dimensionUnit})`}
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={form.width}
-                    onChange={(e) => setForm({ ...form, width: e.target.value })}
-                  />
-                  <Input
-                    label={`Height (${form.dimensionUnit})`}
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={form.height}
-                    onChange={(e) => setForm({ ...form, height: e.target.value })}
-                  />
-                </div>
+                ) : (
+                  <>
+                    <Select
+                      label="Unit"
+                      options={[
+                        { value: "cm", label: "Centimeters (cm)" },
+                        { value: "inches", label: "Inches" },
+                      ]}
+                      value={form.dimensionUnit}
+                      onChange={(e) =>
+                        setForm({ ...form, dimensionUnit: e.target.value as "cm" | "inches" })
+                      }
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <Input
+                        label={`Length (${form.dimensionUnit})`}
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.length}
+                        onChange={(e) => setForm({ ...form, length: e.target.value })}
+                      />
+                      <Input
+                        label={`Width (${form.dimensionUnit})`}
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.width}
+                        onChange={(e) => setForm({ ...form, width: e.target.value })}
+                      />
+                      <Input
+                        label={`Height (${form.dimensionUnit})`}
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.height}
+                        onChange={(e) => setForm({ ...form, height: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
                 <Input
                   label="Quantity"
                   type="number"
