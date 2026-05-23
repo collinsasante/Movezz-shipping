@@ -613,6 +613,23 @@ export default function AdminItemDetailPage() {
                   onChange={(e) => setEditForm({ ...editForm, height: e.target.value })}
                 />
               </div>
+
+              {/* Live CBM readout */}
+              {(() => {
+                const l = parseFloat(editForm.length) || 0;
+                const w = parseFloat(editForm.width) || 0;
+                const h = parseFloat(editForm.height) || 0;
+                const q = Math.max(1, parseInt(editForm.quantity) || 1);
+                const factor = editForm.dimensionUnit === "inches" ? 16.387064 : 1;
+                if (!l || !w || !h) return null;
+                const cbm = (l * w * h * factor / 1_000_000) * q;
+                return (
+                  <div className="flex items-center justify-between bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-sm">
+                    <span className="text-brand-700 font-medium">CBM</span>
+                    <span className="font-bold text-brand-900">{cbm.toFixed(4)} m³</span>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
