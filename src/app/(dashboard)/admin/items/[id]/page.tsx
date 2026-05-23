@@ -81,6 +81,8 @@ export default function AdminItemDetailPage() {
     notes: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [cbmInputMode, setCbmInputMode] = useState<"dimensions" | "direct">("dimensions");
+  const [directCbm, setDirectCbm] = useState("");
   const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
 
   useEffect(() => {
@@ -132,8 +134,22 @@ export default function AdminItemDetailPage() {
     }
   };
 
+  // Sync direct CBM entry → editForm dimensions (cube root trick)
+  useEffect(() => {
+    if (cbmInputMode !== "direct") return;
+    const val = parseFloat(directCbm) || 0;
+    if (val <= 0) {
+      setEditForm((prev) => ({ ...prev, length: "", width: "", height: "", dimensionUnit: "cm" }));
+      return;
+    }
+    const side = Math.cbrt(val * 1_000_000).toFixed(6);
+    setEditForm((prev) => ({ ...prev, length: side, width: side, height: side, dimensionUnit: "cm" }));
+  }, [cbmInputMode, directCbm]);
+
   const openEdit = () => {
     if (!item) return;
+    setCbmInputMode("dimensions");
+    setDirectCbm("");
     setEditForm({
       description: item.description ?? "",
       weight: item.weight != null ? String(item.weight) : "",
@@ -584,52 +600,82 @@ export default function AdminItemDetailPage() {
                   onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <Input
-                  label={`L (${editForm.dimensionUnit})`}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="0"
-                  value={editForm.length}
-                  onChange={(e) => setEditForm({ ...editForm, length: e.target.value })}
-                />
-                <Input
-                  label={`W (${editForm.dimensionUnit})`}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="0"
-                  value={editForm.width}
-                  onChange={(e) => setEditForm({ ...editForm, width: e.target.value })}
-                />
-                <Input
-                  label={`H (${editForm.dimensionUnit})`}
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  placeholder="0"
-                  value={editForm.height}
-                  onChange={(e) => setEditForm({ ...editForm, height: e.target.value })}
-                />
+              {/* Mode toggle */}
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setCbmInputMode("dimensions"); setDirectCbm(""); }}
+                  className={`flex-1 py-2 text-center transition-colors ${cbmInputMode === "dimensions" ? "bg-brand-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                >
+                  Enter Dimensions
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditForm((p) => ({ ...p, length: "", width: "", height: "" })); setCbmInputMode("direct"); }}
+                  className={`flex-1 py-2 text-center transition-colors ${cbmInputMode === "direct" ? "bg-brand-600 text-white font-medium" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                >
+                  Enter CBM Directly
+                </button>
               </div>
 
-              {/* Live CBM readout */}
-              {(() => {
-                const l = parseFloat(editForm.length) || 0;
-                const w = parseFloat(editForm.width) || 0;
-                const h = parseFloat(editForm.height) || 0;
-                const q = Math.max(1, parseInt(editForm.quantity) || 1);
-                const factor = editForm.dimensionUnit === "inches" ? 16.387064 : 1;
-                if (!l || !w || !h) return null;
-                const cbm = (l * w * h * factor / 1_000_000) * q;
-                return (
-                  <div className="flex items-center justify-between bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-sm">
-                    <span className="text-brand-700 font-medium">CBM</span>
-                    <span className="font-bold text-brand-900">{cbm.toFixed(4)} m³</span>
+              {cbmInputMode === "direct" ? (
+                <Input
+                  label="CBM (m³)"
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  placeholder="0.0000"
+                  value={directCbm}
+                  onChange={(e) => setDirectCbm(e.target.value)}
+                />
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Input
+                      label={`L (${editForm.dimensionUnit})`}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="0"
+                      value={editForm.length}
+                      onChange={(e) => setEditForm({ ...editForm, length: e.target.value })}
+                    />
+                    <Input
+                      label={`W (${editForm.dimensionUnit})`}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="0"
+                      value={editForm.width}
+                      onChange={(e) => setEditForm({ ...editForm, width: e.target.value })}
+                    />
+                    <Input
+                      label={`H (${editForm.dimensionUnit})`}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="0"
+                      value={editForm.height}
+                      onChange={(e) => setEditForm({ ...editForm, height: e.target.value })}
+                    />
                   </div>
-                );
-              })()}
+                  {(() => {
+                    const l = parseFloat(editForm.length) || 0;
+                    const w = parseFloat(editForm.width) || 0;
+                    const h = parseFloat(editForm.height) || 0;
+                    const q = Math.max(1, parseInt(editForm.quantity) || 1);
+                    const factor = editForm.dimensionUnit === "inches" ? 16.387064 : 1;
+                    if (!l || !w || !h) return null;
+                    const cbm = (l * w * h * factor / 1_000_000) * q;
+                    return (
+                      <div className="flex items-center justify-between bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 text-sm">
+                        <span className="text-brand-700 font-medium">CBM</span>
+                        <span className="font-bold text-brand-900">{cbm.toFixed(4)} m³</span>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
