@@ -11,6 +11,7 @@ import {
   Package,
   ExternalLink,
   DollarSign,
+  Edit2,
 } from "lucide-react";
 import {
   Dialog,
@@ -21,6 +22,9 @@ import {
 } from "@/components/ui/dialog";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 interface OrderDetail extends Order {
   items?: Item[];
@@ -81,6 +85,41 @@ export default function AdminOrderDetailPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
+
+  // Edit invoice modal
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ invoiceAmount: "", invoiceDate: "", status: "Pending", notes: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const openEdit = () => {
+    if (!order) return;
+    setEditForm({
+      invoiceAmount: String(order.invoiceAmount ?? ""),
+      invoiceDate: order.invoiceDate ? order.invoiceDate.split("T")[0] : "",
+      status: order.status ?? "Pending",
+      notes: order.notes ?? "",
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    setSavingEdit(true);
+    try {
+      await axios.patch(`/api/orders/${id}`, {
+        invoiceAmount: editForm.invoiceAmount ? parseFloat(editForm.invoiceAmount) : undefined,
+        invoiceDate: editForm.invoiceDate || undefined,
+        status: editForm.status as "Pending" | "Partial" | "Paid",
+        notes: editForm.notes || undefined,
+      });
+      success("Invoice updated");
+      setEditModalOpen(false);
+      load();
+    } catch {
+      error("Failed to update invoice");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -258,6 +297,10 @@ export default function AdminOrderDetailPage() {
         <StatusBadge status={order.status} />
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
+          <Button size="sm" variant="outline" onClick={openEdit}>
+            <Edit2 className="h-3.5 w-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Edit</span>
+          </Button>
           {order.status !== "Paid" && (
             <Button size="sm" variant="outline" onClick={handleCreateInvoice} loading={creatingInvoice}>
               <ExternalLink className="h-3.5 w-3.5 sm:mr-1" />
@@ -478,6 +521,53 @@ export default function AdminOrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Invoice Modal */}
+      <Dialog open={editModalOpen} onOpenChange={(o) => !o && setEditModalOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Invoice — {order.orderRef}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Input
+              label="Invoice Amount (USD)"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              value={editForm.invoiceAmount}
+              onChange={(e) => setEditForm({ ...editForm, invoiceAmount: e.target.value })}
+            />
+            <Input
+              label="Invoice Date"
+              type="date"
+              value={editForm.invoiceDate}
+              onChange={(e) => setEditForm({ ...editForm, invoiceDate: e.target.value })}
+            />
+            <Select
+              label="Status"
+              value={editForm.status}
+              onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+              options={[
+                { value: "Pending", label: "Pending" },
+                { value: "Partial", label: "Partial" },
+                { value: "Paid", label: "Paid" },
+              ]}
+            />
+            <Textarea
+              label="Notes (optional)"
+              placeholder="Internal notes..."
+              value={editForm.notes}
+              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              rows={3}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={savingEdit}>Cancel</Button>
+            <Button onClick={handleSaveEdit} loading={savingEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Record Payment Modal */}
       <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
