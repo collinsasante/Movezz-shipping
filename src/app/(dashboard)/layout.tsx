@@ -50,8 +50,10 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
   const copyMark = () => {
     if (!shippingMark) return;
+    const lines = [fullAddress];
+    if (warehousePhone) lines.push(`Tel: ${warehousePhone}`);
     navigator.clipboard
-      .writeText(fullAddress)
+      .writeText(lines.join("\n"))
       .then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
