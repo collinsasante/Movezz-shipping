@@ -21,8 +21,11 @@ export async function POST(
       settingsApi.get(),
     ]);
     const usdToGhs = appSettings?.usdToGhs && appSettings.usdToGhs > 0 ? appSettings.usdToGhs : 1;
-    // Invoice amount in GHS (what Keepup should bill the customer)
+    const discountUsd = order.discount && order.discount > 0 ? order.discount : 0;
+    // Invoice amount in GHS — use pre-discount base so we can add a visible discount line item
     const invoiceAmountGhs = Math.round(order.invoiceAmount * usdToGhs * 100) / 100;
+    const discountGhs = Math.round(discountUsd * usdToGhs * 100) / 100;
+    const netAmountGhs = Math.max(0, Math.round((invoiceAmountGhs - discountGhs) * 100) / 100);
 
     // If invoice already exists, cancel it first then recreate (update flow)
     if (order.keepupSaleId) {
@@ -53,11 +56,14 @@ export async function POST(
 
     let lineItems: { item_name: string; quantity: number; price: number; item_type: string }[];
 
+    // Freight line items split against the net amount (after discount)
+    const freightTotal = netAmountGhs;
+
     if (validItems.length === 0) {
       lineItems = [{
         item_name: `Freight - ${order.orderRef}`,
         quantity: 1,
-        price: invoiceAmountGhs,
+        price: freightTotal,
         item_type: "product",
       }];
     } else {
@@ -66,17 +72,16 @@ export async function POST(
 
       let prices: number[];
       if (hasClientPrices) {
-        // Use client prices but adjust last item so sum matches invoice total (avoids rounding drift)
+        // Use client prices but adjust last item so sum matches net total (avoids rounding drift)
         const rawPrices = validItems.map((item) => itemPriceMap![item!.id]);
         const rawSum = rawPrices.reduce((s, p) => s + p, 0);
-        // Scale prices proportionally to match GHS invoice amount
         prices = rawPrices.map((p, i) =>
           i < rawPrices.length - 1
-            ? Math.round(invoiceAmountGhs * (p / rawSum) * 100) / 100
+            ? Math.round(freightTotal * (p / rawSum) * 100) / 100
             : 0
         );
         let running = prices.reduce((s, p) => s + p, 0);
-        prices[prices.length - 1] = Math.round((invoiceAmountGhs - running) * 100) / 100;
+        prices[prices.length - 1] = Math.round((freightTotal - running) * 100) / 100;
       } else {
         // Fallback: split proportionally by CBM (or equally if no CBM)
         const cbms = validItems.map((item) => getItemCbm(item!));
@@ -87,11 +92,11 @@ export async function POST(
         for (let i = 0; i < validItems.length; i++) {
           if (i < validItems.length - 1) {
             const proportion = useCbm ? cbms[i] / totalCbm : 1 / validItems.length;
-            const p = Math.round(invoiceAmountGhs * proportion * 100) / 100;
+            const p = Math.round(freightTotal * proportion * 100) / 100;
             prices.push(p);
             runningSum += p;
           } else {
-            prices.push(Math.round((invoiceAmountGhs - runningSum) * 100) / 100);
+            prices.push(Math.round((freightTotal - runningSum) * 100) / 100);
           }
         }
       }
@@ -107,6 +112,16 @@ export async function POST(
           price: prices[i],
           item_type: "product",
         };
+      });
+    }
+
+    // Add discount as a visible negative line item in Keepup when applicable
+    if (discountGhs > 0) {
+      lineItems.push({
+        item_name: "Discount",
+        quantity: 1,
+        price: -discountGhs,
+        item_type: "product",
       });
     }
 

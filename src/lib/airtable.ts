@@ -268,6 +268,7 @@ function mapOrder(record: AirtableRecord<FieldSet>): Order {
     customerName: (f["CustomerName"] as string) ?? undefined,
     itemIds: (f["Items"] as string[]) ?? [],
     invoiceAmount: (f["InvoiceAmount"] as number) ?? 0,
+    discount: (f["Discount"] as number) ?? undefined,
     status: ((f["Status"] as string) ?? "Pending") as OrderStatus,
     invoiceDate: (f["InvoiceDate"] as string) ?? toISOString(),
     notes: (f["Notes"] as string) ?? undefined,
@@ -877,6 +878,7 @@ export const ordersApi = {
     const fields: FieldSet = {};
     if (input.invoiceAmount !== undefined)
       fields["InvoiceAmount"] = input.invoiceAmount;
+    if (input.discount !== undefined) fields["Discount"] = input.discount;
     if (input.invoiceDate !== undefined) fields["InvoiceDate"] = input.invoiceDate;
     if (input.status !== undefined) fields["Status"] = input.status;
     if (input.notes !== undefined) fields["Notes"] = input.notes;

@@ -184,6 +184,7 @@ export interface Order {
   itemIds: string[];
   items?: Item[];
   invoiceAmount: number;
+  discount?: number;
   status: OrderStatus;
   invoiceDate: string;
   notes?: string;
@@ -206,6 +207,7 @@ export interface CreateOrderInput {
 
 export interface UpdateOrderInput {
   invoiceAmount?: number;
+  discount?: number;
   invoiceDate?: string;
   status?: OrderStatus;
   notes?: string;

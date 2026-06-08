@@ -15,6 +15,7 @@ import { z } from "zod";
 
 const UpdateOrderSchema = z.object({
   invoiceAmount: z.number().positive().optional(),
+  discount: z.number().min(0).optional(),
   invoiceDate: z.string().optional(),
   status: z.enum(["Pending", "Partial", "Paid"]).optional(),
   notes: z.string().optional(),

@@ -89,6 +89,8 @@ export default function AdminOrderDetailPage() {
   // Edit invoice modal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({ invoiceAmount: "", invoiceDate: "", status: "Pending", notes: "" });
+  const [discountMode, setDiscountMode] = useState<"pct" | "fixed">("pct");
+  const [discountInput, setDiscountInput] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const openEdit = () => {
@@ -99,14 +101,29 @@ export default function AdminOrderDetailPage() {
       status: order.status ?? "Pending",
       notes: order.notes ?? "",
     });
+    // Pre-fill discount from existing order
+    if (order.discount && order.discount > 0) {
+      setDiscountMode("fixed");
+      setDiscountInput(String(order.discount));
+    } else {
+      setDiscountMode("pct");
+      setDiscountInput("");
+    }
     setEditModalOpen(true);
   };
 
   const handleSaveEdit = async () => {
     setSavingEdit(true);
     try {
+      const baseAmount = parseFloat(editForm.invoiceAmount) || 0;
+      const discountAmt = (() => {
+        const v = parseFloat(discountInput) || 0;
+        if (!v || !baseAmount) return 0;
+        return discountMode === "pct" ? Math.round(baseAmount * (v / 100) * 100) / 100 : v;
+      })();
       await axios.patch(`/api/orders/${id}`, {
-        invoiceAmount: editForm.invoiceAmount ? parseFloat(editForm.invoiceAmount) : undefined,
+        invoiceAmount: baseAmount || undefined,
+        discount: discountAmt > 0 ? discountAmt : 0,
         invoiceDate: editForm.invoiceDate || undefined,
         status: editForm.status as "Pending" | "Partial" | "Paid",
         notes: editForm.notes || undefined,
@@ -419,9 +436,21 @@ export default function AdminOrderDetailPage() {
                   <StatusBadge status={order.status} />
                 </div>
                 <div className="flex justify-between items-center border-t border-gray-50 pt-3">
-                  <span className="text-xs text-gray-400">Invoice Total</span>
+                  <span className="text-xs text-gray-400">{order.discount && order.discount > 0 ? "Base Amount" : "Invoice Total"}</span>
                   <span className="text-base font-bold text-gray-900">{formatCurrency(order.invoiceAmount * usdToGhs, "GHS")}</span>
                 </div>
+                {order.discount && order.discount > 0 && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-red-400">Discount</span>
+                      <span className="text-sm font-semibold text-red-500">− {formatCurrency(order.discount * usdToGhs, "GHS")}</span>
+                    </div>
+                    <div className="flex justify-between items-center border-t border-gray-50 pt-2">
+                      <span className="text-xs font-semibold text-gray-600">After Discount</span>
+                      <span className="text-base font-bold text-brand-700">{formatCurrency((order.invoiceAmount - order.discount) * usdToGhs, "GHS")}</span>
+                    </div>
+                  </>
+                )}
                 {order.createdBy && (
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-400">Created by</span>
@@ -538,6 +567,64 @@ export default function AdminOrderDetailPage() {
               value={editForm.invoiceAmount}
               onChange={(e) => setEditForm({ ...editForm, invoiceAmount: e.target.value })}
             />
+
+            {/* Discount section */}
+            <div className="rounded-xl border border-gray-100 p-3 space-y-2.5">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Discount</p>
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setDiscountMode("pct")}
+                  className={`flex-1 py-1.5 text-center font-medium transition-colors ${discountMode === "pct" ? "bg-brand-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                >
+                  Percentage (%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDiscountMode("fixed")}
+                  className={`flex-1 py-1.5 text-center font-medium transition-colors ${discountMode === "fixed" ? "bg-brand-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                >
+                  Fixed (USD)
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step={discountMode === "pct" ? "0.1" : "0.01"}
+                  min="0"
+                  max={discountMode === "pct" ? "100" : undefined}
+                  placeholder={discountMode === "pct" ? "0" : "0.00"}
+                  value={discountInput}
+                  onChange={(e) => setDiscountInput(e.target.value)}
+                  className="flex-1 h-9 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+                <span className="text-sm text-gray-400 font-medium w-8 shrink-0">{discountMode === "pct" ? "%" : "USD"}</span>
+              </div>
+              {(() => {
+                const base = parseFloat(editForm.invoiceAmount) || 0;
+                const v = parseFloat(discountInput) || 0;
+                if (!base || !v) return null;
+                const discAmt = discountMode === "pct" ? base * (v / 100) : v;
+                const final = Math.max(0, base - discAmt);
+                return (
+                  <div className="bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Base amount</span>
+                      <span className="font-medium text-gray-700">$ {base.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-red-500">Discount {discountMode === "pct" ? `(${v}%)` : ""}</span>
+                      <span className="font-medium text-red-600">− $ {discAmt.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs border-t border-brand-100 pt-1 mt-0.5">
+                      <span className="font-semibold text-brand-800">Final amount</span>
+                      <span className="font-bold text-brand-900">$ {final.toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             <Input
               label="Invoice Date"
               type="date"
