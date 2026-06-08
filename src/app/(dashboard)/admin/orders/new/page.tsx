@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Package, ShoppingCart, Loader2, Search } from "lucide-react";
@@ -19,6 +19,7 @@ function calcTotal(items: Item[]): number {
 
 export default function NewOrderPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { success, error } = useToast();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -63,9 +64,34 @@ export default function NewOrderPage() {
       try {
         const res = await axios.get("/api/customers");
         setCustomers(res.data.data);
-        // Restore draft after customers are loaded
         if (!draftRestoredRef.current) {
           draftRestoredRef.current = true;
+          // Query-param pre-fill (from item detail "Create Invoice" button) takes priority over draft
+          const qCustomerId = searchParams?.get("customerId");
+          const qPreItem = searchParams?.get("preItem");
+          if (qCustomerId) {
+            const matched = (res.data.data as Customer[]).find((c) => c.id === qCustomerId);
+            if (matched) {
+              setSelectedCustomerId(matched.id);
+              setCustomerSearch(matched.shippingMark);
+              setLoadingItems(true);
+              try {
+                const itemsRes = await axios.get("/api/items", { params: { customerId: qCustomerId, limit: 500 } });
+                const all: Item[] = itemsRes.data.data;
+                setCustomerItems(all);
+                // Pre-select the specific item if provided and not already invoiced
+                if (qPreItem) {
+                  const preItemObj = all.find((i) => i.id === qPreItem && !i.orderId);
+                  if (preItemObj) {
+                    setSelectedItemIds([qPreItem]);
+                    setInvoiceAmount(String(calcTotal([preItemObj])));
+                  }
+                }
+              } catch { /* ignore */ } finally { setLoadingItems(false); }
+            }
+            return; // Skip draft restore when using query params
+          }
+          // Restore draft
           try {
             const saved = localStorage.getItem(DRAFT_LS_KEY);
             if (saved) {
@@ -74,18 +100,17 @@ export default function NewOrderPage() {
               if (draft.notes) setNotes(draft.notes);
               if (draft.selectedCustomerId) {
                 setSelectedCustomerId(draft.selectedCustomerId);
-                // Set search display label from loaded customers list
                 const matched = (res.data.data as Customer[]).find((c) => c.id === draft.selectedCustomerId);
                 if (matched) setCustomerSearch(matched.shippingMark);
                 setLoadingItems(true);
                 try {
                   const itemsRes = await axios.get("/api/items", { params: { customerId: draft.selectedCustomerId, limit: 500 } });
-                  const unordered: Item[] = itemsRes.data.data.filter((item: Item) => !item.orderId);
-                  setCustomerItems(unordered);
+                  const allDraft: Item[] = itemsRes.data.data;
+                  setCustomerItems(allDraft);
                   const savedIds: string[] = draft.selectedItemIds ?? [];
-                  const restoredIds = savedIds.filter((id) => unordered.some((item: Item) => item.id === id));
+                  const restoredIds = savedIds.filter((id) => allDraft.some((item: Item) => item.id === id && !item.orderId));
                   setSelectedItemIds(restoredIds);
-                  const restoredItems = unordered.filter((item: Item) => restoredIds.includes(item.id));
+                  const restoredItems = allDraft.filter((item: Item) => restoredIds.includes(item.id));
                   setInvoiceAmount(String(calcTotal(restoredItems)));
                 } catch { /* ignore */ } finally { setLoadingItems(false); }
               }
@@ -100,7 +125,7 @@ export default function NewOrderPage() {
       }
     };
     load();
-  }, [error]);
+  }, [error, searchParams]);
 
   const loadCustomerItems = useCallback(
     async (customerId: string, keepSelectedIds?: string[]) => {
@@ -114,10 +139,10 @@ export default function NewOrderPage() {
         const res = await axios.get("/api/items", {
           params: { customerId, limit: 500 },
         });
-        const unordered = res.data.data.filter((item: Item) => !item.orderId);
-        setCustomerItems(unordered);
+        const all: Item[] = res.data.data;
+        setCustomerItems(all);
         if (keepSelectedIds) {
-          setSelectedItemIds(keepSelectedIds.filter((id) => unordered.some((item: Item) => item.id === id)));
+          setSelectedItemIds(keepSelectedIds.filter((id) => all.some((item: Item) => item.id === id && !item.orderId)));
         } else {
           setSelectedItemIds([]);
         }
@@ -342,25 +367,28 @@ export default function NewOrderPage() {
             ) : customerItems.length === 0 ? (
               <div className="text-center py-8 border-2 border-dashed border-gray-100 rounded-xl">
                 <Package className="h-8 w-8 text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">
-                  No uninvoiced items for this customer
-                </p>
+                <p className="text-sm text-gray-400">No items found for this customer</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {customerItems.map((item) => (
+                {customerItems.map((item) => {
+                  const alreadyInvoiced = !!item.orderId;
+                  return (
                   <label
                     key={item.id}
-                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                      selectedItemIds.includes(item.id)
-                        ? "border-brand-200 bg-brand-50"
-                        : "border-gray-100 hover:border-gray-200 hover:bg-gray-50"
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      alreadyInvoiced
+                        ? "border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed"
+                        : selectedItemIds.includes(item.id)
+                        ? "border-brand-200 bg-brand-50 cursor-pointer"
+                        : "border-gray-100 hover:border-gray-200 hover:bg-gray-50 cursor-pointer"
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={selectedItemIds.includes(item.id)}
-                      onChange={() => toggleItem(item.id)}
+                      onChange={() => !alreadyInvoiced && toggleItem(item.id)}
+                      disabled={alreadyInvoiced}
                       className="w-4 h-4 accent-brand-600 shrink-0"
                     />
                     <div className="flex-1 min-w-0">
@@ -371,7 +399,12 @@ export default function NewOrderPage() {
                         {item.itemRef} · {item.weight} kg ·{" "}
                         {formatDate(item.dateReceived)}
                       </p>
-                      {(item.customerShippingMark || item.trackingNumber) && (
+                      {alreadyInvoiced && (
+                        <p className="text-xs text-orange-500 font-medium mt-0.5">
+                          Already in invoice {item.orderRef ?? item.orderId}
+                        </p>
+                      )}
+                      {!alreadyInvoiced && (item.customerShippingMark || item.trackingNumber) && (
                         <p className="text-xs text-brand-600 font-mono mt-0.5">
                           {item.customerShippingMark && <span>{item.customerShippingMark}</span>}
                           {item.customerShippingMark && item.trackingNumber && <span className="mx-1">·</span>}
@@ -397,7 +430,8 @@ export default function NewOrderPage() {
                       <p className="text-xs text-gray-400">{item.status}</p>
                     </div>
                   </label>
-                ))}
+                  );
+                })}
                 {selectedItemIds.length > 0 && (
                   <p className="text-xs text-brand-600 font-medium pt-1">
                     {selectedItemIds.length} item(s) selected

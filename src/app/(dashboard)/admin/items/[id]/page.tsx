@@ -450,8 +450,7 @@ export default function AdminItemDetailPage() {
             </div>
 
             {/* Assignments */}
-            {(item.containerId || item.orderId) && (
-              <div className="bg-white rounded-2xl border border-gray-100 p-5">
+            <div className="bg-white rounded-2xl border border-gray-100 p-5">
                 <h3 className="font-semibold text-gray-900 mb-2">Assignments</h3>
                 <div className="divide-y divide-gray-50">
                   {item.containerId && (
@@ -464,7 +463,7 @@ export default function AdminItemDetailPage() {
                       </button>
                     } />
                   )}
-                  {item.orderId && (
+                  {item.orderId ? (
                     <InfoRow icon={ShoppingCart} label="Order" value={
                       <button
                         onClick={() => router.push(`/admin/orders/${item.orderId}`)}
@@ -473,10 +472,18 @@ export default function AdminItemDetailPage() {
                         {item.orderRef ?? "View Invoice"}
                       </button>
                     } />
+                  ) : (
+                    <InfoRow icon={ShoppingCart} label="Invoice" value={
+                      <button
+                        onClick={() => router.push(`/admin/orders/new?customerId=${item.customerId}&preItem=${item.id}`)}
+                        className="text-brand-600 hover:underline text-sm"
+                      >
+                        + Create Invoice
+                      </button>
+                    } />
                   )}
                 </div>
               </div>
-            )}
           </div>
 
           {/* Right column: Photos + Tracking */}

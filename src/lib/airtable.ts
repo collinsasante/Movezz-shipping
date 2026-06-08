@@ -786,11 +786,8 @@ export const ordersApi = {
   async list(params: OrderFilterParams = {}): Promise<Order[]> {
     const formulas: string[] = [];
     if (params.status) formulas.push(`{Status} = '${params.status}'`);
-    if (params.search) {
-      const s = escapeFormula(params.search.toLowerCase());
-      // Only search fields that definitely exist (not lookup fields)
-      formulas.push(`SEARCH('${s}', LOWER({OrderRef}))`);
-    }
+    // Search is done in JS after customer names are resolved so that
+    // searching by customer name works correctly.
 
     const formula =
       formulas.length > 1
@@ -810,6 +807,14 @@ export const ordersApi = {
 
     if (params.customerId)
       orders = orders.filter((order) => order.customerId === params.customerId);
+
+    if (params.search) {
+      const s = params.search.toLowerCase();
+      orders = orders.filter((order) =>
+        order.orderRef?.toLowerCase().includes(s) ||
+        order.customerName?.toLowerCase().includes(s)
+      );
+    }
 
     return orders;
   },
