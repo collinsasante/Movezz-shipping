@@ -13,7 +13,7 @@ interface PackageRate { sea: number; air: number; }
 interface PackageRates { basic: PackageRate; business: PackageRate; enterprise: PackageRate; special?: PackageRate; }
 
 const DEFAULT_PKG_RATES: PackageRates = {
-  basic: { sea: 350, air: 8 },
+  basic: { sea: 270, air: 8 },
   business: { sea: 280, air: 6 },
   enterprise: { sea: 450, air: 12 },
 };
@@ -71,6 +71,14 @@ export default function CustomerCalculatorPage() {
       if (savedPkg) setPkgRates({ ...DEFAULT_PKG_RATES, ...JSON.parse(savedPkg) });
     } catch { /* ignore */ }
     if (appUser?.package) setActivePackage(appUser.package);
+    // Fetch live rates from Airtable so configured rates always apply
+    axios.get("/api/package-rates").then((res) => {
+      if (res.data?.data) {
+        const fetched = res.data.data;
+        setPkgRates((prev) => ({ ...DEFAULT_PKG_RATES, ...prev, ...fetched }));
+        try { localStorage.setItem("pakk_package_rates", JSON.stringify(fetched)); } catch {}
+      }
+    }).catch(() => {});
   }, [appUser?.package]);
 
   const handlePackageSwitch = async (pkg: CustomerPackage) => {

@@ -26,6 +26,8 @@ const UpdateItemSchema = z.object({
   photoUrls: z.array(z.string().url().max(500)).max(20).optional(),
   estPrice: z.number().min(0).max(500_000).optional(),
   estShippingPrice: z.number().min(0).max(500_000).optional(),
+  pkgEstShipping: z.number().min(0).max(500_000).optional(),
+  pkgShippingRate: z.number().min(0).max(500_000).optional(),
   shippingType: z.enum(["air", "sea"]).optional(),
   dimensionUnit: z.enum(["cm", "inches"]).optional(),
   quantity: z.number().int().positive().max(10_000).optional(),

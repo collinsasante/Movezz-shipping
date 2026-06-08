@@ -366,6 +366,13 @@ export default function NewOrderPage() {
                         {item.itemRef} · {item.weight} kg ·{" "}
                         {formatDate(item.dateReceived)}
                       </p>
+                      {(item.customerShippingMark || item.trackingNumber) && (
+                        <p className="text-xs text-brand-600 font-mono mt-0.5">
+                          {item.customerShippingMark && <span>{item.customerShippingMark}</span>}
+                          {item.customerShippingMark && item.trackingNumber && <span className="mx-1">·</span>}
+                          {item.trackingNumber && <span>TRK: {item.trackingNumber}</span>}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       {item.estShippingPrice != null && (

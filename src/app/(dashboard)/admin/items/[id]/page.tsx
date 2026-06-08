@@ -85,11 +85,20 @@ export default function AdminItemDetailPage() {
   const [directCbm, setDirectCbm] = useState("");
   const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
 
+  // Pricing state for edit modal
+  const [pkgRates, setPkgRates] = useState<Record<string, { sea: number; air: number }>>({ basic: { sea: 270, air: 8 } });
+  const [customerPackage, setCustomerPackage] = useState<string>("basic");
+  const [editCalcPrice, setEditCalcPrice] = useState<number | null>(null);
+  const [editCalcRate, setEditCalcRate] = useState<number | null>(null);
+
   useEffect(() => {
     try {
       const parsed = JSON.parse(localStorage.getItem("pakk_exchange_rates") ?? "{}");
       if (parsed.usdToGhs && parsed.usdToGhs > 0) setUsdToGhs(parsed.usdToGhs);
     } catch {}
+    axios.get("/api/package-rates").then((res) => {
+      if (res.data?.data) setPkgRates(res.data.data);
+    }).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
@@ -100,6 +109,12 @@ export default function AdminItemDetailPage() {
       ]);
       const loadedItem: ItemDetail = itemRes.data.data;
       setItem(loadedItem);
+      // Fetch customer package tier for pricing calculations
+      if (loadedItem.customerId) {
+        axios.get(`/api/customers/${loadedItem.customerId}`).then((r) => {
+          setCustomerPackage(r.data.data?.package ?? "basic");
+        }).catch(() => {});
+      }
       // Resolve container display name if lookup field is empty
       if (loadedItem.containerId && !loadedItem.containerName) {
         axios.get(`/api/containers/${loadedItem.containerId}`).then((r) => {
@@ -146,6 +161,31 @@ export default function AdminItemDetailPage() {
     setEditForm((prev) => ({ ...prev, length: side, width: side, height: side, dimensionUnit: "cm" }));
   }, [cbmInputMode, directCbm]);
 
+  // Recalculate pricing whenever edit form dimensions/type/quantity change
+  useEffect(() => {
+    const tierRates = (pkgRates[customerPackage] ?? pkgRates["basic"] ?? { sea: 270, air: 8 }) as { sea: number; air: number };
+    const qty = Math.max(1, parseInt(editForm.quantity) || 1);
+    let cost = 0;
+    let ratePerUnit = 0;
+    if (editForm.shippingType === "air") {
+      const w = parseFloat(editForm.weight) || 0;
+      ratePerUnit = tierRates.air ?? 0;
+      if (w && ratePerUnit) cost = w * qty * ratePerUnit;
+    } else {
+      const l = parseFloat(editForm.length) || 0;
+      const w = parseFloat(editForm.width) || 0;
+      const h = parseFloat(editForm.height) || 0;
+      if (l && w && h) {
+        const factor = editForm.dimensionUnit === "inches" ? 16.387064 : 1;
+        const cbm = (l * w * h * factor / 1_000_000) * qty;
+        ratePerUnit = tierRates.sea ?? 0;
+        if (cbm && ratePerUnit) cost = cbm * ratePerUnit;
+      }
+    }
+    setEditCalcPrice(cost > 0 ? cost : null);
+    setEditCalcRate(ratePerUnit > 0 ? ratePerUnit : null);
+  }, [editForm.shippingType, editForm.length, editForm.width, editForm.height, editForm.dimensionUnit, editForm.weight, editForm.quantity, customerPackage, pkgRates]);
+
   const openEdit = () => {
     if (!item) return;
     setCbmInputMode("dimensions");
@@ -181,6 +221,9 @@ export default function AdminItemDetailPage() {
         trackingNumber: editForm.trackingNumber || undefined,
         dateReceived: editForm.dateReceived || undefined,
         notes: editForm.notes || undefined,
+        estShippingPrice: editCalcPrice != null ? Math.round(editCalcPrice * 100) / 100 : undefined,
+        pkgEstShipping: editCalcPrice != null ? Math.round(editCalcPrice * 100) / 100 : undefined,
+        pkgShippingRate: editCalcRate ?? undefined,
       });
       success("Item updated");
       setEditModal(false);
@@ -677,6 +720,19 @@ export default function AdminItemDetailPage() {
                 </>
               )}
             </div>
+
+            {/* Pricing preview */}
+            {editCalcPrice != null && (
+              <div className="bg-brand-50 border border-brand-100 rounded-xl p-3 text-sm space-y-1">
+                <p className="text-xs font-semibold text-brand-700 mb-1">Shipping Estimate</p>
+                <div className="flex justify-between text-xs">
+                  <span className="text-brand-600">
+                    Rate ({editForm.shippingType === "air" ? "Air" : "Sea"}){editCalcRate != null && ` · $${editCalcRate}/${editForm.shippingType === "air" ? "kg" : "m³"}`}
+                  </span>
+                  <span className="font-bold text-brand-900">$ {editCalcPrice.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <Input

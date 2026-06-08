@@ -655,6 +655,8 @@ export const itemsApi = {
     if (input.isMissing !== undefined) fields["IsMissing"] = input.isMissing;
     if (input.estPrice !== undefined) fields["EstPrice"] = input.estPrice;
     if (input.estShippingPrice !== undefined) fields["EstShippingPrice"] = input.estShippingPrice;
+    if (input.pkgEstShipping !== undefined) fields["PkgEstShipping"] = input.pkgEstShipping;
+    if (input.pkgShippingRate !== undefined) fields["PkgShippingRate"] = input.pkgShippingRate;
     if (input.quantity !== undefined) fields["Quantity"] = input.quantity;
     if (input.shippingType !== undefined) fields["FreightType"] = input.shippingType;
     if (input.dimensionUnit !== undefined) fields["DimensionUnit"] = input.dimensionUnit;

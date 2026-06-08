@@ -36,13 +36,9 @@ export async function PATCH(
 
     const { status, notes, arrivalDate } = parsed.data;
 
-    // Update arrival date if provided or if arriving in Ghana
-    if (arrivalDate || status === "Arrived in Ghana") {
-      await containersApi.update(
-        id,
-        { arrivalDate: arrivalDate ?? new Date().toISOString().split("T")[0] },
-        user.email
-      );
+    // Update arrival date only if explicitly provided
+    if (arrivalDate) {
+      await containersApi.update(id, { arrivalDate }, user.email);
     }
 
     // updateStatus handles cascade logic

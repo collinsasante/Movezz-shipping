@@ -164,6 +164,8 @@ export interface UpdateItemInput {
   photoUrls?: string[];
   estPrice?: number;
   estShippingPrice?: number;
+  pkgEstShipping?: number;
+  pkgShippingRate?: number;
   quantity?: number;
   shippingType?: "air" | "sea";
   specialRateName?: string;
