@@ -44,7 +44,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") ?? undefined;
 
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
-    const limit = 50;
+    const requestedLimit = parseInt(searchParams.get("limit") ?? "0");
+    const limit = requestedLimit > 0 ? Math.min(requestedLimit, 1000) : 50;
 
     const allCustomers = await customersApi.list({ status, search });
     const total = allCustomers.length;

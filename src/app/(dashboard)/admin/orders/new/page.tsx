@@ -62,7 +62,7 @@ export default function NewOrderPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await axios.get("/api/customers");
+        const res = await axios.get("/api/customers", { params: { limit: 1000 } });
         setCustomers(res.data.data);
         if (!draftRestoredRef.current) {
           draftRestoredRef.current = true;
@@ -276,7 +276,7 @@ export default function NewOrderPage() {
                     </div>
                     {customerDropdownOpen && filteredCustomers.length > 0 && (
                       <div className="mt-1 border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-white shadow-sm">
-                        {filteredCustomers.slice(0, 20).map((c) => (
+                        {filteredCustomers.map((c) => (
                           <button
                             key={c.id}
                             type="button"
