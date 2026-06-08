@@ -12,8 +12,8 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 
 const DRAFT_LS_KEY = "pakk_new_order_draft";
 
-function calcTotalGhs(items: Item[]): number {
-  const total = items.reduce((sum, item) => sum + (item.estShippingPrice ?? 0), 0);
+function calcTotal(items: Item[]): number {
+  const total = items.reduce((sum, item) => sum + (item.pkgEstShipping ?? item.estShippingPrice ?? 0), 0);
   return Math.round(total * 100) / 100;
 }
 
@@ -86,7 +86,7 @@ export default function NewOrderPage() {
                   const restoredIds = savedIds.filter((id) => unordered.some((item: Item) => item.id === id));
                   setSelectedItemIds(restoredIds);
                   const restoredItems = unordered.filter((item: Item) => restoredIds.includes(item.id));
-                  setInvoiceAmount(String(calcTotalGhs(restoredItems)));
+                  setInvoiceAmount(String(calcTotal(restoredItems)));
                 } catch { /* ignore */ } finally { setLoadingItems(false); }
               }
             }
@@ -153,7 +153,7 @@ export default function NewOrderPage() {
     setSelectedItemIds((prev) => {
       const next = prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id];
       const selectedItems = customerItems.filter((item) => next.includes(item.id));
-      const auto = calcTotalGhs(selectedItems);
+      const auto = calcTotal(selectedItems);
       setInvoiceAmount(String(auto));
       return next;
     });
@@ -280,6 +280,11 @@ export default function NewOrderPage() {
                     placeholder="Select items to auto-calculate"
                     className="h-10 w-full px-3 rounded-lg border border-gray-200 text-sm bg-gray-50 text-gray-700 cursor-default"
                   />
+                  {usdToGhs != null && Number(invoiceAmount) > 0 && (
+                    <p className="text-xs text-brand-600 font-medium mt-1">
+                      ≈ {formatCurrency(Number(invoiceAmount) * usdToGhs, "GHS")}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-400 mt-1">
                     Auto-computed from sum of selected items&apos; est. shipping prices
                   </p>
@@ -375,11 +380,20 @@ export default function NewOrderPage() {
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      {item.estShippingPrice != null && (
-                        <span className="text-xs font-semibold text-brand-700">
-                          {usdToGhs != null ? formatCurrency(item.estShippingPrice * usdToGhs, "GHS") : `$ ${item.estShippingPrice.toFixed(2)}`}
-                        </span>
-                      )}
+                      {(() => {
+                        const price = item.pkgEstShipping ?? item.estShippingPrice;
+                        if (price == null) return null;
+                        return (
+                          <>
+                            <span className="text-xs font-semibold text-brand-700">
+                              {usdToGhs != null ? formatCurrency(price * usdToGhs, "GHS") : `$ ${price.toFixed(2)}`}
+                            </span>
+                            {usdToGhs != null && (
+                              <p className="text-xs text-gray-400">$ {price.toFixed(2)}</p>
+                            )}
+                          </>
+                        );
+                      })()}
                       <p className="text-xs text-gray-400">{item.status}</p>
                     </div>
                   </label>

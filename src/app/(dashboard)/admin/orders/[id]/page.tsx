@@ -610,15 +610,24 @@ export default function AdminOrderDetailPage() {
                   <div className="bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 space-y-1">
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Base amount</span>
-                      <span className="font-medium text-gray-700">$ {base.toFixed(2)}</span>
+                      <div className="text-right">
+                        <span className="font-medium text-gray-700">$ {base.toFixed(2)}</span>
+                        <p className="text-gray-400">{formatCurrency(base * usdToGhs, "GHS")}</p>
+                      </div>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-red-500">Discount {discountMode === "pct" ? `(${v}%)` : ""}</span>
-                      <span className="font-medium text-red-600">− $ {discAmt.toFixed(2)}</span>
+                      <div className="text-right">
+                        <span className="font-medium text-red-600">− $ {discAmt.toFixed(2)}</span>
+                        <p className="text-red-400">− {formatCurrency(discAmt * usdToGhs, "GHS")}</p>
+                      </div>
                     </div>
                     <div className="flex justify-between text-xs border-t border-brand-100 pt-1 mt-0.5">
                       <span className="font-semibold text-brand-800">Final amount</span>
-                      <span className="font-bold text-brand-900">$ {final.toFixed(2)}</span>
+                      <div className="text-right">
+                        <span className="font-bold text-brand-900">$ {final.toFixed(2)}</span>
+                        <p className="text-brand-600 font-semibold">{formatCurrency(final * usdToGhs, "GHS")}</p>
+                      </div>
                     </div>
                   </div>
                 );
