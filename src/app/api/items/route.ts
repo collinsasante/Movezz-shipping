@@ -64,7 +64,10 @@ export async function GET(request: NextRequest) {
     }
 
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"));
-    const limit = 50;
+    // When fetching all items for a specific customer (e.g. new invoice flow),
+    // skip pagination so uninvoiced items aren't cut off by the 50-item page limit.
+    const requestedLimit = parseInt(searchParams.get("limit") ?? "0");
+    const limit = requestedLimit > 0 ? Math.min(requestedLimit, 500) : 50;
 
     const allItems = await itemsApi.list(params);
 

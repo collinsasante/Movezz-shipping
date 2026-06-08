@@ -79,7 +79,7 @@ export default function NewOrderPage() {
                 if (matched) setCustomerSearch(matched.shippingMark);
                 setLoadingItems(true);
                 try {
-                  const itemsRes = await axios.get("/api/items", { params: { customerId: draft.selectedCustomerId } });
+                  const itemsRes = await axios.get("/api/items", { params: { customerId: draft.selectedCustomerId, limit: 500 } });
                   const unordered: Item[] = itemsRes.data.data.filter((item: Item) => !item.orderId);
                   setCustomerItems(unordered);
                   const savedIds: string[] = draft.selectedItemIds ?? [];
@@ -112,7 +112,7 @@ export default function NewOrderPage() {
       setLoadingItems(true);
       try {
         const res = await axios.get("/api/items", {
-          params: { customerId },
+          params: { customerId, limit: 500 },
         });
         const unordered = res.data.data.filter((item: Item) => !item.orderId);
         setCustomerItems(unordered);
