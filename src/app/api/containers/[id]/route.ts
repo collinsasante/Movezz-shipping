@@ -20,6 +20,7 @@ const UpdateContainerSchema = z.object({
   arrivalDate: z.string().max(50).optional(),
   trackingNumber: z.string().max(100).optional(),
   notes: z.string().max(2000).optional(),
+  createdAt: z.string().max(50).optional(),
 });
 
 const ManageItemSchema = z.object({

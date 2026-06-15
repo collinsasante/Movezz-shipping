@@ -1022,12 +1022,11 @@ export const containersApi = {
     if (input.name !== undefined) fields["Name"] = input.name;
     if (input.description !== undefined) fields["Description"] = input.description;
     if (input.status !== undefined) fields["Status"] = input.status;
-    if (input.eta !== undefined)
-      fields["DepartureDate"] = input.eta;
+    if (input.eta !== undefined) fields["DepartureDate"] = input.eta;
     if (input.arrivalDate !== undefined) fields["ArrivalDate"] = input.arrivalDate;
-    if (input.trackingNumber !== undefined)
-      fields["TrackingNumber"] = input.trackingNumber;
+    if (input.trackingNumber !== undefined) fields["TrackingNumber"] = input.trackingNumber;
     if (input.notes !== undefined) fields["Notes"] = input.notes;
+    if (input.createdAt !== undefined) fields["CreatedAt"] = input.createdAt;
 
     const record = await updateRecord(TABLES.CONTAINERS, id, fields);
     return mapContainer(record);

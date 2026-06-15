@@ -254,6 +254,7 @@ export interface UpdateContainerInput {
   arrivalDate?: string;
   trackingNumber?: string;
   notes?: string;
+  createdAt?: string;
 }
 
 // ============================================================

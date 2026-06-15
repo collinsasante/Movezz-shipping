@@ -57,7 +57,7 @@ export default function ContainerDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", trackingNumber: "", eta: "", notes: "" });
+  const [editForm, setEditForm] = useState({ name: "", trackingNumber: "", eta: "", notes: "", createdAt: "" });
   const [savingEdit, setSavingEdit] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
@@ -117,6 +117,7 @@ export default function ContainerDetailPage() {
       trackingNumber: container.trackingNumber ?? "",
       eta: container.eta?.split("T")[0] ?? "",
       notes: container.notes ?? "",
+      createdAt: container.createdAt?.split("T")[0] ?? "",
     });
     setEditing(true);
   };
@@ -129,6 +130,7 @@ export default function ContainerDetailPage() {
         trackingNumber: editForm.trackingNumber || undefined,
         eta: editForm.eta || undefined,
         notes: editForm.notes || undefined,
+        createdAt: editForm.createdAt || undefined,
       });
       success("Container updated");
       setEditing(false);
@@ -289,6 +291,7 @@ export default function ContainerDetailPage() {
                   <Input label="Container #" value={editForm.trackingNumber} onChange={(e) => setEditForm({ ...editForm, trackingNumber: e.target.value })} />
                   <Input label="Shipping Line (optional)" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} placeholder="e.g. MSC, Maersk" />
                   <Input label="ETA" type="date" value={editForm.eta} onChange={(e) => setEditForm({ ...editForm, eta: e.target.value })} />
+                  <Input label="Created Date" type="date" value={editForm.createdAt} onChange={(e) => setEditForm({ ...editForm, createdAt: e.target.value })} />
                   <Input label="Notes (optional)" value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
                 </div>
               ) : (
