@@ -559,7 +559,7 @@ export const itemsApi = {
 
     // Resolve customer names before searching so customerName/customerShippingMark
     // are populated and search by customer name or shipping mark works correctly.
-    if (items.some((item) => item.customerId && !item.customerName)) {
+    if (items.some((item) => item.customerId && (!item.customerName || !item.customerShippingMark))) {
       const allCustomers = await customersApi.list();
       const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
       items = items.map((item) => ({
