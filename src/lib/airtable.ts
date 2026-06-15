@@ -188,6 +188,25 @@ async function deleteRecord(tableName: string, id: string): Promise<void> {
   });
 }
 
+// Batch-update up to 10 records at a time (Airtable limit per call).
+// Much faster than per-record updates for large sets.
+async function batchUpdateRecords(
+  tableName: string,
+  updates: { id: string; fields: FieldSet }[]
+): Promise<void> {
+  const chunks: { id: string; fields: FieldSet }[][] = [];
+  for (let i = 0; i < updates.length; i += 10) {
+    chunks.push(updates.slice(i, i + 10));
+  }
+  // Process chunks sequentially to respect Airtable rate limits
+  for (const chunk of chunks) {
+    await withRetry(() => {
+      const base = getBase();
+      return base(tableName).update(chunk) as Promise<unknown>;
+    });
+  }
+}
+
 async function countRecords(
   tableName: string,
   formula?: string
@@ -1059,6 +1078,31 @@ export const containersApi = {
 
     const updated = await getRecord(TABLES.CONTAINERS, id);
     return mapContainer(updated);
+  },
+
+  // Efficiently syncs all items in a container to the container's mapped status.
+  // Uses batch Airtable updates (10 records/call) instead of per-item API calls.
+  async syncItemStatusesBatch(id: string): Promise<{ updated: number; targetStatus: string | null }> {
+    const existing = await getRecord(TABLES.CONTAINERS, id);
+    const containerStatus = existing.fields["Status"] as ContainerStatus;
+    const itemIds = (existing.fields["Items"] as string[]) ?? [];
+
+    const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
+      "Shipped to Ghana": "Shipped to Ghana",
+      "Arrived in Ghana": "Sorting",
+    };
+
+    const targetStatus = containerToItemStatus[containerStatus] ?? null;
+    if (!targetStatus || itemIds.length === 0) {
+      return { updated: 0, targetStatus };
+    }
+
+    await batchUpdateRecords(
+      TABLES.ITEMS,
+      itemIds.map((itemId) => ({ id: itemId, fields: { Status: targetStatus } }))
+    );
+
+    return { updated: itemIds.length, targetStatus };
   },
 
   async addItem(

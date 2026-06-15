@@ -174,8 +174,8 @@ export default function ContainerDetailPage() {
     if (!container) return;
     setUpdatingStatus(true);
     try {
-      const res = await axios.patch(`/api/containers/${id}/status`, { status: container.status });
-      success("Items synced", `All ${container.itemIds.length} items updated to "${container.status}"`);
+      const res = await axios.post(`/api/containers/${id}/sync-items`);
+      success("Items synced", res.data.message ?? "All items updated");
       load();
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err)
@@ -361,7 +361,9 @@ export default function ContainerDetailPage() {
                       header: "Customer",
                       render: (item) => (
                         <div>
-                          <p className="text-sm font-medium text-gray-800">{item.customerName ?? item.customerShippingMark ?? "—"}</p>
+                          <p className="text-sm font-medium text-gray-800">
+                            {item.customerName ?? (item.customerShippingMark ? `Shipping Mark (${item.customerShippingMark})` : "—")}
+                          </p>
                           {item.customerShippingMark && item.customerName && (
                             <code className="text-xs font-mono text-gray-400">{item.customerShippingMark}</code>
                           )}

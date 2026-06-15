@@ -187,7 +187,7 @@ export default function ItemsPage() {
               render: (item) => (
                 <div>
                   <p className="text-sm font-medium text-gray-800">
-                    {item.customerName ?? item.customerShippingMark ?? "—"}
+                    {item.customerName ?? (item.customerShippingMark ? `Shipping Mark (${item.customerShippingMark})` : "—")}
                   </p>
                   {item.customerShippingMark && item.customerName && (
                     <code className="text-xs font-mono text-gray-400">
