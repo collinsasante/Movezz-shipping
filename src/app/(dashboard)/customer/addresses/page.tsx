@@ -5,7 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/components/ui/toast";
 import type { Warehouse } from "@/types";
-import { Warehouse as WarehouseIcon, Copy, CheckCheck } from "lucide-react";
+import { Copy, CheckCheck, Check } from "lucide-react";
 import axios from "axios";
 
 const DEFAULT_WAREHOUSE = { id: "__default__", name: "Guangzhou", address: "广州市花都区秀全街茶碑路8号519仓", phone: "13246840530", isActive: true, createdAt: "" };
@@ -44,15 +44,12 @@ export default function CustomerAddressesPage() {
   const selectWarehouse = (id: string) => {
     setSelectedWarehouseId(id);
     localStorage.setItem("pakk_preferred_warehouse", id);
-    // Also persist to Airtable so preference survives across devices
     axios.patch("/api/customers/me/warehouse", { warehouseId: id }).catch(() => {});
   };
 
-  const selectedWarehouse = warehouses.find((w) => w.id === selectedWarehouseId) ?? null;
-
   const copyWarehouseAddress = (w: Warehouse) => {
     const mark = appUser?.shippingMark ? ` (${appUser.shippingMark})` : "";
-    const text = `${w.address}${mark}`;
+    const text = `${w.address}${mark}\nTel: ${w.phone}`;
     navigator.clipboard.writeText(text).then(() => {
       setCopiedWarehouseId(w.id);
       setTimeout(() => setCopiedWarehouseId(null), 2000);
@@ -61,53 +58,76 @@ export default function CustomerAddressesPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Addresses" subtitle="Warehouse locations you can ship to" />
+      <Header title="Shipping Addresses" subtitle="Select your preferred warehouse" />
 
-      <div className="flex-1 p-6 space-y-4 overflow-y-auto max-w-2xl">
+      <div className="flex-1 p-4 sm:p-6 overflow-y-auto max-w-lg">
         {loading ? (
-          <div className="h-10 bg-gray-100 rounded-lg animate-pulse" />
-        ) : warehouses.length === 0 ? (
-          <div className="text-center py-10 bg-white border border-gray-100 rounded-xl">
-            <WarehouseIcon className="h-10 w-10 text-gray-200 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">No warehouses available</p>
+          <div className="space-y-3">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-28 bg-gray-100 rounded-2xl animate-pulse" />
+            ))}
           </div>
+        ) : warehouses.length === 0 ? (
+          <div className="text-center py-16 text-gray-400 text-sm">No addresses available</div>
         ) : (
-          <>
-            <p className="text-sm text-gray-500 mb-2">Select your preferred warehouse location.</p>
-            <select
-              value={selectedWarehouseId ?? ""}
-              onChange={(e) => selectWarehouse(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500"
-            >
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
+          <div className="space-y-3">
+            {warehouses.map((w) => {
+              const isSelected = w.id === selectedWarehouseId;
+              const isCopied = copiedWarehouseId === w.id;
+              const mark = appUser?.shippingMark ? ` (${appUser.shippingMark})` : "";
 
-            {selectedWarehouse && (
-              <div className="p-4 rounded-xl border border-gray-200 bg-white">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">{selectedWarehouse.name}</p>
-                    <p className="text-sm text-gray-600 mt-0.5 break-all font-mono">
-                      {selectedWarehouse.address}{appUser?.shippingMark ? ` (${appUser.shippingMark})` : ""}
-                    </p>
-                    {selectedWarehouse.phone && <p className="text-xs text-gray-500 mt-1">{selectedWarehouse.phone}</p>}
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => selectWarehouse(w.id)}
+                  className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
+                    isSelected
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-gray-100 bg-white hover:border-gray-200"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    {/* Left: info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-sm font-semibold ${isSelected ? "text-brand-700" : "text-gray-900"}`}>
+                          {w.name}
+                        </span>
+                        {isSelected && (
+                          <span className="inline-flex items-center gap-0.5 text-xs font-medium text-brand-600 bg-brand-100 rounded-full px-2 py-0.5">
+                            <Check className="h-3 w-3" />
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 font-mono break-all leading-snug">
+                        {w.address}{mark}
+                      </p>
+                      {w.phone && (
+                        <p className="text-xs text-gray-400 mt-1">Tel: {w.phone}</p>
+                      )}
+                    </div>
+
+                    {/* Right: copy button */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyWarehouseAddress(w); }}
+                      className={`shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+                        isCopied
+                          ? "bg-green-100 text-green-600"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                      title="Copy address"
+                    >
+                      {isCopied
+                        ? <><CheckCheck className="h-3.5 w-3.5" /> Copied</>
+                        : <><Copy className="h-3.5 w-3.5" /> Copy</>
+                      }
+                    </button>
                   </div>
-                  <button
-                    onClick={() => copyWarehouseAddress(selectedWarehouse)}
-                    className="shrink-0 p-1 rounded hover:bg-brand-100 transition-colors"
-                    title="Copy address + shipping mark"
-                  >
-                    {copiedWarehouseId === selectedWarehouse.id
-                      ? <CheckCheck className="h-4 w-4 text-green-500" />
-                      : <Copy className="h-4 w-4" />
-                    }
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+                </button>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
