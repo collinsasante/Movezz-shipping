@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -16,15 +16,10 @@ import {
   X,
   Calculator,
   Warehouse,
-  Copy,
-  CheckCheck,
   MessageCircle,
 } from "lucide-react";
 import Image from "next/image";
-import axios from "axios";
 import type { CustomerPackage } from "@/types";
-
-const DEFAULT_WAREHOUSE = { name: "Guangzhou", address: "广东省中山市民众镇三墩村三益路183号转" };
 
 const PACKAGE_LABELS: Record<CustomerPackage, string> = {
   basic: "Basic",
@@ -47,27 +42,7 @@ export function CustomerSidebar() {
   const pathname = usePathname();
   const { appUser, signOut } = useAuth();
   const { open, closeSidebar } = useSidebar();
-  const [copied, setCopied] = useState(false);
-  const [warehouse, setWarehouse] = useState<{ name: string; address: string }>(DEFAULT_WAREHOUSE);
-
   const shippingMark = appUser?.shippingMark ?? "";
-
-  useEffect(() => {
-    const savedId = localStorage.getItem("pakk_preferred_warehouse") ?? appUser?.preferredWarehouseId ?? null;
-    axios.get("/api/warehouses").then((res) => {
-      const warehouses: { id: string; name: string; address: string }[] = res.data.data ?? [];
-      const match = savedId ? warehouses.find((w) => w.id === savedId) ?? warehouses[0] : warehouses[0];
-      if (match) setWarehouse({ name: match.name, address: match.address });
-    }).catch(() => {});
-  }, [appUser?.preferredWarehouseId]);
-
-  const copyShippingMark = () => {
-    if (!shippingMark) return;
-    const text = `${warehouse.address}${shippingMark ? ` (${shippingMark})` : ""}`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const accountType = appUser?.package ? (PACKAGE_LABELS[appUser.package] ?? "Customer") : "Customer";
 
@@ -95,40 +70,21 @@ export function CustomerSidebar() {
         </button>
       </div>
 
-      {/* Shipping Mark Card */}
-      <div className="mx-4 mt-4 bg-brand-50 border border-brand-100 rounded-xl shrink-0 overflow-hidden">
-        {/* Top row: mark + copy */}
-        <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-brand-400 uppercase tracking-wider mb-1">Shipping Mark</p>
-            <code className="text-sm font-bold font-mono text-brand-800 tracking-wide">
-              {shippingMark || "—"}
-            </code>
-          </div>
-          <button
-            onClick={copyShippingMark}
-            className={cn(
-              "shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors",
-              copied
-                ? "bg-green-100 text-green-600"
-                : "bg-white border border-brand-200 text-brand-600 hover:bg-brand-100"
-            )}
-            title="Copy full address"
-          >
-            {copied ? <CheckCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
-
-        {/* Bottom row: warehouse name → link to addresses */}
+      {/* Address shortcut */}
+      <div className="mx-4 mt-4 shrink-0">
         <Link
           href="/customer/addresses"
           onClick={closeSidebar}
-          className="flex items-center gap-1.5 px-3 py-2 border-t border-brand-100 hover:bg-brand-100 transition-colors"
+          className="flex items-center gap-3 w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 hover:bg-amber-100 transition-colors"
         >
-          <MapPin className="h-3 w-3 text-brand-400 shrink-0" />
-          <span className="text-xs text-brand-600 truncate">{warehouse.name}</span>
-          <span className="text-brand-300 text-xs ml-auto shrink-0">→</span>
+          <MapPin className="h-5 w-5 shrink-0 text-amber-600" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">Change your address</p>
+            <p className="text-xs text-amber-600 mt-0.5 truncate">
+              {shippingMark ? shippingMark : "View warehouse address"}
+            </p>
+          </div>
+          <span className="text-xs text-amber-500 shrink-0">→</span>
         </Link>
       </div>
 

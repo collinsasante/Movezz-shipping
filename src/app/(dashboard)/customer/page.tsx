@@ -17,12 +17,9 @@ import {
   Truck,
   CheckCircle,
   MessageCircle,
-  MapPin,
-  X,
 } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
-import { useRouter } from "next/navigation";
 
 type Period = "all" | "today" | "week" | "month" | "custom";
 
@@ -53,8 +50,7 @@ function filterByPeriod<T>(items: T[], getDate: (i: T) => string, period: Period
 export default function CustomerDashboardPage() {
   const { appUser } = useAuth();
   const { error } = useToast();
-  const router = useRouter();
-  const [stats, setStats] = useState<CustomerDashboardStats | null>(null);
+const [stats, setStats] = useState<CustomerDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
 
@@ -70,17 +66,6 @@ export default function CustomerDashboardPage() {
   const [period, setPeriod] = useState<Period>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [addressBannerDismissed, setAddressBannerDismissed] = useState(() => {
-    try { return localStorage.getItem("pakk_address_banner_dismissed") === "1"; } catch { return false; }
-  });
-
-  const dismissAddressBanner = () => {
-    setAddressBannerDismissed(true);
-    try { localStorage.setItem("pakk_address_banner_dismissed", "1"); } catch { /* ignore */ }
-  };
-
-  const showAddressBanner = !addressBannerDismissed && !appUser?.preferredWarehouseId;
-
   useEffect(() => {
     const load = async () => {
       try {
@@ -181,42 +166,6 @@ export default function CustomerDashboardPage() {
           <span className="text-xs text-green-500 shrink-0">Tap to chat →</span>
         </a>
 
-        {/* Permanent address change link — always visible */}
-        <button
-          onClick={() => router.push("/customer/addresses")}
-          className="flex items-center gap-3 w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 hover:bg-amber-100 transition-colors text-left"
-        >
-          <MapPin className="h-5 w-5 shrink-0 text-amber-600" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">Kindly click here to change your address</p>
-            <p className="text-xs text-amber-600 mt-0.5">View or update your warehouse shipping address</p>
-          </div>
-          <span className="text-xs text-amber-500 shrink-0">Tap →</span>
-        </button>
-
-        {/* Address setup prompt — shown to new customers who haven't selected a warehouse */}
-        {showAddressBanner && (
-          <div className="flex items-center gap-3 w-full px-4 py-3 bg-brand-50 border border-brand-200 rounded-xl">
-            <MapPin className="h-5 w-5 shrink-0 text-brand-600" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-brand-800">Set up your shipping address</p>
-              <p className="text-xs text-brand-600 mt-0.5">Kindly tap here to select your warehouse address so you can start shipping.</p>
-            </div>
-            <button
-              onClick={dismissAddressBanner}
-              className="p-1 rounded hover:bg-brand-100 transition-colors shrink-0"
-              aria-label="Dismiss"
-            >
-              <X className="h-4 w-4 text-brand-400" />
-            </button>
-            <button
-              onClick={() => router.push("/customer/addresses")}
-              className="shrink-0 px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition-colors"
-            >
-              Select →
-            </button>
-          </div>
-        )}
 
         {/* Period filter — above cards so it affects them */}
         <div className="space-y-2">
