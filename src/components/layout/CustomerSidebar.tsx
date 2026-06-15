@@ -96,35 +96,40 @@ export function CustomerSidebar() {
       </div>
 
       {/* Shipping Mark Card */}
-      <div className="mx-4 mt-4 p-3 bg-brand-50 border border-brand-100 rounded-xl shrink-0">
-        <p className="text-xs text-brand-600 font-medium mb-1">Your Shipping Address</p>
-        {appUser?.customerName && (
-          <p className="text-xs font-semibold text-brand-900 mb-0.5">{appUser.customerName}</p>
-        )}
-        {appUser?.phone && (
-          <p className="text-xs text-brand-700 mb-1">{appUser.phone}</p>
-        )}
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-brand-800 mb-0.5">{warehouse.name}</p>
-            <code className="text-xs font-mono text-brand-700 break-all leading-relaxed">
-              {warehouse.address}{shippingMark ? ` (${shippingMark})` : ""}
+      <div className="mx-4 mt-4 bg-brand-50 border border-brand-100 rounded-xl shrink-0 overflow-hidden">
+        {/* Top row: mark + copy */}
+        <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-brand-400 uppercase tracking-wider mb-1">Shipping Mark</p>
+            <code className="text-sm font-bold font-mono text-brand-800 tracking-wide">
+              {shippingMark || "—"}
             </code>
           </div>
-          {shippingMark && (
-            <button
-              onClick={copyShippingMark}
-              className="shrink-0 p-1.5 rounded-lg hover:bg-brand-100 text-brand-600 transition-colors"
-              title="Copy shipping mark"
-            >
-              {copied ? (
-                <CheckCheck className="h-3.5 w-3.5 text-green-500" />
-              ) : (
-                <Copy className="h-3.5 w-3.5 text-brand-500" />
-              )}
-            </button>
-          )}
+          <button
+            onClick={copyShippingMark}
+            className={cn(
+              "shrink-0 flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors",
+              copied
+                ? "bg-green-100 text-green-600"
+                : "bg-white border border-brand-200 text-brand-600 hover:bg-brand-100"
+            )}
+            title="Copy full address"
+          >
+            {copied ? <CheckCheck className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
         </div>
+
+        {/* Bottom row: warehouse name → link to addresses */}
+        <Link
+          href="/customer/addresses"
+          onClick={closeSidebar}
+          className="flex items-center gap-1.5 px-3 py-2 border-t border-brand-100 hover:bg-brand-100 transition-colors"
+        >
+          <MapPin className="h-3 w-3 text-brand-400 shrink-0" />
+          <span className="text-xs text-brand-600 truncate">{warehouse.name}</span>
+          <span className="text-brand-300 text-xs ml-auto shrink-0">→</span>
+        </Link>
       </div>
 
       {/* Nav items */}
