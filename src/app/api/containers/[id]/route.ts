@@ -41,11 +41,14 @@ export async function GET(
     const { id } = await params;
     const container = await containersApi.getById(id);
 
+    // Deduplicate itemIds — Airtable linked fields can contain the same ID twice
+    const uniqueItemIds = [...new Set(container.itemIds)];
+
     // Hydrate items — log failures but return partial data
-    const items = container.itemIds.length
+    const items = uniqueItemIds.length
       ? (
           await Promise.all(
-            container.itemIds.map((itemId) =>
+            uniqueItemIds.map((itemId) =>
               itemsApi.getById(itemId).catch(() => null)
             )
           )
