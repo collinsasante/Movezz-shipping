@@ -365,9 +365,9 @@ export default function ContainerDetailPage() {
                       render: (item) => (
                         <div>
                           <p className="text-sm font-medium text-gray-800">
-                            {item.customerName ?? (item.customerShippingMark ? `Shipping Mark (${item.customerShippingMark})` : "—")}
+                            {item.customerName || item.customerShippingMark || "—"}
                           </p>
-                          {item.customerShippingMark && item.customerName && (
+                          {item.customerShippingMark && (
                             <code className="text-xs font-mono text-gray-400">{item.customerShippingMark}</code>
                           )}
                         </div>

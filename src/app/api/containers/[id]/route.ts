@@ -4,7 +4,7 @@
 // POST  /api/containers/[id]/items    — add item to container
 // DELETE /api/containers/[id]/items   — remove item from container
 import { NextRequest } from "next/server";
-import { containersApi, itemsApi } from "@/lib/airtable";
+import { containersApi, itemsApi, customersApi } from "@/lib/airtable";
 import {
   requireAuth,
   serverErrorResponse,
@@ -44,16 +44,38 @@ export async function GET(
     // Deduplicate itemIds — Airtable linked fields can contain the same ID twice
     const uniqueItemIds = [...new Set(container.itemIds)];
 
-    // Hydrate items — log failures but return partial data
-    const items = uniqueItemIds.length
-      ? (
-          await Promise.all(
-            uniqueItemIds.map((itemId) =>
-              itemsApi.getById(itemId).catch(() => null)
-            )
-          )
-        ).filter(Boolean)
+    // Hydrate items
+    const rawItems = uniqueItemIds.length
+      ? (await Promise.all(uniqueItemIds.map((itemId) => itemsApi.getById(itemId).catch(() => null)))).filter(Boolean)
       : [];
+
+    // Collect customerIds that are missing name or shippingMark
+    const missingIds = new Set(
+      rawItems
+        .filter((item) => item.customerId && (!item.customerName || !item.customerShippingMark))
+        .map((item) => item.customerId)
+    );
+
+    // Batch-fetch those customers and build a lookup map
+    const customerMap = new Map<string, { name: string; shippingMark: string }>();
+    if (missingIds.size > 0) {
+      const fetched = await Promise.all(
+        [...missingIds].map((cid) => customersApi.getById(cid).catch(() => null))
+      );
+      for (const c of fetched) {
+        if (c) customerMap.set(c.id, { name: c.name, shippingMark: c.shippingMark });
+      }
+    }
+
+    // Merge customer data into every item that needs it
+    const items = rawItems.map((item) => {
+      const cust = item.customerId ? customerMap.get(item.customerId) : undefined;
+      return {
+        ...item,
+        customerName: item.customerName || cust?.name || undefined,
+        customerShippingMark: item.customerShippingMark || cust?.shippingMark || undefined,
+      };
+    });
 
     return Response.json({
       success: true,
