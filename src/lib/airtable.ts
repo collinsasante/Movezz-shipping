@@ -1057,22 +1057,9 @@ export const containersApi = {
     const targetItemStatus = containerToItemStatus[newStatus];
 
     if (targetItemStatus && itemIds.length > 0) {
-      await Promise.all(
-        itemIds.map(async (itemId) => {
-          try {
-            await itemsApi.updateStatus(
-              itemId,
-              targetItemStatus,
-              changedByEmail,
-              changedByRole,
-              `Container ${containerId} → ${newStatus}`,
-              false,
-              true // skipContainerCheck — item is already in this container
-            );
-          } catch {
-            // Failed to update item (non-fatal)
-          }
-        })
+      await batchUpdateRecords(
+        TABLES.ITEMS,
+        itemIds.map((itemId) => ({ id: itemId, fields: { Status: targetItemStatus } }))
       );
     }
 
