@@ -589,7 +589,7 @@ export const itemsApi = {
   async getById(id: string): Promise<Item> {
     const record = await getRecord(TABLES.ITEMS, id);
     const item = mapItem(record);
-    if (item.customerId && !item.customerName) {
+    if (item.customerId && (!item.customerName || !item.customerShippingMark)) {
       const customer = await customersApi.getById(item.customerId).catch(() => null);
       if (customer) {
         item.customerName = customer.name;
