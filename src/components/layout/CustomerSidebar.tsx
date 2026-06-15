@@ -79,12 +79,9 @@ export function CustomerSidebar() {
         >
           <MapPin className="h-5 w-5 shrink-0 text-amber-600" />
           <div className="flex-1 min-w-0">
-            {appUser?.customerName && (
-              <p className="text-xs font-semibold text-amber-900 truncate">{appUser.customerName}</p>
-            )}
             <p className="text-sm font-semibold">Change your address</p>
             <p className="text-xs text-amber-600 mt-0.5 truncate">
-              {shippingMark ? shippingMark : "View warehouse address"}
+              {appUser?.customerName ?? (shippingMark || "View warehouse address")}
             </p>
           </div>
           <span className="text-xs text-amber-500 shrink-0">→</span>
