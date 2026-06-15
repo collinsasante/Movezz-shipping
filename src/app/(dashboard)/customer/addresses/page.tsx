@@ -8,7 +8,7 @@ import type { Warehouse } from "@/types";
 import { Warehouse as WarehouseIcon, Copy, CheckCheck } from "lucide-react";
 import axios from "axios";
 
-const DEFAULT_WAREHOUSE = { id: "__default__", name: "Guangzhou", address: "广东省中山市民众镇三墩村三益路183号转", isActive: true, createdAt: "" };
+const DEFAULT_WAREHOUSE = { id: "__default__", name: "Guangzhou", address: "广州市花都区秀全街茶碑路8号519仓", phone: "13246840530", isActive: true, createdAt: "" };
 
 export default function CustomerAddressesPage() {
   const { appUser } = useAuth();

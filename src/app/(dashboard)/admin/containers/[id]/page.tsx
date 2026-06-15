@@ -170,6 +170,23 @@ export default function ContainerDetailPage() {
     }
   };
 
+  const syncItemStatuses = async () => {
+    if (!container) return;
+    setUpdatingStatus(true);
+    try {
+      const res = await axios.patch(`/api/containers/${id}/status`, { status: container.status });
+      success("Items synced", `All ${container.itemIds.length} items updated to "${container.status}"`);
+      load();
+    } catch (err: unknown) {
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.error ?? "Failed to sync"
+        : "Failed to sync";
+      error("Error", msg);
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   const removeItem = async (itemId: string) => {
     try {
       await axios.delete(`/api/containers/${id}/items`, { data: { itemId } });
@@ -307,6 +324,10 @@ export default function ContainerDetailPage() {
                   <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                   Update Status
                 </Button>
+                <Button className="w-full" size="sm" variant="outline" onClick={syncItemStatuses} loading={updatingStatus}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Sync All Items to Current Status
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -339,9 +360,12 @@ export default function ContainerDetailPage() {
                       key: "customerShippingMark",
                       header: "Customer",
                       render: (item) => (
-                        <code className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded">
-                          {item.customerShippingMark ?? "—"}
-                        </code>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">{item.customerName ?? item.customerShippingMark ?? "—"}</p>
+                          {item.customerShippingMark && item.customerName && (
+                            <code className="text-xs font-mono text-gray-400">{item.customerShippingMark}</code>
+                          )}
+                        </div>
                       ),
                     },
                     {

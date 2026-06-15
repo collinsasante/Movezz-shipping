@@ -181,6 +181,19 @@ export default function CustomerDashboardPage() {
           <span className="text-xs text-green-500 shrink-0">Tap to chat →</span>
         </a>
 
+        {/* Permanent address change link — always visible */}
+        <button
+          onClick={() => router.push("/customer/addresses")}
+          className="flex items-center gap-3 w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 hover:bg-amber-100 transition-colors text-left"
+        >
+          <MapPin className="h-5 w-5 shrink-0 text-amber-600" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">Kindly click here to change your address</p>
+            <p className="text-xs text-amber-600 mt-0.5">View or update your warehouse shipping address</p>
+          </div>
+          <span className="text-xs text-amber-500 shrink-0">Tap →</span>
+        </button>
+
         {/* Address setup prompt — shown to new customers who haven't selected a warehouse */}
         {showAddressBanner && (
           <div className="flex items-center gap-3 w-full px-4 py-3 bg-brand-50 border border-brand-200 rounded-xl">
