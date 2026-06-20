@@ -531,7 +531,7 @@ export default function AdminItemDetailPage() {
               {item.photos.length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {item.photos.map((photo, i) => (
-                    <div key={photo.id ?? i} className="relative aspect-square group">
+                    <div key={photo.id ?? i} className="relative aspect-square">
                       <button
                         onClick={() => setSelectedPhoto(photo.url)}
                         className="w-full h-full rounded-xl overflow-hidden border border-gray-200 hover:border-brand-300 transition-colors"
@@ -545,7 +545,7 @@ export default function AdminItemDetailPage() {
                       </button>
                       <button
                         onClick={() => handleDeletePhoto(photo.url)}
-                        className="absolute top-1 right-1 p-1 rounded-lg bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="absolute top-1 right-1 p-1 rounded-lg bg-red-600 text-white shadow-sm"
                         title="Delete photo"
                       >
                         <Trash2 className="h-3 w-3" />
