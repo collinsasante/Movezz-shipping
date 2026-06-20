@@ -544,8 +544,8 @@ export default function AdminItemDetailPage() {
                         />
                       </button>
                       <button
-                        onClick={() => handleDeletePhoto(photo.url)}
-                        className="absolute top-1 right-1 p-1 rounded-lg bg-red-600 text-white shadow-sm"
+                        onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo.url); }}
+                        className="absolute top-1 right-1 z-10 p-1 rounded-lg bg-red-600 text-white shadow-sm"
                         title="Delete photo"
                       >
                         <Trash2 className="h-3 w-3" />
