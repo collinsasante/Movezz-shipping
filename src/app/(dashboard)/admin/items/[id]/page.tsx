@@ -66,6 +66,7 @@ export default function AdminItemDetailPage() {
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeletePhoto, setConfirmDeletePhoto] = useState<string | null>(null);
   const [editModal, setEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
     description: "",
@@ -544,7 +545,7 @@ export default function AdminItemDetailPage() {
                         />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo.url); }}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeletePhoto(photo.url); }}
                         className="absolute top-1 right-1 z-10 p-1 rounded-lg bg-red-600 text-white shadow-sm"
                         title="Delete photo"
                       >
@@ -599,6 +600,30 @@ export default function AdminItemDetailPage() {
           />
         </div>
       )}
+
+      {/* Confirm delete photo */}
+      <Dialog open={!!confirmDeletePhoto} onOpenChange={() => setConfirmDeletePhoto(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete photo?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">This photo will be permanently removed from the item. This cannot be undone.</p>
+          <DialogFooter>
+            <button
+              onClick={() => setConfirmDeletePhoto(null)}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { handleDeletePhoto(confirmDeletePhoto!); setConfirmDeletePhoto(null); }}
+              className="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
+            >
+              Delete
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Status Update Modal */}
       <StatusUpdateModal
