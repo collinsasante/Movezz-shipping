@@ -46,7 +46,7 @@ export async function GET(
 
     // Hydrate items
     const rawItems = uniqueItemIds.length
-      ? (await Promise.all(uniqueItemIds.map((itemId) => itemsApi.getById(itemId).catch(() => null)))).filter(Boolean)
+      ? (await Promise.all(uniqueItemIds.map((itemId) => itemsApi.getById(itemId).catch(() => null)))).filter((item): item is NonNullable<typeof item> => item !== null)
       : [];
 
     // Collect customerIds that are missing name or shippingMark
