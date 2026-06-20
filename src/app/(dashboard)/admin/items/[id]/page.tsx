@@ -235,6 +235,18 @@ export default function AdminItemDetailPage() {
     }
   };
 
+  const handleDeletePhoto = async (photoUrl: string) => {
+    if (!item) return;
+    const remaining = item.photos.filter((p) => p.url !== photoUrl).map((p) => p.url);
+    try {
+      await axios.patch(`/api/items/${id}`, { photoUrls: remaining });
+      success("Photo deleted");
+      load();
+    } catch {
+      error("Failed to delete photo");
+    }
+  };
+
   const handleAddPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
@@ -519,18 +531,26 @@ export default function AdminItemDetailPage() {
               {item.photos.length > 0 ? (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {item.photos.map((photo, i) => (
-                    <button
-                      key={photo.id ?? i}
-                      onClick={() => setSelectedPhoto(photo.url)}
-                      className="aspect-square rounded-xl overflow-hidden border border-gray-200 hover:border-brand-300 transition-colors group"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photo.thumbnails?.large?.url ?? photo.url}
-                        alt={photo.filename ?? `Photo ${i + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                    </button>
+                    <div key={photo.id ?? i} className="relative aspect-square group">
+                      <button
+                        onClick={() => setSelectedPhoto(photo.url)}
+                        className="w-full h-full rounded-xl overflow-hidden border border-gray-200 hover:border-brand-300 transition-colors"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photo.thumbnails?.large?.url ?? photo.url}
+                          alt={photo.filename ?? `Photo ${i + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                      <button
+                        onClick={() => handleDeletePhoto(photo.url)}
+                        className="absolute top-1 right-1 p-1 rounded-lg bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        title="Delete photo"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (
