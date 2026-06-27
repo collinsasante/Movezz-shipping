@@ -72,25 +72,52 @@ export async function createKeepupSale(
   dueDateObj.setDate(dueDateObj.getDate() + 30);
   const dueDate = toKeepupDate(dueDateObj.toISOString());
 
-  const body: Record<string, unknown> = {
-    items: JSON.stringify(itemsWithIds),
-    payment_type: "bank_transfer",
-    amount_received: "0",
-    alert_customer: "no",
-    issue_date: issueDate,
-    due_date: dueDate,
-  };
-  if (params.customerName) body.customer_name = params.customerName;
-  if (params.customerEmail && params.customerEmail.includes("@")) body.customer_email = params.customerEmail;
-  // phone_number intentionally omitted — Keepup rejects Ghanaian numbers with "invalid fields"
+  // Normalize phone to digits-only international format (no + prefix)
+  let normalizedPhone: string | undefined;
+  if (params.customerPhone) {
+    const digits = params.customerPhone.replace(/\D/g, "");
+    if (digits.startsWith("233") && digits.length >= 12) {
+      normalizedPhone = digits;
+    } else if (digits.startsWith("0") && digits.length === 10) {
+      normalizedPhone = `233${digits.slice(1)}`;
+    } else if (digits.length >= 10) {
+      normalizedPhone = digits;
+    }
+  }
 
-  const res = await fetch(`${BASE}/sales/add`, {
+  const buildBody = (includePhone: boolean): Record<string, unknown> => {
+    const body: Record<string, unknown> = {
+      items: JSON.stringify(itemsWithIds),
+      payment_type: "bank_transfer",
+      amount_received: "0",
+      alert_customer: "no",
+      issue_date: issueDate,
+      due_date: dueDate,
+    };
+    if (params.customerName) body.customer_name = params.customerName;
+    if (params.customerEmail && params.customerEmail.includes("@")) body.customer_email = params.customerEmail;
+    if (includePhone && normalizedPhone) body.phone_number = normalizedPhone;
+    return body;
+  };
+
+  // Try with phone first; if Keepup rejects it, fall back to without phone
+  let res = await fetch(`${BASE}/sales/add`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildBody(true)),
   });
 
-  const data = await res.json().catch(() => ({}));
+  let data = await res.json().catch(() => ({}));
+
+  if (!res.ok && normalizedPhone) {
+    // Retry without phone — Keepup sometimes rejects certain number formats
+    res = await fetch(`${BASE}/sales/add`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(buildBody(false)),
+    });
+    data = await res.json().catch(() => ({}));
+  }
 
   if (!res.ok) {
     throw new Error(
