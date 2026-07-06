@@ -12,6 +12,7 @@ import {
   ExternalLink,
   DollarSign,
   Edit2,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -324,6 +325,10 @@ export default function AdminOrderDetailPage() {
               <span className="hidden sm:inline">{order.keepupSaleId ? "Update Invoice" : "Create Invoice"}</span>
             </Button>
           )}
+          <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)} className="border-red-200 text-red-600 hover:bg-red-50">
+            <Trash2 className="h-3.5 w-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Delete</span>
+          </Button>
         </div>
       </div>
 
@@ -661,6 +666,23 @@ export default function AdminOrderDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={savingEdit}>Cancel</Button>
             <Button onClick={handleSaveEdit} loading={savingEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Invoice Confirmation */}
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete invoice?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            This will permanently delete invoice <span className="font-mono font-semibold">{order.orderRef}</span>
+            {order.keepupSaleId ? " and cancel it in Keepup" : ""}. This cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancel</Button>
+            <Button onClick={handleDelete} loading={deleting} className="bg-red-600 hover:bg-red-700 text-white border-0">Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
