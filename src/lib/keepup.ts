@@ -72,16 +72,16 @@ export async function createKeepupSale(
   dueDateObj.setDate(dueDateObj.getDate() + 30);
   const dueDate = toKeepupDate(dueDateObj.toISOString());
 
-  // Normalize phone to digits-only international format (no + prefix)
+  // Normalize phone to E.164 format (+233XXXXXXXXX)
   let normalizedPhone: string | undefined;
   if (params.customerPhone) {
     const digits = params.customerPhone.replace(/\D/g, "");
     if (digits.startsWith("233") && digits.length >= 12) {
-      normalizedPhone = digits;
+      normalizedPhone = `+${digits}`;
     } else if (digits.startsWith("0") && digits.length === 10) {
-      normalizedPhone = `233${digits.slice(1)}`;
+      normalizedPhone = `+233${digits.slice(1)}`;
     } else if (digits.length >= 10) {
-      normalizedPhone = digits;
+      normalizedPhone = `+${digits}`;
     }
   }
 
@@ -227,7 +227,14 @@ export async function updateKeepupSale(
 
   if (params.customerName) body.customer_name = params.customerName;
   if (params.customerEmail) body.customer_email = params.customerEmail;
-  if (params.customerPhone) body.phone_number = params.customerPhone;
+  if (params.customerPhone) {
+    const digits = params.customerPhone.replace(/\D/g, "");
+    let phone: string | undefined;
+    if (digits.startsWith("233") && digits.length >= 12) phone = `+${digits}`;
+    else if (digits.startsWith("0") && digits.length === 10) phone = `+233${digits.slice(1)}`;
+    else if (digits.length >= 10) phone = `+${digits}`;
+    if (phone) body.phone_number = phone;
+  }
   if (params.invoiceDate) {
     body.issue_date = toKeepupDate(params.invoiceDate);
     const dueDateObj = new Date(params.invoiceDate);

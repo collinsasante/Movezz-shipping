@@ -27,12 +27,6 @@ export async function POST(
     const discountGhs = Math.round(discountUsd * usdToGhs * 100) / 100;
     const netAmountGhs = Math.max(0, Math.round((invoiceAmountGhs - discountGhs) * 100) / 100);
 
-    // If invoice already exists, cancel it first then recreate (update flow)
-    if (order.keepupSaleId) {
-      await cancelKeepupSale(order.keepupSaleId).catch(() => {});
-      await ordersApi.clearKeepupIds(order.id);
-    }
-
     if (order.status === "Paid") {
       return Response.json(
         { success: false, error: "Cannot create invoice for a paid order" },
@@ -125,6 +119,8 @@ export async function POST(
       });
     }
 
+    const oldSaleId = order.keepupSaleId ?? null;
+
     const keepupResult = await createKeepupSale({
       customerName: customer?.name,
       customerEmail: customer?.email,
@@ -133,7 +129,11 @@ export async function POST(
       items: lineItems,
     });
 
+    // Store new IDs first, then cancel old — so a failed cancel never leaves the order invoiceless
     await ordersApi.storeKeepupIds(order.id, keepupResult.saleId, keepupResult.link);
+    if (oldSaleId) {
+      await cancelKeepupSale(oldSaleId).catch(() => {});
+    }
 
     return Response.json({
       success: true,
