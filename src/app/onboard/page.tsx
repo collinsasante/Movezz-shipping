@@ -18,7 +18,6 @@ export default function OnboardPage() {
   const [form, setForm] = useState({
     name: "",
     email: "",
-    existingMark: "",
     location: "",
     notes: "",
   });
@@ -175,21 +174,6 @@ export default function OnboardPage() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
                 className="w-full h-11 px-4 rounded-lg bg-gray-100 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0"
-              />
-            </div>
-
-            {/* Existing Shipping Mark */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Existing Shipping Mark
-                <span className="ml-1.5 text-xs font-normal text-gray-400">(if you have one)</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. MOVEZZ-CM1651"
-                value={form.existingMark}
-                onChange={(e) => setForm({ ...form, existingMark: e.target.value.toUpperCase() })}
-                className="w-full h-11 px-4 rounded-lg bg-gray-100 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 border-0 font-mono"
               />
             </div>
 

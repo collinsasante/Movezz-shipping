@@ -109,15 +109,9 @@ export async function POST(
       });
     }
 
-    // Add discount as a visible negative line item in Keepup when applicable
-    if (discountGhs > 0) {
-      lineItems.push({
-        item_name: "Discount",
-        quantity: 1,
-        price: -discountGhs,
-        item_type: "product",
-      });
-    }
+    // Discount is already baked into freightTotal (= netAmountGhs), so line items
+    // naturally sum to the after-discount amount — no separate discount line needed.
+    // Keepup does not support negative-price line items.
 
     const oldSaleId = order.keepupSaleId ?? null;
 
