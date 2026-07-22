@@ -85,9 +85,9 @@ export async function createKeepupSale(
     }
   }
 
-  const buildBody = (includePhone: boolean): Record<string, unknown> => {
+  const buildBody = (includePhone: boolean, stringifyItems: boolean): Record<string, unknown> => {
     const body: Record<string, unknown> = {
-      items: JSON.stringify(itemsWithIds),
+      items: stringifyItems ? JSON.stringify(itemsWithIds) : itemsWithIds,
       payment_type: "bank_transfer",
       amount_received: "0",
       alert_customer: "no",
@@ -100,35 +100,57 @@ export async function createKeepupSale(
     return body;
   };
 
-  // Try with phone first; if Keepup rejects it, fall back to without phone
-  let res = await fetch(`${BASE}/sales/add`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(buildBody(true)),
-  });
-
-  let data = await res.json().catch(() => ({}));
-
-  if (!res.ok && normalizedPhone) {
-    // Retry without phone — Keepup sometimes rejects certain number formats
-    res = await fetch(`${BASE}/sales/add`, {
+  const attempt = async (includePhone: boolean, stringifyItems: boolean) =>
+    fetch(`${BASE}/sales/add`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify(buildBody(false)),
+      body: JSON.stringify(buildBody(includePhone, stringifyItems)),
     });
-    data = await res.json().catch(() => ({}));
+
+  // Try array items with phone → array without phone → stringified with phone → stringified without phone
+  const attempts: [boolean, boolean][] = [
+    [true, false],
+    [false, false],
+    [true, true],
+    [false, true],
+  ];
+
+  let res: Response | null = null;
+  let data: Record<string, unknown> = {};
+
+  for (const [includePhone, stringifyItems] of attempts) {
+    if (!includePhone && !normalizedPhone) continue; // skip "no phone" when there's no phone anyway (dedup)
+    res = await attempt(includePhone, stringifyItems);
+    data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    if (res.ok) break;
+    // If the error is unrelated to phone/items format, stop retrying
+    const errMsg = String((data as { error?: string }).error ?? "");
+    if (!errMsg.toLowerCase().includes("invalid") && !errMsg.toLowerCase().includes("field")) break;
+  }
+  // Ensure we ran at least one attempt without a phone when there's no phone
+  if (!res) {
+    res = await attempt(false, false);
+    data = await res.json().catch(() => ({})) as Record<string, unknown>;
   }
 
-  if (!res.ok) {
-    throw new Error(
-      (data as { error?: string }).error ?? `Keepup API error ${res.status}`
-    );
+  if (!res || !res.ok) {
+    const errMsg = (data as { error?: string; message?: string }).error
+      ?? (data as { error?: string; message?: string }).message
+      ?? `Keepup API error ${res?.status ?? "unknown"}`;
+    throw new Error(errMsg);
   }
 
-  const d = (data as { data?: { sale_id?: number | string; share_link?: string; link?: string }; sale_id?: number | string; share_link?: string; link?: string }).data ?? data;
+  const d = ((data as { data?: Record<string, unknown> }).data ?? data) as Record<string, unknown>;
+  const saleId = String(d.sale_id ?? "");
+  if (!saleId) {
+    const errMsg = (data as { error?: string; message?: string }).error
+      ?? (data as { error?: string; message?: string }).message
+      ?? "Keepup did not return a sale ID — invoice may not have been created";
+    throw new Error(errMsg);
+  }
   return {
-    saleId: String(d.sale_id ?? ""),
-    link: d.share_link ?? d.link ?? undefined,
+    saleId,
+    link: (d.share_link ?? d.link) as string | undefined,
   };
 }
 
