@@ -90,7 +90,7 @@ export async function createKeepupSale(
       items: stringifyItems ? JSON.stringify(itemsWithIds) : itemsWithIds,
       payment_type: "bank_transfer",
       amount_received: "0",
-      alert_customer: "no",
+      alert_customer: "yes",
       issue_date: issueDate,
       due_date: dueDate,
     };
@@ -219,7 +219,7 @@ export async function recordKeepupPayment(
       amount_paid: String(amount),
       payment_type: "bank_transfer",
       date: toKeepupDate(),
-      alert_customer: "no",
+      alert_customer: "yes",
     }),
   });
 
