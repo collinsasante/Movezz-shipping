@@ -85,9 +85,9 @@ export async function createKeepupSale(
     }
   }
 
-  const buildBody = (includePhone: boolean, stringifyItems: boolean): Record<string, unknown> => {
+  const buildBody = (includePhone: boolean): Record<string, unknown> => {
     const body: Record<string, unknown> = {
-      items: stringifyItems ? JSON.stringify(itemsWithIds) : itemsWithIds,
+      items: JSON.stringify(itemsWithIds),
       payment_type: "bank_transfer",
       amount_received: "0",
       alert_customer: "yes",
@@ -100,43 +100,27 @@ export async function createKeepupSale(
     return body;
   };
 
-  const attempt = async (includePhone: boolean, stringifyItems: boolean) =>
-    fetch(`${BASE}/sales/add`, {
+  // Try with phone first; if rejected, retry without phone
+  let res = await fetch(`${BASE}/sales/add`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(buildBody(true)),
+  });
+  let data = await res.json().catch(() => ({})) as Record<string, unknown>;
+
+  if (!res.ok && normalizedPhone) {
+    res = await fetch(`${BASE}/sales/add`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify(buildBody(includePhone, stringifyItems)),
+      body: JSON.stringify(buildBody(false)),
     });
-
-  // Try array items with phone → array without phone → stringified with phone → stringified without phone
-  const attempts: [boolean, boolean][] = [
-    [true, false],
-    [false, false],
-    [true, true],
-    [false, true],
-  ];
-
-  let res: Response | null = null;
-  let data: Record<string, unknown> = {};
-
-  for (const [includePhone, stringifyItems] of attempts) {
-    if (!includePhone && !normalizedPhone) continue; // skip "no phone" when there's no phone anyway (dedup)
-    res = await attempt(includePhone, stringifyItems);
-    data = await res.json().catch(() => ({})) as Record<string, unknown>;
-    if (res.ok) break;
-    // If the error is unrelated to phone/items format, stop retrying
-    const errMsg = String((data as { error?: string }).error ?? "");
-    if (!errMsg.toLowerCase().includes("invalid") && !errMsg.toLowerCase().includes("field")) break;
-  }
-  // Ensure we ran at least one attempt without a phone when there's no phone
-  if (!res) {
-    res = await attempt(false, false);
     data = await res.json().catch(() => ({})) as Record<string, unknown>;
   }
 
-  if (!res || !res.ok) {
+  if (!res.ok) {
     const errMsg = (data as { error?: string; message?: string }).error
       ?? (data as { error?: string; message?: string }).message
-      ?? `Keepup API error ${res?.status ?? "unknown"}`;
+      ?? `Keepup API error ${res.status}`;
     throw new Error(errMsg);
   }
 
