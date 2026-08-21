@@ -120,6 +120,11 @@ export interface Item {
   specialShippingRate?: number;
   isSpecialItem?: boolean;
   specialRateName?: string;
+  cartonNumber?: string;
+  cartonLength?: number;
+  cartonWidth?: number;
+  cartonHeight?: number;
+  cartonWeight?: number;
   notes?: string;
   createdAt: string;
   createdBy?: string;
@@ -145,6 +150,11 @@ export interface CreateItemInput {
   specialShippingRate?: number;
   isSpecialItem?: boolean;
   specialRateName?: string;
+  cartonNumber?: string;
+  cartonLength?: number;
+  cartonWidth?: number;
+  cartonHeight?: number;
+  cartonWeight?: number;
   notes?: string;
 }
 
@@ -171,6 +181,11 @@ export interface UpdateItemInput {
   specialRateName?: string;
   status?: string;
   dateReceived?: string;
+  cartonNumber?: string;
+  cartonLength?: number;
+  cartonWidth?: number;
+  cartonHeight?: number;
+  cartonWeight?: number;
 }
 
 // ============================================================

@@ -5,14 +5,17 @@ import { useRouter, useParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { groupItemsForBilling, type BillingGroup } from "@/lib/cbm";
 import type { Order, Item } from "@/types";
 import {
   ArrowLeft,
   Package,
+  Boxes,
   ExternalLink,
   DollarSign,
   Edit2,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   Dialog,
@@ -32,13 +35,6 @@ interface OrderDetail extends Order {
   keepupTotalAmount?: number | null;
   keepupAmountPaid?: number | null;
   keepupBalanceDue?: number | null;
-}
-
-function getCbm(item: Item): number {
-  if (!item.length || !item.width || !item.height) return 0;
-  const factor = item.dimensionUnit === "inches" ? 16.387064 : 1;
-  const qty = item.quantity ?? 1;
-  return (item.length * item.width * item.height * factor * qty) / 1_000_000;
 }
 
 export default function AdminOrderDetailPage() {
@@ -94,6 +90,20 @@ export default function AdminOrderDetailPage() {
   const [discountInput, setDiscountInput] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
+  // Carton assignment / edit modal
+  const [cartonDialogOpen, setCartonDialogOpen] = useState(false);
+  const [cartonTargetItemId, setCartonTargetItemId] = useState<string | null>(null);
+  const [cartonForm, setCartonForm] = useState({
+    cartonNumber: "",
+    length: "",
+    width: "",
+    height: "",
+    weight: "",
+    dimensionUnit: "cm" as "cm" | "inches",
+  });
+  const [savingCarton, setSavingCarton] = useState(false);
+  const [removingFromCarton, setRemovingFromCarton] = useState<string | null>(null);
+
   const openEdit = () => {
     if (!order) return;
     setEditForm({
@@ -139,6 +149,62 @@ export default function AdminOrderDetailPage() {
     }
   };
 
+  const openCartonDialog = (itemId: string, group?: BillingGroup) => {
+    setCartonTargetItemId(itemId);
+    if (group?.isCarton) {
+      const first = group.items[0];
+      setCartonForm({
+        cartonNumber: group.cartonNumber ?? "",
+        length: first.cartonLength != null ? String(first.cartonLength) : "",
+        width: first.cartonWidth != null ? String(first.cartonWidth) : "",
+        height: first.cartonHeight != null ? String(first.cartonHeight) : "",
+        weight: first.cartonWeight != null ? String(first.cartonWeight) : "",
+        dimensionUnit: first.dimensionUnit ?? "cm",
+      });
+    } else {
+      setCartonForm({ cartonNumber: "", length: "", width: "", height: "", weight: "", dimensionUnit: "cm" });
+    }
+    setCartonDialogOpen(true);
+  };
+
+  const handleSaveCarton = async () => {
+    if (!cartonTargetItemId || !cartonForm.cartonNumber.trim()) {
+      error("Carton number is required");
+      return;
+    }
+    setSavingCarton(true);
+    try {
+      await axios.patch(`/api/items/${cartonTargetItemId}`, {
+        cartonNumber: cartonForm.cartonNumber.trim(),
+        cartonLength: parseFloat(cartonForm.length) || undefined,
+        cartonWidth: parseFloat(cartonForm.width) || undefined,
+        cartonHeight: parseFloat(cartonForm.height) || undefined,
+        cartonWeight: cartonForm.weight ? parseFloat(cartonForm.weight) || undefined : undefined,
+        dimensionUnit: cartonForm.dimensionUnit,
+      });
+      success("Carton updated — dimensions apply to every item sharing this carton number");
+      setCartonDialogOpen(false);
+      load();
+    } catch {
+      error("Failed to update carton");
+    } finally {
+      setSavingCarton(false);
+    }
+  };
+
+  const handleRemoveFromCarton = async (itemId: string) => {
+    setRemovingFromCarton(itemId);
+    try {
+      await axios.patch(`/api/items/${itemId}`, { cartonNumber: "" });
+      success("Removed from carton");
+      load();
+    } catch {
+      error("Failed to remove item from carton");
+    } finally {
+      setRemovingFromCarton(null);
+    }
+  };
+
   const load = useCallback(async () => {
     try {
       const res = await axios.get(`/api/orders/${id}`);
@@ -174,21 +240,33 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     setCreatingInvoice(true);
     try {
-      // Split invoice amount proportionally by CBM (or equally if no dimensions)
+      // Split invoice amount proportionally by CBM (or equally if no dimensions) —
+      // items sharing a carton number price together as one consolidated group.
       const items = order.items ?? [];
-      const cbms = items.map((item) => getCbm(item));
+      const groups = groupItemsForBilling(items);
+      const cbms = groups.map((g) => g.cbm);
       const totalCbmForInvoice = cbms.reduce((s, c) => s + c, 0);
       const priceMap: Record<string, number> = {};
       let running = 0;
-      items.forEach((item, i) => {
-        const proportion = totalCbmForInvoice > 0 ? cbms[i] / totalCbmForInvoice : 1 / items.length;
-        if (i < items.length - 1) {
-          const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
-          priceMap[item.id] = p;
-          running += p;
-        } else {
-          priceMap[item.id] = Math.round((order.invoiceAmount - running) * 100) / 100;
-        }
+      groups.forEach((group, i) => {
+        const proportion = totalCbmForInvoice > 0 ? cbms[i] / totalCbmForInvoice : 1 / groups.length;
+        const groupPrice =
+          i < groups.length - 1
+            ? Math.round(order.invoiceAmount * proportion * 100) / 100
+            : Math.round((order.invoiceAmount - running) * 100) / 100;
+        if (i < groups.length - 1) running += groupPrice;
+        // Split the group's price evenly across its items — the invoice route re-sums
+        // per group, so this intra-group split only needs to add back up to groupPrice.
+        let groupRunning = 0;
+        group.items.forEach((item, j) => {
+          if (j < group.items.length - 1) {
+            const p = Math.round((groupPrice / group.items.length) * 100) / 100;
+            priceMap[item.id] = p;
+            groupRunning += p;
+          } else {
+            priceMap[item.id] = Math.round((groupPrice - groupRunning) * 100) / 100;
+          }
+        });
       });
 
       const itemPriceMap = Object.keys(priceMap).length > 0 ? priceMap : undefined;
@@ -276,24 +354,26 @@ export default function AdminOrderDetailPage() {
     );
   }
 
-  const totalCbm = order.items?.reduce((sum, item) => sum + getCbm(item), 0) ?? 0;
+  // Items sharing a carton number are consolidated into one billing group,
+  // priced by the carton's own dimensions instead of each item's individually.
+  const billingGroups = groupItemsForBilling(order.items ?? []);
+  const totalCbm = billingGroups.reduce((sum, g) => sum + g.cbm, 0);
 
-  // Per-item prices: proportional split of invoice total by CBM
-  const itemPrices = (() => {
-    const items = order.items ?? [];
-    if (items.length === 0) return new Map<string, number>();
-    const cbms = items.map((item) => getCbm(item));
+  // Per-group prices: proportional split of invoice total by CBM
+  const groupPrices = (() => {
+    if (billingGroups.length === 0) return new Map<string, number>();
+    const cbms = billingGroups.map((g) => g.cbm);
     const total = cbms.reduce((s, c) => s + c, 0);
     const prices = new Map<string, number>();
     let running = 0;
-    items.forEach((item, i) => {
-      const proportion = total > 0 ? cbms[i] / total : 1 / items.length;
-      if (i < items.length - 1) {
+    billingGroups.forEach((group, i) => {
+      const proportion = total > 0 ? cbms[i] / total : 1 / billingGroups.length;
+      if (i < billingGroups.length - 1) {
         const p = Math.round(order.invoiceAmount * proportion * 100) / 100;
-        prices.set(item.id, p);
+        prices.set(group.key, p);
         running += p;
       } else {
-        prices.set(item.id, Math.round((order.invoiceAmount - running) * 100) / 100);
+        prices.set(group.key, Math.round((order.invoiceAmount - running) * 100) / 100);
       }
     });
     return prices;
@@ -385,39 +465,100 @@ export default function AdminOrderDetailPage() {
                 )}
               </div>
 
-              {order.items && order.items.length > 0 ? (
-                <div className="divide-y divide-gray-50">
-                  {order.items.map((item) => {
-                    const cbm = getCbm(item);
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => router.push(`/admin/items/${item.id}`)}
-                        className="w-full flex items-start gap-3 py-3 hover:bg-gray-50 transition-colors text-left -mx-1 px-1 rounded-lg"
-                      >
-                        <Package className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{item.description || item.itemRef}</p>
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                            <span className="text-xs text-gray-500">{item.itemRef}</span>
-                            {item.trackingNumber && (
-                              <span className="text-xs text-gray-500">TRK: {item.trackingNumber}</span>
+              {billingGroups.length > 0 ? (
+                <div className="space-y-3">
+                  {billingGroups.map((group) => {
+                    const groupPrice = groupPrices.get(group.key);
+                    if (!group.isCarton) {
+                      const item = group.items[0];
+                      return (
+                        <div key={group.key} className="flex items-start gap-3 py-1 hover:bg-gray-50 transition-colors -mx-1 px-1 rounded-lg">
+                          <button
+                            onClick={() => router.push(`/admin/items/${item.id}`)}
+                            className="flex-1 min-w-0 flex items-start gap-3 text-left"
+                          >
+                            <Package className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{item.description || item.itemRef}</p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                                <span className="text-xs text-gray-500">{item.itemRef}</span>
+                                {item.trackingNumber && (
+                                  <span className="text-xs text-gray-500">TRK: {item.trackingNumber}</span>
+                                )}
+                                {group.cbm > 0 && (
+                                  <span className="text-xs font-medium text-brand-600">{group.cbm.toFixed(4)} m³</span>
+                                )}
+                                {item.weight && !group.cbm && (
+                                  <span className="text-xs text-gray-500">{item.weight} kg</span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <StatusBadge status={item.status} />
+                            {groupPrice != null && (
+                              <span className="text-xs font-semibold text-brand-700">{formatCurrency(groupPrice * usdToGhs, "GHS")}</span>
                             )}
-                            {cbm > 0 && (
-                              <span className="text-xs font-medium text-brand-600">{cbm.toFixed(4)} m³</span>
-                            )}
-                            {item.weight && !cbm && (
-                              <span className="text-xs text-gray-500">{item.weight} kg</span>
-                            )}
+                            <button
+                              onClick={() => openCartonDialog(item.id)}
+                              className="text-[11px] text-gray-400 hover:text-brand-600 underline"
+                            >
+                              Assign to carton
+                            </button>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <StatusBadge status={item.status} />
-                          {itemPrices.get(item.id) != null && (
-                            <span className="text-xs font-semibold text-brand-700">{formatCurrency(itemPrices.get(item.id)! * usdToGhs, "GHS")}</span>
+                      );
+                    }
+
+                    return (
+                      <div key={group.key} className="rounded-xl border border-brand-100 bg-brand-50/40 overflow-hidden">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-brand-50">
+                          <Boxes className="h-4 w-4 text-brand-600 shrink-0" />
+                          <span className="text-sm font-semibold text-brand-800">Carton {group.cartonNumber}</span>
+                          <span className="text-xs text-brand-500">({group.items.length} pkgs)</span>
+                          {group.cbm > 0 && (
+                            <span className="text-xs font-medium text-brand-600">{group.cbm.toFixed(4)} m³</span>
                           )}
+                          <div className="ml-auto flex items-center gap-2">
+                            {groupPrice != null && (
+                              <span className="text-xs font-semibold text-brand-700">{formatCurrency(groupPrice * usdToGhs, "GHS")}</span>
+                            )}
+                            <button
+                              onClick={() => openCartonDialog(group.items[0].id, group)}
+                              className="text-[11px] text-brand-600 hover:underline font-medium"
+                            >
+                              Edit dimensions
+                            </button>
+                          </div>
                         </div>
-                      </button>
+                        <div className="divide-y divide-white">
+                          {group.items.map((item) => (
+                            <div key={item.id} className="flex items-center gap-3 py-2 px-3 bg-white">
+                              <button
+                                onClick={() => router.push(`/admin/items/${item.id}`)}
+                                className="flex-1 min-w-0 text-left"
+                              >
+                                <p className="text-sm text-gray-900 truncate">{item.description || item.itemRef}</p>
+                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                                  <span className="text-xs text-gray-500">{item.itemRef}</span>
+                                  {item.trackingNumber && (
+                                    <span className="text-xs text-gray-500">TRK: {item.trackingNumber}</span>
+                                  )}
+                                </div>
+                              </button>
+                              <StatusBadge status={item.status} />
+                              <button
+                                onClick={() => handleRemoveFromCarton(item.id)}
+                                disabled={removingFromCarton === item.id}
+                                title="Remove from carton"
+                                className="text-gray-300 hover:text-red-500 shrink-0"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -666,6 +807,92 @@ export default function AdminOrderDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditModalOpen(false)} disabled={savingEdit}>Cancel</Button>
             <Button onClick={handleSaveEdit} loading={savingEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign / Edit Carton Modal */}
+      <Dialog open={cartonDialogOpen} onOpenChange={(o) => !o && setCartonDialogOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Carton Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Input
+                label="Carton Number"
+                placeholder="e.g. CTN-001"
+                list="existing-carton-numbers"
+                value={cartonForm.cartonNumber}
+                onChange={(e) => setCartonForm({ ...cartonForm, cartonNumber: e.target.value })}
+              />
+              <datalist id="existing-carton-numbers">
+                {billingGroups.filter((g) => g.isCarton).map((g) => (
+                  <option key={g.key} value={g.cartonNumber} />
+                ))}
+              </datalist>
+              <p className="text-xs text-gray-400 mt-1">
+                Items sharing the same carton number are consolidated for CBM and shipping-fee calculation.
+              </p>
+            </div>
+            <Select
+              label="Unit"
+              value={cartonForm.dimensionUnit}
+              onChange={(e) => setCartonForm({ ...cartonForm, dimensionUnit: e.target.value as "cm" | "inches" })}
+              options={[
+                { value: "cm", label: "cm" },
+                { value: "inches", label: "inches" },
+              ]}
+            />
+            <div className="grid grid-cols-3 gap-2">
+              <Input
+                label="Length"
+                type="number"
+                min="0"
+                step="0.01"
+                value={cartonForm.length}
+                onChange={(e) => setCartonForm({ ...cartonForm, length: e.target.value })}
+              />
+              <Input
+                label="Width"
+                type="number"
+                min="0"
+                step="0.01"
+                value={cartonForm.width}
+                onChange={(e) => setCartonForm({ ...cartonForm, width: e.target.value })}
+              />
+              <Input
+                label="Height"
+                type="number"
+                min="0"
+                step="0.01"
+                value={cartonForm.height}
+                onChange={(e) => setCartonForm({ ...cartonForm, height: e.target.value })}
+              />
+            </div>
+            <Input
+              label="Carton Weight (kg, optional)"
+              type="number"
+              min="0"
+              step="0.01"
+              value={cartonForm.weight}
+              onChange={(e) => setCartonForm({ ...cartonForm, weight: e.target.value })}
+            />
+            {(() => {
+              const l = parseFloat(cartonForm.length), w = parseFloat(cartonForm.width), h = parseFloat(cartonForm.height);
+              if (!l || !w || !h) return null;
+              const factor = cartonForm.dimensionUnit === "inches" ? 16.387064 : 1;
+              const cbm = (l * w * h * factor) / 1_000_000;
+              return (
+                <p className="text-xs text-brand-700 bg-brand-50 rounded-lg px-3 py-2">
+                  Carton CBM: <span className="font-semibold">{cbm.toFixed(4)} m³</span>
+                </p>
+              );
+            })()}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCartonDialogOpen(false)} disabled={savingCarton}>Cancel</Button>
+            <Button onClick={handleSaveCarton} loading={savingCarton}>Save Carton</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -44,6 +44,11 @@ Create these tables **exactly** in your Airtable base. Field names are case-sens
 | Order                | Link to Orders    | Linked record (optional)                      |
 | OrderRef             | Lookup            | Lookup: Order → OrderRef                      |
 | IsMissing            | Checkbox          | Flagged during sorting                        |
+| CartonNumber         | Single line text  | Groups items in the same order into one consolidated carton |
+| CartonLength         | Number            | Carton's own length (unit = DimensionUnit)    |
+| CartonWidth          | Number            | Carton's own width (unit = DimensionUnit)     |
+| CartonHeight         | Number            | Carton's own height (unit = DimensionUnit)    |
+| CartonWeight         | Number            | Optional total weight of the consolidated carton, kg |
 | Notes                | Long text         |                                               |
 | CreatedAt            | Date/Time         | ISO 8601                                      |
 | CreatedBy            | Single line text  | Email of staff who received it                |

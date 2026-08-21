@@ -272,6 +272,11 @@ function mapItem(record: AirtableRecord<FieldSet>): Item {
     specialShippingRate: (f["SpecialShippingRate"] as number) ?? undefined,
     isSpecialItem: (f["IsSpecialItem"] as boolean) ?? undefined,
     specialRateName: (f["specialRateName"] as string) ?? undefined,
+    cartonNumber: (f["CartonNumber"] as string) || undefined,
+    cartonLength: (f["CartonLength"] as number) ?? undefined,
+    cartonWidth: (f["CartonWidth"] as number) ?? undefined,
+    cartonHeight: (f["CartonHeight"] as number) ?? undefined,
+    cartonWeight: (f["CartonWeight"] as number) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     createdAt: (f["CreatedAt"] as string) ?? toISOString(),
     createdBy: (f["CreatedBy"] as string) ?? undefined,
@@ -525,6 +530,23 @@ export const customersApi = {
   },
 };
 
+// Propagates one item's carton dimensions to every other item sharing the
+// same Order + CartonNumber, so all items in a consolidated carton stay
+// consistent no matter which one staff last edited.
+async function syncCartonSiblings(item: Item): Promise<void> {
+  if (!item.cartonNumber || !item.orderId) return;
+  const siblings = await itemsApi.list({ orderId: item.orderId });
+  const toSync = siblings.filter(
+    (s) => s.id !== item.id && s.cartonNumber === item.cartonNumber
+  );
+  const fields: FieldSet = { DimensionUnit: item.dimensionUnit };
+  if (item.cartonLength !== undefined) fields["CartonLength"] = item.cartonLength;
+  if (item.cartonWidth !== undefined) fields["CartonWidth"] = item.cartonWidth;
+  if (item.cartonHeight !== undefined) fields["CartonHeight"] = item.cartonHeight;
+  if (item.cartonWeight !== undefined) fields["CartonWeight"] = item.cartonWeight;
+  await Promise.all(toSync.map((s) => updateRecord(TABLES.ITEMS, s.id, fields)));
+}
+
 // ============================================================
 // ITEMS API
 // ============================================================
@@ -648,6 +670,11 @@ export const itemsApi = {
     if (input.specialShippingRate !== undefined) pricingFields["SpecialShippingRate"] = input.specialShippingRate;
     if (input.isSpecialItem !== undefined) pricingFields["IsSpecialItem"] = input.isSpecialItem;
     if (input.specialRateName !== undefined) pricingFields["specialRateName"] = input.specialRateName;
+    if (input.cartonNumber !== undefined) pricingFields["CartonNumber"] = input.cartonNumber;
+    if (input.cartonLength !== undefined) pricingFields["CartonLength"] = input.cartonLength;
+    if (input.cartonWidth !== undefined) pricingFields["CartonWidth"] = input.cartonWidth;
+    if (input.cartonHeight !== undefined) pricingFields["CartonHeight"] = input.cartonHeight;
+    if (input.cartonWeight !== undefined) pricingFields["CartonWeight"] = input.cartonWeight;
     if (Object.keys(pricingFields).length > 0) {
       await updateRecord(TABLES.ITEMS, record.id, pricingFields).catch(() => {});
     }
@@ -682,13 +709,26 @@ export const itemsApi = {
     if (input.dimensionUnit !== undefined) fields["DimensionUnit"] = input.dimensionUnit;
     if (input.specialRateName !== undefined) fields["specialRateName"] = input.specialRateName;
     if (input.dateReceived !== undefined) fields["DateReceived"] = input.dateReceived;
+    if (input.cartonNumber !== undefined) fields["CartonNumber"] = input.cartonNumber;
+    if (input.cartonLength !== undefined) fields["CartonLength"] = input.cartonLength;
+    if (input.cartonWidth !== undefined) fields["CartonWidth"] = input.cartonWidth;
+    if (input.cartonHeight !== undefined) fields["CartonHeight"] = input.cartonHeight;
+    if (input.cartonWeight !== undefined) fields["CartonWeight"] = input.cartonWeight;
     if (input.photoUrls !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
     }
 
     const record = await updateRecord(TABLES.ITEMS, id, fields);
-    return mapItem(record);
+    const item = mapItem(record);
+
+    const wroteCartonDims =
+      input.cartonLength !== undefined || input.cartonWidth !== undefined || input.cartonHeight !== undefined || input.cartonWeight !== undefined;
+    if (wroteCartonDims && item.cartonNumber && item.orderId) {
+      await syncCartonSiblings(item).catch(() => {});
+    }
+
+    return item;
   },
 
   async updateStatus(

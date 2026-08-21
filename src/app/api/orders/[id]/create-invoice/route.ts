@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { ordersApi, customersApi, itemsApi, settingsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 import { createKeepupSale, cancelKeepupSale } from "@/lib/keepup";
+import { groupItemsForBilling } from "@/lib/cbm";
 
 export async function POST(
   request: NextRequest,
@@ -39,14 +40,7 @@ export async function POST(
       Promise.all(order.itemIds.map((itemId) => itemsApi.getById(itemId).catch(() => null))),
     ]);
 
-    const validItems = items.filter(Boolean);
-
-    function getItemCbm(item: NonNullable<typeof validItems[0]>): number {
-      if (!item!.length || !item!.width || !item!.height) return 0;
-      const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
-      const qty = item!.quantity ?? 1;
-      return (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
-    }
+    const validItems = items.filter((item): item is NonNullable<typeof item> => item != null);
 
     let lineItems: { item_name: string; quantity: number; price: number; item_type: string }[];
 
@@ -61,49 +55,60 @@ export async function POST(
         item_type: "product",
       }];
     } else {
-      // Use client-provided per-item prices if available (from calcItemPrice with customer tier rates)
-      const hasClientPrices = itemPriceMap && validItems.every((item) => itemPriceMap[item!.id] != null);
+      // Items sharing a carton number are consolidated into one billing group,
+      // priced by the carton's own dimensions instead of each item's individually.
+      const groups = groupItemsForBilling(validItems);
 
-      let prices: number[];
+      // Use client-provided per-item prices if available (from calcItemPrice with customer tier rates),
+      // aggregated up to a per-group total so consolidated cartons still get one line item.
+      const hasClientPrices = itemPriceMap && validItems.every((item) => itemPriceMap[item.id] != null);
+
+      let groupPrices: number[];
       if (hasClientPrices) {
-        // Use client prices but adjust last item so sum matches net total (avoids rounding drift)
-        const rawPrices = validItems.map((item) => itemPriceMap![item!.id]);
-        const rawSum = rawPrices.reduce((s, p) => s + p, 0);
-        prices = rawPrices.map((p, i) =>
-          i < rawPrices.length - 1
-            ? Math.round(freightTotal * (p / rawSum) * 100) / 100
+        // Use client prices but adjust last group so sum matches net total (avoids rounding drift)
+        const rawSums = groups.map((g) => g.items.reduce((s, item) => s + itemPriceMap![item.id], 0));
+        const rawTotal = rawSums.reduce((s, p) => s + p, 0);
+        groupPrices = rawSums.map((p, i) =>
+          i < rawSums.length - 1
+            ? Math.round(freightTotal * (p / rawTotal) * 100) / 100
             : 0
         );
-        let running = prices.reduce((s, p) => s + p, 0);
-        prices[prices.length - 1] = Math.round((freightTotal - running) * 100) / 100;
+        let running = groupPrices.reduce((s, p) => s + p, 0);
+        groupPrices[groupPrices.length - 1] = Math.round((freightTotal - running) * 100) / 100;
       } else {
         // Fallback: split proportionally by CBM (or equally if no CBM)
-        const cbms = validItems.map((item) => getItemCbm(item!));
+        const cbms = groups.map((g) => g.cbm);
         const totalCbm = cbms.reduce((s, c) => s + c, 0);
         const useCbm = totalCbm > 0;
-        prices = [];
+        groupPrices = [];
         let runningSum = 0;
-        for (let i = 0; i < validItems.length; i++) {
-          if (i < validItems.length - 1) {
-            const proportion = useCbm ? cbms[i] / totalCbm : 1 / validItems.length;
+        for (let i = 0; i < groups.length; i++) {
+          if (i < groups.length - 1) {
+            const proportion = useCbm ? cbms[i] / totalCbm : 1 / groups.length;
             const p = Math.round(freightTotal * proportion * 100) / 100;
-            prices.push(p);
+            groupPrices.push(p);
             runningSum += p;
           } else {
-            prices.push(Math.round((freightTotal - runningSum) * 100) / 100);
+            groupPrices.push(Math.round((freightTotal - runningSum) * 100) / 100);
           }
         }
       }
 
-      lineItems = validItems.map((item, i) => {
-        const trk = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
-        const cbm = getItemCbm(item!);
-        const cbmStr = cbm > 0 ? ` [CBM: ${cbm.toFixed(4)}m3]` : "";
-        const name = (item!.description || item!.itemRef) + trk + cbmStr;
+      lineItems = groups.map((group, i) => {
+        const cbmStr = group.cbm > 0 ? ` [CBM: ${group.cbm.toFixed(4)}m3]` : "";
+        let name: string;
+        if (group.isCarton) {
+          const refs = group.items.map((it) => it.trackingNumber || it.itemRef).join(", ");
+          name = `Carton ${group.cartonNumber} (${group.items.length} pkgs: ${refs})${cbmStr}`;
+        } else {
+          const item = group.items[0];
+          const trk = item.trackingNumber ? ` [TRK: ${item.trackingNumber}]` : "";
+          name = (item.description || item.itemRef) + trk + cbmStr;
+        }
         return {
           item_name: name.replace(/[^\x20-\x7E]/g, "").slice(0, 200),
           quantity: 1,
-          price: prices[i],
+          price: groupPrices[i],
           item_type: "product",
         };
       });
