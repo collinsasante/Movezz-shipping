@@ -24,6 +24,7 @@ import {
   Trash2,
   Search,
   Hash,
+  Boxes,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,12 +36,19 @@ interface CustomerDetail extends Customer {
   orders: Order[];
 }
 
+interface Carton {
+  cartonNumber: string;
+  items: Item[];
+  cbm: number;
+}
+
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { error, success } = useToast();
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
+  const [cartons, setCartons] = useState<Carton[]>([]);
   const [loading, setLoading] = useState(true);
   const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -77,6 +85,9 @@ export default function CustomerDetailPage() {
           });
           setEditing(true);
         }
+        axios.get("/api/cartons", { params: { customerId: id } })
+          .then((cRes) => setCartons(cRes.data.data))
+          .catch(() => {});
       } catch {
         error("Failed to load customer");
       } finally {
@@ -424,6 +435,59 @@ export default function CustomerDetailPage() {
                 }
               />
             </div>
+
+            {/* Cartons — repacked, not yet invoiced */}
+            {cartons.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Boxes className="h-4 w-4 text-brand-600" />
+                    Cartons
+                  </h3>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(`/admin/repacking`)}
+                  >
+                    Manage in Repacking
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {cartons.map((carton) => {
+                    const totalPrice = carton.items.reduce((s, i) => s + (i.pkgEstShipping ?? 0), 0);
+                    return (
+                      <div
+                        key={carton.cartonNumber}
+                        className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-100 bg-white"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Boxes className="h-4 w-4 text-brand-600 shrink-0" />
+                          <span className="font-semibold text-gray-900 text-sm">{carton.cartonNumber}</span>
+                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
+                            {carton.items.length} item{carton.items.length !== 1 ? "s" : ""}
+                          </span>
+                          {carton.cbm > 0 && (
+                            <span className="text-xs font-medium text-brand-600 shrink-0">{carton.cbm.toFixed(4)} m³</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          {totalPrice > 0 && (
+                            <span className="text-xs font-semibold text-brand-700">$ {totalPrice.toFixed(2)}</span>
+                          )}
+                          <Button
+                            size="sm"
+                            onClick={() => router.push(`/admin/orders/new?customerId=${id}&cartonNumber=${carton.cartonNumber}`)}
+                          >
+                            <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
+                            Create Invoice
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Orders */}
             <div>

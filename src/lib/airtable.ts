@@ -1007,9 +1007,11 @@ export const cartonsApi = {
     );
   },
 
+  // Only returns cartons that are still pending invoicing — once a carton's
+  // items are invoiced they belong on the order, not the repacking staging area.
   async list(customerId?: string): Promise<{ cartonNumber: string; items: Item[]; cbm: number }[]> {
     const records = await getAllRecords(TABLES.ITEMS, "NOT({CartonNumber} = '')");
-    let items = records.map(mapItem);
+    let items = records.map(mapItem).filter((i) => !i.orderId);
     if (customerId) items = items.filter((i) => i.customerId === customerId);
     const groups = groupItemsForBilling(items).filter((g) => g.isCarton);
     return groups.map((g) => ({ cartonNumber: g.cartonNumber!, items: g.items, cbm: g.cbm }));

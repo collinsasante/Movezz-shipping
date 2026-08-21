@@ -66,9 +66,10 @@ export default function NewOrderPage() {
         setCustomers(res.data.data);
         if (!draftRestoredRef.current) {
           draftRestoredRef.current = true;
-          // Query-param pre-fill (from item detail "Create Invoice" button) takes priority over draft
+          // Query-param pre-fill (from item/carton "Create Invoice" buttons) takes priority over draft
           const qCustomerId = searchParams?.get("customerId");
           const qPreItem = searchParams?.get("preItem");
+          const qCartonNumber = searchParams?.get("cartonNumber");
           if (qCustomerId) {
             const matched = (res.data.data as Customer[]).find((c) => c.id === qCustomerId);
             if (matched) {
@@ -79,8 +80,15 @@ export default function NewOrderPage() {
                 const itemsRes = await axios.get("/api/items", { params: { customerId: qCustomerId, limit: 500 } });
                 const all: Item[] = itemsRes.data.data;
                 setCustomerItems(all);
-                // Pre-select the specific item if provided and not already invoiced
-                if (qPreItem) {
+                if (qCartonNumber) {
+                  // Pre-select every uninvoiced item in this carton
+                  const cartonItems = all.filter((i) => i.cartonNumber === qCartonNumber && !i.orderId);
+                  if (cartonItems.length > 0) {
+                    setSelectedItemIds(cartonItems.map((i) => i.id));
+                    setInvoiceAmount(String(calcTotal(cartonItems)));
+                  }
+                } else if (qPreItem) {
+                  // Pre-select the specific item if provided and not already invoiced
                   const preItemObj = all.find((i) => i.id === qPreItem && !i.orderId);
                   if (preItemObj) {
                     setSelectedItemIds([qPreItem]);
