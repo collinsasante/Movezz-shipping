@@ -889,22 +889,31 @@ function cartonDimensionFields(dims: CartonDimensionsInput): FieldSet {
   return fields;
 }
 
+function refsOf(items: Item[]): string {
+  return items.map((i) => i.itemRef).join(", ");
+}
+
 export const cartonsApi = {
   async create(input: CartonDimensionsInput & { customerId: string; itemIds: string[] }): Promise<CartonResult> {
     if (input.itemIds.length === 0) throw new BusinessError("Select at least one item to repack");
     const items = await Promise.all(input.itemIds.map((id) => itemsApi.getById(id)));
 
-    if (items.some((i) => i.customerId !== input.customerId))
-      throw new BusinessError("All items in a carton must belong to the same customer");
-    if (items.some((i) => i.cartonNumber))
-      throw new BusinessError("One or more items are already in a carton");
-    if (items.some((i) => i.orderId))
-      throw new BusinessError("One or more items are already invoiced");
-    if (items.some((i) => i.isSpecialItem))
-      throw new BusinessError("Special-rate items can't be repacked into a carton");
+    const wrongCustomer = items.filter((i) => i.customerId !== input.customerId);
+    if (wrongCustomer.length > 0)
+      throw new BusinessError(`All items in a carton must belong to the same customer: ${refsOf(wrongCustomer)}`);
+    const alreadyCartoned = items.filter((i) => i.cartonNumber);
+    if (alreadyCartoned.length > 0)
+      throw new BusinessError(`Already in a carton (${alreadyCartoned[0].cartonNumber}): ${refsOf(alreadyCartoned)}`);
+    const alreadyInvoiced = items.filter((i) => i.orderId);
+    if (alreadyInvoiced.length > 0)
+      throw new BusinessError(`Already invoiced (${alreadyInvoiced[0].orderRef ?? alreadyInvoiced[0].orderId}): ${refsOf(alreadyInvoiced)}`);
+    const special = items.filter((i) => i.isSpecialItem);
+    if (special.length > 0)
+      throw new BusinessError(`Special-rate items can't be repacked into a carton: ${refsOf(special)}`);
     const shippingType = items[0]?.shippingType ?? "sea";
-    if (items.some((i) => (i.shippingType ?? "sea") !== shippingType))
-      throw new BusinessError("All items in a carton must share the same freight type (air/sea)");
+    const mismatched = items.filter((i) => (i.shippingType ?? "sea") !== shippingType);
+    if (mismatched.length > 0)
+      throw new BusinessError(`All items in a carton must share the same freight type (${shippingType}): ${refsOf(mismatched)} don't match`);
 
     const cartonNumber = await generateNextCartonRef();
     const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(items.length, shippingType, input.customerId, input);
@@ -951,16 +960,21 @@ export const cartonsApi = {
 
     if (input.addItemIds && input.addItemIds.length > 0) {
       const newItems = await Promise.all(input.addItemIds.map((id) => itemsApi.getById(id)));
-      if (newItems.some((i) => i.customerId !== customerId))
-        throw new BusinessError("All items in a carton must belong to the same customer");
-      if (newItems.some((i) => i.cartonNumber))
-        throw new BusinessError("One or more items are already in a carton");
-      if (newItems.some((i) => i.orderId))
-        throw new BusinessError("One or more items are already invoiced");
-      if (newItems.some((i) => i.isSpecialItem))
-        throw new BusinessError("Special-rate items can't be repacked into a carton");
-      if (newItems.some((i) => (i.shippingType ?? "sea") !== shippingType))
-        throw new BusinessError("All items in a carton must share the same freight type (air/sea)");
+      const wrongCustomer = newItems.filter((i) => i.customerId !== customerId);
+      if (wrongCustomer.length > 0)
+        throw new BusinessError(`All items in a carton must belong to the same customer: ${refsOf(wrongCustomer)}`);
+      const alreadyCartoned = newItems.filter((i) => i.cartonNumber);
+      if (alreadyCartoned.length > 0)
+        throw new BusinessError(`Already in a carton (${alreadyCartoned[0].cartonNumber}): ${refsOf(alreadyCartoned)}`);
+      const alreadyInvoiced = newItems.filter((i) => i.orderId);
+      if (alreadyInvoiced.length > 0)
+        throw new BusinessError(`Already invoiced (${alreadyInvoiced[0].orderRef ?? alreadyInvoiced[0].orderId}): ${refsOf(alreadyInvoiced)}`);
+      const special = newItems.filter((i) => i.isSpecialItem);
+      if (special.length > 0)
+        throw new BusinessError(`Special-rate items can't be repacked into a carton: ${refsOf(special)}`);
+      const mismatched = newItems.filter((i) => (i.shippingType ?? "sea") !== shippingType);
+      if (mismatched.length > 0)
+        throw new BusinessError(`All items in a carton must share the same freight type (${shippingType}): ${refsOf(mismatched)} don't match`);
       members = [...members, ...newItems];
     }
 
