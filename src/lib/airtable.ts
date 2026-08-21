@@ -37,9 +37,11 @@ import {
   generateOrderRef,
   generateItemRef,
   generateSupplierId,
+  generateCartonRef,
   toISOString,
   buildWhatsAppMessage,
 } from "./utils";
+import { groupItemsForBilling, computeCbm } from "./cbm";
 
 // ============================================================
 // BUSINESS LOGIC ERROR — safe to expose message to client
@@ -530,23 +532,6 @@ export const customersApi = {
   },
 };
 
-// Propagates one item's carton dimensions to every other item sharing the
-// same Order + CartonNumber, so all items in a consolidated carton stay
-// consistent no matter which one staff last edited.
-async function syncCartonSiblings(item: Item): Promise<void> {
-  if (!item.cartonNumber || !item.orderId) return;
-  const siblings = await itemsApi.list({ orderId: item.orderId });
-  const toSync = siblings.filter(
-    (s) => s.id !== item.id && s.cartonNumber === item.cartonNumber
-  );
-  const fields: FieldSet = { DimensionUnit: item.dimensionUnit };
-  if (item.cartonLength !== undefined) fields["CartonLength"] = item.cartonLength;
-  if (item.cartonWidth !== undefined) fields["CartonWidth"] = item.cartonWidth;
-  if (item.cartonHeight !== undefined) fields["CartonHeight"] = item.cartonHeight;
-  if (item.cartonWeight !== undefined) fields["CartonWeight"] = item.cartonWeight;
-  await Promise.all(toSync.map((s) => updateRecord(TABLES.ITEMS, s.id, fields)));
-}
-
 // ============================================================
 // ITEMS API
 // ============================================================
@@ -670,11 +655,6 @@ export const itemsApi = {
     if (input.specialShippingRate !== undefined) pricingFields["SpecialShippingRate"] = input.specialShippingRate;
     if (input.isSpecialItem !== undefined) pricingFields["IsSpecialItem"] = input.isSpecialItem;
     if (input.specialRateName !== undefined) pricingFields["specialRateName"] = input.specialRateName;
-    if (input.cartonNumber !== undefined) pricingFields["CartonNumber"] = input.cartonNumber;
-    if (input.cartonLength !== undefined) pricingFields["CartonLength"] = input.cartonLength;
-    if (input.cartonWidth !== undefined) pricingFields["CartonWidth"] = input.cartonWidth;
-    if (input.cartonHeight !== undefined) pricingFields["CartonHeight"] = input.cartonHeight;
-    if (input.cartonWeight !== undefined) pricingFields["CartonWeight"] = input.cartonWeight;
     if (Object.keys(pricingFields).length > 0) {
       await updateRecord(TABLES.ITEMS, record.id, pricingFields).catch(() => {});
     }
@@ -709,26 +689,13 @@ export const itemsApi = {
     if (input.dimensionUnit !== undefined) fields["DimensionUnit"] = input.dimensionUnit;
     if (input.specialRateName !== undefined) fields["specialRateName"] = input.specialRateName;
     if (input.dateReceived !== undefined) fields["DateReceived"] = input.dateReceived;
-    if (input.cartonNumber !== undefined) fields["CartonNumber"] = input.cartonNumber;
-    if (input.cartonLength !== undefined) fields["CartonLength"] = input.cartonLength;
-    if (input.cartonWidth !== undefined) fields["CartonWidth"] = input.cartonWidth;
-    if (input.cartonHeight !== undefined) fields["CartonHeight"] = input.cartonHeight;
-    if (input.cartonWeight !== undefined) fields["CartonWeight"] = input.cartonWeight;
     if (input.photoUrls !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fields["Photos"] = input.photoUrls.map((url) => ({ url })) as any;
     }
 
     const record = await updateRecord(TABLES.ITEMS, id, fields);
-    const item = mapItem(record);
-
-    const wroteCartonDims =
-      input.cartonLength !== undefined || input.cartonWidth !== undefined || input.cartonHeight !== undefined || input.cartonWeight !== undefined;
-    if (wroteCartonDims && item.cartonNumber && item.orderId) {
-      await syncCartonSiblings(item).catch(() => {});
-    }
-
-    return item;
+    return mapItem(record);
   },
 
   async updateStatus(
@@ -835,6 +802,217 @@ export const itemsApi = {
     // Unlink from container and order before deleting
     await updateRecord(TABLES.ITEMS, id, { Container: [], Order: [] });
     await deleteRecord(TABLES.ITEMS, id);
+  },
+};
+
+// ============================================================
+// CARTONS API
+// Repacking: group a customer's unmeasured, uninvoiced items into a
+// physical carton with real dimensions/weight, which is what produces
+// the CBM and shipping cost the invoice is later built from. There is
+// no dedicated Cartons table — a carton is just the set of Items sharing
+// a CartonNumber, all mutated atomically together (no per-item sync needed).
+// ============================================================
+export interface CartonDimensionsInput {
+  length: number;
+  width: number;
+  height: number;
+  weight?: number;
+  dimensionUnit: "cm" | "inches";
+}
+
+export interface CartonResult {
+  cartonNumber: string;
+  items: Item[];
+  cbm: number;
+  totalPrice: number;
+}
+
+async function generateNextCartonRef(): Promise<string> {
+  const records = await getAllRecords(TABLES.ITEMS, "NOT({CartonNumber} = '')");
+  let max = 0;
+  for (const r of records) {
+    const match = ((r.fields["CartonNumber"] as string) ?? "").match(/^CTN-(\d+)$/);
+    if (match) max = Math.max(max, parseInt(match[1], 10));
+  }
+  return generateCartonRef(max + 1);
+}
+
+// Prices the carton using the same tier-rate formula as individual item
+// pricing (src/app/(dashboard)/admin/items/new/page.tsx), then splits the
+// total evenly across the member items (last item absorbs rounding).
+async function priceCartonAndSplit(
+  memberCount: number,
+  shippingType: "air" | "sea",
+  customerId: string,
+  dims: CartonDimensionsInput
+): Promise<{ cbm: number; totalPrice: number; perItemPrice: number[] }> {
+  const [customer, rates] = await Promise.all([
+    customersApi.getById(customerId).catch(() => null),
+    packageRatesApi.getAll(),
+  ]);
+  const tier = (customer?.package ?? "basic") as keyof PackageRates;
+  const tierRates = rates[tier] ?? rates.basic;
+
+  let cbm = 0;
+  let totalPrice = 0;
+  if (shippingType === "air") {
+    totalPrice = (dims.weight ?? 0) * (tierRates.air ?? 0);
+  } else {
+    cbm = computeCbm({ length: dims.length, width: dims.width, height: dims.height, dimensionUnit: dims.dimensionUnit, quantity: 1 });
+    totalPrice = cbm * (tierRates.sea ?? 0);
+  }
+  totalPrice = Math.round(totalPrice * 100) / 100;
+
+  const perItemPrice: number[] = [];
+  let running = 0;
+  for (let i = 0; i < memberCount; i++) {
+    if (i < memberCount - 1) {
+      const p = Math.round((totalPrice / memberCount) * 100) / 100;
+      perItemPrice.push(p);
+      running += p;
+    } else {
+      perItemPrice.push(Math.round((totalPrice - running) * 100) / 100);
+    }
+  }
+  return { cbm, totalPrice, perItemPrice };
+}
+
+function cartonDimensionFields(dims: CartonDimensionsInput): FieldSet {
+  const fields: FieldSet = {
+    CartonLength: dims.length,
+    CartonWidth: dims.width,
+    CartonHeight: dims.height,
+    DimensionUnit: dims.dimensionUnit,
+  };
+  if (dims.weight !== undefined) fields["CartonWeight"] = dims.weight;
+  return fields;
+}
+
+export const cartonsApi = {
+  async create(input: CartonDimensionsInput & { customerId: string; itemIds: string[] }): Promise<CartonResult> {
+    if (input.itemIds.length === 0) throw new BusinessError("Select at least one item to repack");
+    const items = await Promise.all(input.itemIds.map((id) => itemsApi.getById(id)));
+
+    if (items.some((i) => i.customerId !== input.customerId))
+      throw new BusinessError("All items in a carton must belong to the same customer");
+    if (items.some((i) => i.cartonNumber))
+      throw new BusinessError("One or more items are already in a carton");
+    if (items.some((i) => i.orderId))
+      throw new BusinessError("One or more items are already invoiced");
+    if (items.some((i) => i.isSpecialItem))
+      throw new BusinessError("Special-rate items can't be repacked into a carton");
+    const shippingType = items[0]?.shippingType ?? "sea";
+    if (items.some((i) => (i.shippingType ?? "sea") !== shippingType))
+      throw new BusinessError("All items in a carton must share the same freight type (air/sea)");
+
+    const cartonNumber = await generateNextCartonRef();
+    const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(items.length, shippingType, input.customerId, input);
+
+    const updated = await Promise.all(
+      items.map((item, i) =>
+        updateRecord(TABLES.ITEMS, item.id, {
+          ...cartonDimensionFields(input),
+          CartonNumber: cartonNumber,
+          PkgEstShipping: perItemPrice[i],
+        }).then(mapItem)
+      )
+    );
+
+    return { cartonNumber, items: updated, cbm, totalPrice };
+  },
+
+  async update(
+    cartonNumber: string,
+    input: Partial<CartonDimensionsInput> & { addItemIds?: string[]; removeItemIds?: string[] }
+  ): Promise<CartonResult> {
+    const records = await getAllRecords(TABLES.ITEMS, `{CartonNumber} = '${cartonNumber}'`);
+    let members = records.map(mapItem);
+    if (members.length === 0) throw new BusinessError("Carton not found");
+    const customerId = members[0].customerId;
+    const shippingType = members[0].shippingType ?? "sea";
+
+    if (input.removeItemIds && input.removeItemIds.length > 0) {
+      const toRemove = members.filter((m) => input.removeItemIds!.includes(m.id));
+      await Promise.all(
+        toRemove.map((m) =>
+          updateRecord(TABLES.ITEMS, m.id, {
+            CartonNumber: "",
+            CartonLength: null,
+            CartonWidth: null,
+            CartonHeight: null,
+            CartonWeight: null,
+            PkgEstShipping: null,
+          } as unknown as FieldSet)
+        )
+      );
+      members = members.filter((m) => !input.removeItemIds!.includes(m.id));
+    }
+
+    if (input.addItemIds && input.addItemIds.length > 0) {
+      const newItems = await Promise.all(input.addItemIds.map((id) => itemsApi.getById(id)));
+      if (newItems.some((i) => i.customerId !== customerId))
+        throw new BusinessError("All items in a carton must belong to the same customer");
+      if (newItems.some((i) => i.cartonNumber))
+        throw new BusinessError("One or more items are already in a carton");
+      if (newItems.some((i) => i.orderId))
+        throw new BusinessError("One or more items are already invoiced");
+      if (newItems.some((i) => i.isSpecialItem))
+        throw new BusinessError("Special-rate items can't be repacked into a carton");
+      if (newItems.some((i) => (i.shippingType ?? "sea") !== shippingType))
+        throw new BusinessError("All items in a carton must share the same freight type (air/sea)");
+      members = [...members, ...newItems];
+    }
+
+    if (members.length === 0) {
+      return { cartonNumber, items: [], cbm: 0, totalPrice: 0 };
+    }
+
+    const dims: CartonDimensionsInput = {
+      length: input.length ?? members[0].cartonLength!,
+      width: input.width ?? members[0].cartonWidth!,
+      height: input.height ?? members[0].cartonHeight!,
+      weight: input.weight ?? members[0].cartonWeight,
+      dimensionUnit: input.dimensionUnit ?? members[0].dimensionUnit,
+    };
+
+    const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(members.length, shippingType, customerId, dims);
+
+    const updated = await Promise.all(
+      members.map((item, i) =>
+        updateRecord(TABLES.ITEMS, item.id, {
+          ...cartonDimensionFields(dims),
+          CartonNumber: cartonNumber,
+          PkgEstShipping: perItemPrice[i],
+        }).then(mapItem)
+      )
+    );
+
+    return { cartonNumber, items: updated, cbm, totalPrice };
+  },
+
+  async dissolve(cartonNumber: string): Promise<void> {
+    const records = await getAllRecords(TABLES.ITEMS, `{CartonNumber} = '${cartonNumber}'`);
+    await Promise.all(
+      records.map((r) =>
+        updateRecord(TABLES.ITEMS, r.id, {
+          CartonNumber: "",
+          CartonLength: null,
+          CartonWidth: null,
+          CartonHeight: null,
+          CartonWeight: null,
+          PkgEstShipping: null,
+        } as unknown as FieldSet)
+      )
+    );
+  },
+
+  async list(customerId?: string): Promise<{ cartonNumber: string; items: Item[]; cbm: number }[]> {
+    const records = await getAllRecords(TABLES.ITEMS, "NOT({CartonNumber} = '')");
+    let items = records.map(mapItem);
+    if (customerId) items = items.filter((i) => i.customerId === customerId);
+    const groups = groupItemsForBilling(items).filter((g) => g.isCarton);
+    return groups.map((g) => ({ cartonNumber: g.cartonNumber!, items: g.items, cbm: g.cbm }));
   },
 };
 

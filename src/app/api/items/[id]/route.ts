@@ -33,11 +33,6 @@ const UpdateItemSchema = z.object({
   quantity: z.number().int().positive().max(10_000).optional(),
   status: z.string().max(100).optional(),
   dateReceived: z.string().max(50).optional(),
-  cartonNumber: z.string().max(100).optional(),
-  cartonLength: z.number().positive().max(10_000).optional(),
-  cartonWidth: z.number().positive().max(10_000).optional(),
-  cartonHeight: z.number().positive().max(10_000).optional(),
-  cartonWeight: z.number().positive().max(10_000).optional(),
 });
 
 // GET /api/items/[id]
@@ -103,16 +98,6 @@ export async function PATCH(
       return badRequestResponse(
         parsed.error.errors.map((e) => e.message).join(", ")
       );
-    }
-
-    if (parsed.data.cartonNumber) {
-      const orderId =
-        parsed.data.orderId ?? (await itemsApi.getById(id).catch(() => null))?.orderId;
-      if (!orderId) {
-        return badRequestResponse(
-          "Carton grouping requires the item to be linked to an order"
-        );
-      }
     }
 
     const item = await itemsApi.update(id, parsed.data, user.email);

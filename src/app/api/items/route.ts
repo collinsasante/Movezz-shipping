@@ -30,11 +30,6 @@ const CreateItemSchema = z.object({
   specialShippingRate: z.number().min(0).max(500_000).optional(),
   isSpecialItem: z.boolean().optional(),
   specialRateName: z.string().max(100).optional(),
-  cartonNumber: z.string().max(100).optional(),
-  cartonLength: z.number().positive().max(10000).optional(),
-  cartonWidth: z.number().positive().max(10000).optional(),
-  cartonHeight: z.number().positive().max(10000).optional(),
-  cartonWeight: z.number().positive().max(10000).optional(),
 });
 
 // GET /api/items

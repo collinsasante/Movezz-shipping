@@ -47,6 +47,11 @@ export function generateSupplierId(sequenceNumber: number): string {
   return `SUP-${padded}`;
 }
 
+export function generateCartonRef(sequenceNumber: number): string {
+  const padded = String(sequenceNumber).padStart(4, "0");
+  return `CTN-${padded}`;
+}
+
 // ---- Date Formatting ----
 export function formatDate(dateStr: string | undefined | null): string {
   if (!dateStr) return "N/A";
