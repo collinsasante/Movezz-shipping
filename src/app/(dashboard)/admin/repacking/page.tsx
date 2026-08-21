@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
+import { SearchBar } from "@/components/shared/SearchBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -44,6 +45,7 @@ export default function RepackingPage() {
   const [cartons, setCartons] = useState<Carton[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [trackingSearch, setTrackingSearch] = useState("");
   const [expandedCartons, setExpandedCartons] = useState<Set<string>>(new Set());
 
   const [repackDialogOpen, setRepackDialogOpen] = useState(false);
@@ -80,6 +82,7 @@ export default function RepackingPage() {
       setCartons(fetchedCartons);
       setExpandedCartons(new Set(fetchedCartons.map((c) => c.cartonNumber)));
       setSelectedItemIds([]);
+      setTrackingSearch("");
     } catch {
       error("Failed to load customer items");
     } finally {
@@ -108,8 +111,13 @@ export default function RepackingPage() {
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
   // Eligible for repacking: not already in a carton, not yet invoiced, not a special rate item
-  const eligibleItems = items.filter((i) => !i.cartonNumber && !i.orderId && !i.isSpecialItem);
-  const selectedItems = eligibleItems.filter((i) => selectedItemIds.includes(i.id));
+  // Selection state is derived from the full eligible pool (not the search-filtered
+  // view below), so a selected item stays selected even if a later search hides it.
+  const allEligibleItems = items.filter((i) => !i.cartonNumber && !i.orderId && !i.isSpecialItem);
+  const eligibleItems = allEligibleItems.filter((i) =>
+    trackingSearch ? (i.trackingNumber ?? "").toLowerCase().includes(trackingSearch.toLowerCase()) : true
+  );
+  const selectedItems = allEligibleItems.filter((i) => selectedItemIds.includes(i.id));
 
   const toggleItem = (id: string) => {
     setSelectedItemIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
@@ -257,8 +265,18 @@ export default function RepackingPage() {
               </h3>
               <p className="text-xs text-gray-400 mb-4">Unmeasured, uninvoiced items for {selectedCustomer?.name}</p>
 
+              {allEligibleItems.length > 0 && (
+                <SearchBar
+                  placeholder="Search by tracking number..."
+                  onSearch={setTrackingSearch}
+                  className="mb-4 max-w-xs"
+                />
+              )}
+
               {eligibleItems.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No items ready for repacking</p>
+                <p className="text-sm text-gray-400 text-center py-6">
+                  {trackingSearch ? "No items match that tracking number" : "No items ready for repacking"}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {eligibleItems.map((item) => (
