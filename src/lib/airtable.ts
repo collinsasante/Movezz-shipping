@@ -893,10 +893,51 @@ function refsOf(items: Item[]): string {
   return items.map((i) => i.itemRef).join(", ");
 }
 
+// Writes carton fields to each member sequentially so that if one write fails
+// partway through, every write that already succeeded gets rolled back (fields
+// cleared) rather than leaving items permanently — and invisibly — stuck as
+// "already in a carton" for a carton no UI shows.
+async function writeCartonMembers(
+  items: Item[],
+  cartonNumber: string,
+  dims: CartonDimensionsInput,
+  perItemPrice: number[]
+): Promise<Item[]> {
+  const succeededIds: string[] = [];
+  try {
+    const updated: Item[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const record = await updateRecord(TABLES.ITEMS, items[i].id, {
+        ...cartonDimensionFields(dims),
+        CartonNumber: cartonNumber,
+        PkgEstShipping: perItemPrice[i],
+      });
+      succeededIds.push(items[i].id);
+      updated.push(mapItem(record));
+    }
+    return updated;
+  } catch (err) {
+    await Promise.all(
+      succeededIds.map((id) =>
+        updateRecord(TABLES.ITEMS, id, {
+          CartonNumber: "",
+          CartonLength: null,
+          CartonWidth: null,
+          CartonHeight: null,
+          CartonWeight: null,
+          PkgEstShipping: null,
+        } as unknown as FieldSet).catch(() => {})
+      )
+    );
+    throw err;
+  }
+}
+
 export const cartonsApi = {
   async create(input: CartonDimensionsInput & { customerId: string; itemIds: string[] }): Promise<CartonResult> {
     if (input.itemIds.length === 0) throw new BusinessError("Select at least one item to repack");
-    const items = await Promise.all(input.itemIds.map((id) => itemsApi.getById(id)));
+    const uniqueItemIds = Array.from(new Set(input.itemIds));
+    const items = await Promise.all(uniqueItemIds.map((id) => itemsApi.getById(id)));
 
     const wrongCustomer = items.filter((i) => i.customerId !== input.customerId);
     if (wrongCustomer.length > 0)
@@ -917,16 +958,7 @@ export const cartonsApi = {
 
     const cartonNumber = await generateNextCartonRef();
     const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(items.length, shippingType, input.customerId, input);
-
-    const updated = await Promise.all(
-      items.map((item, i) =>
-        updateRecord(TABLES.ITEMS, item.id, {
-          ...cartonDimensionFields(input),
-          CartonNumber: cartonNumber,
-          PkgEstShipping: perItemPrice[i],
-        }).then(mapItem)
-      )
-    );
+    const updated = await writeCartonMembers(items, cartonNumber, input, perItemPrice);
 
     return { cartonNumber, items: updated, cbm, totalPrice };
   },
@@ -959,7 +991,8 @@ export const cartonsApi = {
     }
 
     if (input.addItemIds && input.addItemIds.length > 0) {
-      const newItems = await Promise.all(input.addItemIds.map((id) => itemsApi.getById(id)));
+      const uniqueAddIds = Array.from(new Set(input.addItemIds)).filter((id) => !members.some((m) => m.id === id));
+      const newItems = await Promise.all(uniqueAddIds.map((id) => itemsApi.getById(id)));
       const wrongCustomer = newItems.filter((i) => i.customerId !== customerId);
       if (wrongCustomer.length > 0)
         throw new BusinessError(`All items in a carton must belong to the same customer: ${refsOf(wrongCustomer)}`);
@@ -991,16 +1024,7 @@ export const cartonsApi = {
     };
 
     const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(members.length, shippingType, customerId, dims);
-
-    const updated = await Promise.all(
-      members.map((item, i) =>
-        updateRecord(TABLES.ITEMS, item.id, {
-          ...cartonDimensionFields(dims),
-          CartonNumber: cartonNumber,
-          PkgEstShipping: perItemPrice[i],
-        }).then(mapItem)
-      )
-    );
+    const updated = await writeCartonMembers(members, cartonNumber, dims, perItemPrice);
 
     return { cartonNumber, items: updated, cbm, totalPrice };
   },
