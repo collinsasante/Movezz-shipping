@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Boxes, ChevronDown, ChevronRight, ShoppingCart, Trash2, X, Plus } from "lucide-react";
+import { SearchBar } from "@/components/shared/SearchBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -44,6 +45,7 @@ export function CartonCard({ carton, customerId, addableItems, onChanged, defaul
   const [addOpen, setAddOpen] = useState(false);
   const [addSelected, setAddSelected] = useState<string[]>([]);
   const [savingAdd, setSavingAdd] = useState(false);
+  const [addSearch, setAddSearch] = useState("");
 
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
   const [dissolving, setDissolving] = useState(false);
@@ -159,7 +161,10 @@ export function CartonCard({ carton, customerId, addableItems, onChanged, defaul
               Edit dimensions
             </button>
             {addableItems.length > 0 && (
-              <button onClick={() => setAddOpen(true)} className="text-xs text-brand-600 hover:underline font-medium flex items-center gap-1">
+              <button
+                onClick={() => { setAddSearch(""); setAddSelected([]); setAddOpen(true); }}
+                className="text-xs text-brand-600 hover:underline font-medium flex items-center gap-1"
+              >
                 <Plus className="h-3 w-3" />
                 Add items
               </button>
@@ -227,30 +232,46 @@ export function CartonCard({ carton, customerId, addableItems, onChanged, defaul
           <DialogHeader>
             <DialogTitle>Add Items to {carton.cartonNumber}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 py-2 max-h-80 overflow-y-auto">
-            {addableItems.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">No eligible items to add</p>
-            ) : (
-              addableItems.map((item) => (
-                <label
-                  key={item.id}
-                  className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer ${
-                    addSelected.includes(item.id) ? "border-brand-200 bg-brand-50" : "border-gray-100 hover:bg-gray-50"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={addSelected.includes(item.id)}
-                    onChange={() => toggleAddSelected(item.id)}
-                    className="w-4 h-4 accent-brand-600 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{item.description || item.itemRef}</p>
-                    <p className="text-xs text-gray-500">{item.itemRef} · {item.shippingType ?? "sea"} freight</p>
-                  </div>
-                </label>
-              ))
+          <div className="space-y-3 py-2">
+            {addableItems.length > 0 && (
+              <SearchBar placeholder="Search by tracking number..." onSearch={setAddSearch} />
             )}
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {addableItems.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">No eligible items to add</p>
+              ) : (
+                (() => {
+                  const filtered = addSearch
+                    ? addableItems.filter((i) => (i.trackingNumber ?? "").toLowerCase().includes(addSearch.toLowerCase()))
+                    : addableItems;
+                  if (filtered.length === 0) {
+                    return <p className="text-sm text-gray-400 text-center py-4">No items match that tracking number</p>;
+                  }
+                  return filtered.map((item) => (
+                    <label
+                      key={item.id}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer ${
+                        addSelected.includes(item.id) ? "border-brand-200 bg-brand-50" : "border-gray-100 hover:bg-gray-50"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={addSelected.includes(item.id)}
+                        onChange={() => toggleAddSelected(item.id)}
+                        className="w-4 h-4 accent-brand-600 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{item.description || item.itemRef}</p>
+                        <p className="text-xs text-gray-500">
+                          {item.itemRef} · {item.shippingType ?? "sea"} freight
+                          {item.trackingNumber ? ` · TRK: ${item.trackingNumber}` : ""}
+                        </p>
+                      </div>
+                    </label>
+                  ));
+                })()
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)} disabled={savingAdd}>Cancel</Button>
