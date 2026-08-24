@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { DataTable } from "@/components/shared/DataTable";
+import { CartonCard, type CartonSummary } from "@/components/shared/CartonCard";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,19 +37,13 @@ interface CustomerDetail extends Customer {
   orders: Order[];
 }
 
-interface Carton {
-  cartonNumber: string;
-  items: Item[];
-  cbm: number;
-}
-
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { error, success } = useToast();
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
-  const [cartons, setCartons] = useState<Carton[]>([]);
+  const [cartons, setCartons] = useState<CartonSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -65,13 +60,12 @@ export default function CustomerDetailPage() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => {
-    const load = async () => {
+  const load = useCallback(async (applyEditQueryParam = false) => {
       try {
         const res = await axios.get(`/api/customers/${id}`);
         const c = res.data.data;
         setCustomer(c);
-        if (searchParams.get("edit") === "true") {
+        if (applyEditQueryParam && searchParams.get("edit") === "true") {
           setEditForm({
             name: c.name ?? "",
             phone: c.phone ?? "",
@@ -93,9 +87,12 @@ export default function CustomerDetailPage() {
       } finally {
         setLoading(false);
       }
-    };
-    load();
-  }, [id, error, searchParams]);
+    }, [id, error, searchParams]);
+
+  useEffect(() => {
+    load(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const openEdit = () => {
     if (!customer) return;
@@ -161,6 +158,9 @@ export default function CustomerDetailPage() {
       </div>
     );
   }
+
+  // Eligible to add to an existing carton: not already in a carton, not yet invoiced, not special-rate
+  const addableItems = (customer.items ?? []).filter((i) => !i.cartonNumber && !i.orderId && !i.isSpecialItem);
 
   return (
     <div className="flex flex-col h-full">
@@ -439,52 +439,20 @@ export default function CustomerDetailPage() {
             {/* Cartons — repacked, not yet invoiced */}
             {cartons.length > 0 && (
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <Boxes className="h-4 w-4 text-brand-600" />
-                    Cartons
-                  </h3>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => router.push(`/admin/repacking`)}
-                  >
-                    Manage in Repacking
-                  </Button>
-                </div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                  <Boxes className="h-4 w-4 text-brand-600" />
+                  Cartons
+                </h3>
                 <div className="space-y-2">
-                  {cartons.map((carton) => {
-                    const totalPrice = carton.items.reduce((s, i) => s + (i.pkgEstShipping ?? 0), 0);
-                    return (
-                      <div
-                        key={carton.cartonNumber}
-                        className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-gray-100 bg-white"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Boxes className="h-4 w-4 text-brand-600 shrink-0" />
-                          <span className="font-semibold text-gray-900 text-sm">{carton.cartonNumber}</span>
-                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
-                            {carton.items.length} item{carton.items.length !== 1 ? "s" : ""}
-                          </span>
-                          {carton.cbm > 0 && (
-                            <span className="text-xs font-medium text-brand-600 shrink-0">{carton.cbm.toFixed(4)} m³</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          {totalPrice > 0 && (
-                            <span className="text-xs font-semibold text-brand-700">$ {totalPrice.toFixed(2)}</span>
-                          )}
-                          <Button
-                            size="sm"
-                            onClick={() => router.push(`/admin/orders/new?customerId=${id}&cartonNumber=${carton.cartonNumber}`)}
-                          >
-                            <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-                            Create Invoice
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {cartons.map((carton) => (
+                    <CartonCard
+                      key={carton.cartonNumber}
+                      carton={carton}
+                      customerId={id}
+                      addableItems={addableItems}
+                      onChanged={() => load()}
+                    />
+                  ))}
                 </div>
               </div>
             )}

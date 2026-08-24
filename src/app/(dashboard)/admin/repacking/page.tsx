@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { SearchBar } from "@/components/shared/SearchBar";
+import { CartonCard, type CartonSummary } from "@/components/shared/CartonCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -17,7 +17,7 @@ import {
 import { useToast } from "@/components/ui/toast";
 import { computeCbm } from "@/lib/cbm";
 import type { Customer, Item } from "@/types";
-import { Boxes, Package, ChevronDown, ChevronRight, X, Trash2, ShoppingCart } from "lucide-react";
+import { Boxes, Package } from "lucide-react";
 import axios from "axios";
 
 interface PkgRates {
@@ -27,14 +27,7 @@ interface PkgRates {
   special?: { sea?: number; air?: number };
 }
 
-interface Carton {
-  cartonNumber: string;
-  items: Item[];
-  cbm: number;
-}
-
 export default function RepackingPage() {
-  const router = useRouter();
   const { success, error } = useToast();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -44,11 +37,10 @@ export default function RepackingPage() {
   const [pkgRates, setPkgRates] = useState<PkgRates>({});
 
   const [items, setItems] = useState<Item[]>([]);
-  const [cartons, setCartons] = useState<Carton[]>([]);
+  const [cartons, setCartons] = useState<CartonSummary[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [trackingSearch, setTrackingSearch] = useState("");
-  const [expandedCartons, setExpandedCartons] = useState<Set<string>>(new Set());
 
   const [repackDialogOpen, setRepackDialogOpen] = useState(false);
   const [repackMode, setRepackMode] = useState<"new" | "existing">("new");
@@ -80,9 +72,7 @@ export default function RepackingPage() {
         axios.get("/api/cartons", { params: { customerId } }),
       ]);
       setItems(itemsRes.data.data);
-      const fetchedCartons: Carton[] = cartonsRes.data.data;
-      setCartons(fetchedCartons);
-      setExpandedCartons(new Set(fetchedCartons.map((c) => c.cartonNumber)));
+      setCartons(cartonsRes.data.data);
       setSelectedItemIds([]);
       setTrackingSearch("");
     } catch {
@@ -123,14 +113,6 @@ export default function RepackingPage() {
 
   const toggleItem = (id: string) => {
     setSelectedItemIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
-  };
-
-  const toggleCartonExpand = (cartonNumber: string) => {
-    setExpandedCartons((prev) => {
-      const next = new Set(prev);
-      next.has(cartonNumber) ? next.delete(cartonNumber) : next.add(cartonNumber);
-      return next;
-    });
   };
 
   const openRepackDialog = () => {
@@ -185,26 +167,6 @@ export default function RepackingPage() {
       error("Error", msg);
     } finally {
       setSubmittingRepack(false);
-    }
-  };
-
-  const handleRemoveFromCarton = async (cartonNumber: string, itemId: string) => {
-    try {
-      await axios.patch(`/api/cartons/${cartonNumber}`, { removeItemIds: [itemId] });
-      success("Item removed from carton");
-      loadCustomerData(selectedCustomerId);
-    } catch {
-      error("Failed to remove item from carton");
-    }
-  };
-
-  const handleDissolveCarton = async (cartonNumber: string) => {
-    try {
-      await axios.delete(`/api/cartons/${cartonNumber}`);
-      success("Carton dissolved");
-      loadCustomerData(selectedCustomerId);
-    } catch {
-      error("Failed to dissolve carton");
     }
   };
 
@@ -326,73 +288,16 @@ export default function RepackingPage() {
                   <Boxes className="h-4 w-4 text-brand-600" />
                   Cartons
                 </h3>
-                {cartons.map((carton) => {
-                  const isOpen = expandedCartons.has(carton.cartonNumber);
-                  const totalPrice = carton.items.reduce((s, i) => s + (i.pkgEstShipping ?? 0), 0);
-                  return (
-                    <div key={carton.cartonNumber} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                      <button
-                        onClick={() => toggleCartonExpand(carton.cartonNumber)}
-                        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          {isOpen ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
-                          <Boxes className="h-4 w-4 text-brand-600" />
-                          <span className="font-semibold text-gray-900 text-sm">{carton.cartonNumber}</span>
-                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                            {carton.items.length} item{carton.items.length !== 1 ? "s" : ""}
-                          </span>
-                          {carton.cbm > 0 && (
-                            <span className="text-xs font-medium text-brand-600">{carton.cbm.toFixed(4)} m³</span>
-                          )}
-                          {totalPrice > 0 && (
-                            <span className="text-xs font-semibold text-brand-700">$ {totalPrice.toFixed(2)}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span
-                            role="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/admin/orders/new?customerId=${selectedCustomerId}&cartonNumber=${carton.cartonNumber}`);
-                            }}
-                            className="flex items-center gap-1 text-xs text-brand-600 hover:text-brand-800 font-medium"
-                          >
-                            <ShoppingCart className="h-3.5 w-3.5" />
-                            Create Invoice
-                          </span>
-                          <span
-                            role="button"
-                            onClick={(e) => { e.stopPropagation(); handleDissolveCarton(carton.cartonNumber); }}
-                            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Dissolve
-                          </span>
-                        </div>
-                      </button>
-                      {isOpen && (
-                        <div className="border-t border-gray-100 divide-y divide-gray-50">
-                          {carton.items.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between px-4 py-3 gap-2 hover:bg-gray-50">
-                              <div className="min-w-0">
-                                <span className="font-mono text-xs font-bold text-gray-700 mr-2">{item.itemRef}</span>
-                                <span className="text-xs text-gray-500">{item.description}</span>
-                              </div>
-                              <button
-                                onClick={() => handleRemoveFromCarton(carton.cartonNumber, item.id)}
-                                title="Remove from carton"
-                                className="text-gray-300 hover:text-red-500 shrink-0"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {cartons.map((carton) => (
+                  <CartonCard
+                    key={carton.cartonNumber}
+                    carton={carton}
+                    customerId={selectedCustomerId}
+                    addableItems={allEligibleItems}
+                    onChanged={() => loadCustomerData(selectedCustomerId)}
+                    defaultExpanded
+                  />
+                ))}
               </div>
             )}
           </>
