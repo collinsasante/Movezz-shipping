@@ -102,6 +102,7 @@ function statusPill(status: string): string {
     "Arrived at Transit Warehouse": "#1d4ed8",
     "Shipped to Ghana": "#4338ca",
     "Arrived in Ghana": "#7c3aed",
+    "Awaiting Customs Clearance & Duty Process": "#b45309",
     Sorting: "#d97706",
     "Ready for Pickup": "#15803d",
     Completed: "#374151",
@@ -113,6 +114,7 @@ function statusPill(status: string): string {
     "Arrived at Transit Warehouse": "#dbeafe",
     "Shipped to Ghana": "#e0e7ff",
     "Arrived in Ghana": "#ede9fe",
+    "Awaiting Customs Clearance & Duty Process": "#fef3c7",
     Sorting: "#fef3c7",
     "Ready for Pickup": "#dcfce7",
     Completed: "#f3f4f6",
@@ -304,6 +306,10 @@ export async function sendItemStatusEmail(opts: {
     "Arrived in Ghana": {
       headline: "Package Arrived in Ghana",
       body: "Your package has landed in Ghana and is being processed through our facility.",
+    },
+    "Awaiting Customs Clearance & Duty Process": {
+      headline: "Package Awaiting Customs Clearance",
+      body: "Your package has landed in Ghana and is awaiting customs clearance and duty processing before it moves to our sorting facility.",
     },
     Sorting: {
       headline: "Package Being Sorted",

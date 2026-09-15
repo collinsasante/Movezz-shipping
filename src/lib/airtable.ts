@@ -726,7 +726,7 @@ export const itemsApi = {
 
     const statusUpdateFields: FieldSet = { Status: newStatus };
     // Clear the missing flag whenever an item is actively progressing
-    if (["Arrived in Ghana", "Sorting", "Ready for Pickup", "Completed"].includes(newStatus)) {
+    if (["Arrived in Ghana", "Awaiting Customs Clearance & Duty Process", "Sorting", "Ready for Pickup", "Completed"].includes(newStatus)) {
       statusUpdateFields["IsMissing"] = false;
     }
     await updateRecord(TABLES.ITEMS, id, statusUpdateFields);
@@ -1307,7 +1307,7 @@ export const containersApi = {
     // ---- CASCADE STATUS TO ALL ITEMS ----
     const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
       "Shipped to Ghana": "Shipped to Ghana",
-      "Arrived in Ghana": "Sorting",
+      "Arrived in Ghana": "Awaiting Customs Clearance & Duty Process",
       // "Loading" has no corresponding item status — no cascade
     };
 
@@ -1333,7 +1333,7 @@ export const containersApi = {
 
     const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
       "Shipped to Ghana": "Shipped to Ghana",
-      "Arrived in Ghana": "Sorting",
+      "Arrived in Ghana": "Awaiting Customs Clearance & Duty Process",
     };
 
     const targetStatus = containerToItemStatus[containerStatus] ?? null;

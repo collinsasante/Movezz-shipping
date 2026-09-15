@@ -98,6 +98,8 @@ export function getStatusColor(status: ItemStatus | string): string {
     "Arrived at Transit Warehouse": "bg-blue-100 text-blue-800 border-blue-200",
     "Shipped to Ghana": "bg-indigo-100 text-indigo-800 border-indigo-200",
     "Arrived in Ghana": "bg-purple-100 text-purple-800 border-purple-200",
+    "Awaiting Customs Clearance & Duty Process":
+      "bg-orange-100 text-orange-800 border-orange-200",
     Sorting: "bg-yellow-100 text-yellow-800 border-yellow-200",
     "Ready for Pickup": "bg-green-100 text-green-800 border-green-200",
     Completed: "bg-gray-100 text-gray-700 border-gray-200",
@@ -121,6 +123,7 @@ export const ITEM_STATUS_STEPS: ItemStatus[] = [
   "Arrived at Transit Warehouse",
   "Shipped to Ghana",
   "Arrived in Ghana",
+  "Awaiting Customs Clearance & Duty Process",
   "Sorting",
   "Ready for Pickup",
   "Completed",

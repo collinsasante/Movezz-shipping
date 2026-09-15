@@ -15,6 +15,8 @@ const STATUS_DESCRIPTIONS: Record<ItemStatus, string> = {
   "Arrived at Transit Warehouse": "Item received at our China warehouse",
   "Shipped to Ghana": "Package loaded into container, en route to Ghana",
   "Arrived in Ghana": "Container arrived at Ghana port",
+  "Awaiting Customs Clearance & Duty Process":
+    "Package is undergoing customs clearance and duty processing",
   Sorting: "Item being sorted at our Ghana warehouse",
   "Ready for Pickup": "Package ready for collection",
   Completed: "Package collected",

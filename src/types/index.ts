@@ -10,6 +10,7 @@ export type ItemStatus =
   | "Arrived at Transit Warehouse"
   | "Shipped to Ghana"
   | "Arrived in Ghana"
+  | "Awaiting Customs Clearance & Duty Process"
   | "Sorting"
   | "Ready for Pickup"
   | "Completed";
