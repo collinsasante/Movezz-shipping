@@ -383,8 +383,8 @@ export async function sendEmailVerificationEmail(
   const firstName = customerName.split(" ")[0];
   const html = baseLayout(
     `<h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#1d1d1f;letter-spacing:-0.5px;">Verify your email, ${firstName}.</h1>
-      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">You're almost set to start using De-MOVEZZ LOGISTICS.</p>
-      <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#86868b;">Click the button below to verify your email address and activate your account. This link expires in 48 hours.</p>
+      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">Your De-MOVEZZ LOGISTICS account is ready to use.</p>
+      <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#86868b;">Confirm this email address to keep your account secure and make sure you can always recover it. The link works once. If you didn't create this account, you can ignore this email.</p>
       ${ctaButton(verifyUrl, "Verify Email Address")}
       <hr style="border:none;border-top:1px solid #e5e5ea;margin:0 0 24px;" />
       <p style="margin:0;font-size:12px;color:#86868b;line-height:1.6;">If the button above doesn't work, copy and paste this link into your browser:<br/>
@@ -392,6 +392,35 @@ export async function sendEmailVerificationEmail(
     "Verify your De-MOVEZZ LOGISTICS email address",
   );
   await sendEmail(to, "Verify your email address", html);
+}
+
+// ============================================================
+// TEMPLATE 6b: Account Activation (account created on the customer's behalf)
+// ============================================================
+export async function sendAccountActivationEmail(
+  to: string,
+  customerName: string,
+  shippingMark: string,
+  activationUrl: string,
+): Promise<void> {
+  const firstName = customerName.split(" ")[0];
+  const html = baseLayout(
+    `<h1 style="margin:0 0 8px;font-size:28px;font-weight:700;color:#1d1d1f;letter-spacing:-0.5px;">Activate your account, ${firstName}.</h1>
+      <p style="margin:0 0 6px;font-size:17px;line-height:1.6;color:#1d1d1f;">A De-MOVEZZ LOGISTICS account has been set up for you.</p>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#86868b;">Create your password to start tracking your packages. This link works once and expires in 1 hour — if it expires, you can request a new one from the page it opens.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+        <tr><td style="background-color:#fffbeb;border:2px dashed #f59e0b;border-radius:12px;padding:16px;text-align:center;">
+          <p style="margin:0 0 6px;font-size:12px;font-weight:600;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;">Your Shipping Mark</p>
+          <p style="margin:0;font-size:20px;font-weight:800;color:#92400e;font-family:monospace;letter-spacing:2px;">${shippingMark}</p>
+        </td></tr>
+      </table>
+      ${ctaButton(activationUrl, "Create Password")}
+      <hr style="border:none;border-top:1px solid #e5e5ea;margin:0 0 24px;" />
+      <p style="margin:0;font-size:12px;color:#86868b;line-height:1.6;">If the button above doesn't work, copy and paste this link into your browser:<br/>
+      <a href="${activationUrl}" style="color:#d97706;word-break:break-all;text-decoration:none;">${activationUrl}</a></p>`,
+    "Activate your De-MOVEZZ LOGISTICS account",
+  );
+  await sendEmail(to, "Activate your De-MOVEZZ LOGISTICS account", html);
 }
 
 // ============================================================

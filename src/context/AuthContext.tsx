@@ -16,16 +16,22 @@ interface AuthContextValue {
   firebaseUser: User | null;
   appUser: AppUser | null;
   loading: boolean;
+  // null while unknown (no Firebase user restored yet)
+  emailVerified: boolean | null;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  // Re-reads the Firebase user, e.g. after the email was verified on another device
+  reloadFirebaseUser: () => Promise<boolean | null>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   firebaseUser: null,
   appUser: null,
   loading: true,
+  emailVerified: null,
   signOut: async () => {},
   refreshUser: async () => {},
+  reloadFirebaseUser: async () => null,
 });
 
 const USER_CACHE_KEY = "pakk_user_cache";
@@ -44,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(() => loadCachedUser());
   const [loading, setLoading] = useState(true);
+  const [emailVerified, setEmailVerified] = useState<boolean | null>(null);
   // Track whether Firebase has ever resolved to a real user this session
   const authResolved = useRef(false);
   // Always-current reference to the Firebase user for use inside interceptors
@@ -64,6 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const code = err.response?.data?.code;
         if (status === 401) {
           // Token is genuinely invalid — sign out
+          setAppUser(null);
+          try { localStorage.removeItem(USER_CACHE_KEY); } catch {}
+          await signOut().catch(() => {});
+        } else if (status === 403 && code === "ACCOUNT_DISABLED") {
           setAppUser(null);
           try { localStorage.removeItem(USER_CACHE_KEY); } catch {}
           await signOut().catch(() => {});
@@ -120,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
       firebaseUserRef.current = user;
       setFirebaseUser(user);
+      setEmailVerified(user ? user.emailVerified : null);
 
       if (user) {
         authResolved.current = true;
@@ -151,6 +163,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [fetchAppUser]);
 
+  const reloadFirebaseUser = useCallback(async () => {
+    const user = firebaseUserRef.current;
+    if (!user) return null;
+    try {
+      await user.reload();
+    } catch {
+      // network error — keep the last known state
+    }
+    setEmailVerified(user.emailVerified);
+    return user.emailVerified;
+  }, []);
+
   const handleSignOut = useCallback(async () => {
     try {
       await axios.delete("/api/auth/verify");
@@ -170,8 +194,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         firebaseUser,
         appUser,
         loading,
+        emailVerified,
         signOut: handleSignOut,
         refreshUser,
+        reloadFirebaseUser,
       }}
     >
       {children}

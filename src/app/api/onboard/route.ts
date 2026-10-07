@@ -1,5 +1,13 @@
-// POST /api/onboard — public endpoint, no auth required
-// Creates customer account + sends password setup email immediately on submission
+// POST /api/onboard — public self-signup, no auth required
+// The customer chooses their password here. Creates the Firebase login, the
+// Airtable Customer (linked by UID) and the Users row, then sends a welcome
+// email and a verification email. The client then signs in with the same
+// email + password through the normal /api/auth/verify flow.
+//
+// Security: an existing Customer is never claimed by matching its email. If
+// the email belongs to a Customer with no login yet (created by staff), the
+// signup is refused and that customer is pointed to an activation link
+// instead (POST /api/customers/[id]/invite).
 import { NextRequest } from "next/server";
 import {
   customersApi,
@@ -9,123 +17,191 @@ import {
 } from "@/lib/airtable";
 import {
   createFirebaseUser,
-  setCustomClaims,
-  generatePasswordResetLink,
   deleteFirebaseUser,
+  verifyPassword,
+  generateEmailVerificationLink,
+  getAppUrl,
 } from "@/lib/firebase-admin";
-import { sendWelcomeEmail, sendPasswordResetEmail } from "@/lib/email";
-import { checkRateLimit, rateLimitedResponse, getClientIp } from "@/lib/rate-limit";
+import { findOrRepairAppUser } from "@/lib/accounts";
+import { sendWelcomeEmail, sendEmailVerificationEmail } from "@/lib/email";
+import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
+import { passwordPolicyError, PASSWORD_MAX_LENGTH } from "@/lib/password-policy";
 import { z } from "zod";
 
 const Schema = z.object({
-  name: z.string().min(2).max(200),
-  phone: z.string().min(7).max(30),
-  phone2: z.string().max(30).optional(),
-  email: z.string().email().max(254),
+  name: z.string().trim().min(2, "Full name must be at least 2 characters").max(200),
+  phone: z.string().trim().min(7, "Valid phone number is required").max(30),
+  phone2: z.string().trim().max(30).optional(),
+  email: z.string().trim().toLowerCase().email("Invalid email address").max(254),
+  password: z.string().min(1, "Password is required").max(PASSWORD_MAX_LENGTH),
   existingMark: z.string().max(100).optional().default(""),
-  location: z.string().min(2).max(500),
+  location: z.string().trim().min(2, "Location is required").max(500),
   notes: z.string().max(1000).optional(),
 });
 
-function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let p = "PAKK-";
-  for (let i = 0; i < 8; i++) p += chars[Math.floor(Math.random() * chars.length)];
-  return p;
+// Per-isolate guard against double-submits racing each other
+const signupsInFlight = new Set<string>();
+
+function fail(status: number, code: string, error: string) {
+  return Response.json({ success: false, code, error }, { status });
+}
+
+function firebaseCode(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export async function POST(request: NextRequest) {
+  const sizeErr = checkBodySize(request, 32_768);
+  if (sizeErr) return sizeErr;
+
   const ip = getClientIp(request);
-  if (!checkRateLimit(`onboard:${ip}`, 5, 60 * 60_000)) {
+  if (!checkRateLimit(`onboard:${ip}`, 10, 60 * 60_000)) {
     return rateLimitedResponse(3600);
   }
 
+  const body = await request.json().catch(() => null);
+  const parsed = Schema.safeParse(body);
+  if (!parsed.success) {
+    return fail(400, "INVALID_INPUT", parsed.error.errors.map((e) => e.message).join(", "));
+  }
+  const { name, phone, phone2, email, password, existingMark, location, notes } = parsed.data;
+
+  const policyErr = passwordPolicyError(password);
+  if (policyErr) return fail(400, "WEAK_PASSWORD", policyErr);
+
+  // Recovery below checks passwords against Firebase; cap attempts per email so
+  // this endpoint can't be used to guess someone's password.
+  if (!checkRateLimit(`onboard-email:${email}`, 5, 60 * 60_000)) {
+    return rateLimitedResponse(3600);
+  }
+
+  if (signupsInFlight.has(email)) {
+    return fail(409, "SIGNUP_IN_PROGRESS", "Your account is already being created. Please wait a moment.");
+  }
+  signupsInFlight.add(email);
+
   try {
-    const body = await request.json();
-    const parsed = Schema.safeParse(body);
-    if (!parsed.success) {
-      return Response.json(
-        { success: false, error: parsed.error.errors.map((e) => e.message).join(", ") },
-        { status: 400 }
+    // ── 1. Conflicts with existing Customers ────────────────────────────────
+    const [byEmail, byPhone] = await Promise.all([
+      customersApi.getByEmail(email),
+      customersApi.getByPhone(phone),
+    ]);
+
+    if (byEmail && !byEmail.firebaseUid) {
+      // Staff created this customer and they've never activated a login.
+      // Matching the email proves nothing, so don't attach a login to it.
+      return fail(
+        409,
+        "CUSTOMER_EXISTS_UNCLAIMED",
+        "This email is already registered with De-MOVEZZ LOGISTICS. Contact our team to receive an account activation link."
+      );
+    }
+    if (byPhone && byPhone.id !== byEmail?.id) {
+      return fail(
+        409,
+        "PHONE_IN_USE",
+        "An account with this phone number already exists. Sign in instead, or contact support."
       );
     }
 
-    const { name, phone, phone2, email, existingMark, location, notes } = parsed.data;
-
-    // Check for duplicate email/phone
-    const existingByPhone = await customersApi.getByPhone(phone);
-    if (existingByPhone) {
-      return Response.json(
-        { success: false, error: "An account with this phone number already exists. Try logging in or contact support." },
-        { status: 400 }
-      );
-    }
-
-    const tempPassword = generateTempPassword();
-
-    // 1. Create Firebase user
-    let firebaseUser: { uid: string };
+    // ── 2. Firebase login ───────────────────────────────────────────────────
+    let uid: string;
+    let createdLogin = false;
     try {
-      firebaseUser = await createFirebaseUser(email, tempPassword);
-    } catch (fbErr: unknown) {
-      const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-      if (msg.includes("EMAIL_EXISTS") || msg.includes("email-already-in-use") || msg.includes("already exists")) {
-        return Response.json(
-          { success: false, error: "An account with this email already exists. Try logging in or use Forgot Password." },
-          { status: 400 }
+      uid = (await createFirebaseUser(email, password)).uid;
+      createdLogin = true;
+    } catch (fbErr) {
+      const code = firebaseCode(fbErr);
+      if (!code.includes("EMAIL_EXISTS")) {
+        console.error("[onboard] Firebase create failed:", code);
+        if (code.includes("WEAK_PASSWORD")) return fail(400, "WEAK_PASSWORD", "Please choose a stronger password.");
+        if (code.includes("INVALID_EMAIL")) return fail(400, "INVALID_INPUT", "Invalid email address");
+        return fail(502, "AUTH_UNAVAILABLE", "We couldn't create your account right now. Please try again.");
+      }
+      // The email already has a login. If the caller knows its password they
+      // own it, which lets us finish a signup that stopped partway (e.g. the
+      // browser closed, or Airtable failed after Firebase succeeded).
+      try {
+        uid = (await verifyPassword(email, password)).uid;
+      } catch (pwErr) {
+        if (firebaseCode(pwErr).includes("USER_DISABLED")) {
+          return fail(403, "ACCOUNT_DISABLED", "This account has been disabled. Contact support.");
+        }
+        return fail(
+          409,
+          "EMAIL_IN_USE",
+          "An account with this email already exists. Sign in, or use Forgot password to reset it."
         );
       }
+    }
+
+    // A linked Customer for this email must be linked to *this* login
+    if (byEmail && byEmail.firebaseUid !== uid) {
+      if (createdLogin) await deleteFirebaseUser(uid).catch(() => {});
+      return fail(409, "EMAIL_IN_USE", "An account with this email already exists. Sign in, or use Forgot password to reset it.");
+    }
+
+    // ── 3. Already set up (duplicate submit or retry) ───────────────────────
+    const existingUser = await findOrRepairAppUser(uid, email);
+    if (existingUser) {
       return Response.json(
-        { success: false, error: "Failed to create account. Please try again." },
-        { status: 500 }
+        { success: true, data: { email, alreadyRegistered: true, verificationEmailSent: false } },
+        { status: 200 }
       );
     }
 
-    // 2. Create customer in Airtable
+    // ── 4. Airtable Customer (linked to the login in the same write) ────────
     let customer: Awaited<ReturnType<typeof customersApi.create>>;
     try {
       customer = await customersApi.create(
-        { name, phone, email, notes, shippingAddress: location },
+        { name, phone, email, notes, shippingAddress: location, firebaseUid: uid },
         "onboard-form"
       );
-    } catch {
-      await deleteFirebaseUser(firebaseUser.uid).catch(() => {});
-      return Response.json(
-        { success: false, error: "Failed to save your details. Please try again." },
-        { status: 500 }
-      );
+    } catch (atErr) {
+      console.error("[onboard] Customer create failed:", atErr);
+      // Undo the login we just made so a retry starts clean. If this delete
+      // fails too, a retry with the same password recovers via step 2.
+      if (createdLogin) await deleteFirebaseUser(uid).catch(() => {});
+      return fail(503, "DB_UNAVAILABLE", "We couldn't save your details. Please try again.");
     }
 
-    // 3. Link accounts
-    await usersApi.create(firebaseUser.uid, email, "customer", customer.id).catch(() => {});
-    await customersApi.linkFirebaseUid(customer.id, firebaseUser.uid).catch(() => {});
-    setCustomClaims(firebaseUser.uid, { role: "customer", customerId: customer.id }).catch(() => {});
-
-    // 4. Send password setup email + WhatsApp
+    // ── 5. Users row ────────────────────────────────────────────────────────
     try {
-      await sendWelcomeEmail(email, name, customer.shippingMark);
-      const resetUrl = await generatePasswordResetLink(email);
-      await Promise.allSettled([
-        sendPasswordResetEmail(email, resetUrl),
-        whatsAppApi.sendWelcome(phone, name, customer.shippingMark, resetUrl),
-      ]);
-    } catch {
-      // non-fatal — account exists, customer can use Forgot Password
+      await usersApi.create(uid, email, "customer", customer.id);
+    } catch (atErr) {
+      // The Customer is already linked by UID, so /api/auth/verify recreates
+      // this row on first sign-in. Not worth failing the signup over.
+      console.error("[onboard] Users create failed (will repair at sign-in):", atErr);
     }
 
-    // 5. Log to PendingRegistrations as Created (admin record)
-    pendingRegistrationsApi
-      .create({ name, phone, phone2, email, existingMark, location, notes })
-      .then((reg) => pendingRegistrationsApi.markCreated(reg.id))
-      .catch(() => {});
+    // ── 6. Admin log + emails (none of these block the signup) ──────────────
+    const [, , verifyResult] = await Promise.allSettled([
+      pendingRegistrationsApi
+        .create({ name, phone, phone2, email, existingMark, location, notes })
+        .then((reg) => pendingRegistrationsApi.markCreated(reg.id)),
+      sendWelcomeEmail(email, name, customer.shippingMark),
+      generateEmailVerificationLink(email).then((url) => sendEmailVerificationEmail(email, name, url)),
+      whatsAppApi.sendWelcome(phone, name, customer.shippingMark, `${getAppUrl()}/login`, "login"),
+    ]);
+    if (verifyResult.status === "rejected") {
+      console.error("[onboard] verification email failed:", verifyResult.reason);
+    }
 
-    return Response.json({ success: true }, { status: 201 });
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error("[POST /api/onboard]", detail);
     return Response.json(
-      { success: false, error: "Something went wrong. Please try again.", detail },
-      { status: 500 }
+      {
+        success: true,
+        data: {
+          email,
+          alreadyRegistered: false,
+          verificationEmailSent: verifyResult.status === "fulfilled",
+        },
+      },
+      { status: 201 }
     );
+  } catch (err) {
+    console.error("[POST /api/onboard]", err);
+    return fail(500, "SIGNUP_FAILED", "Something went wrong. Please try again.");
+  } finally {
+    signupsInFlight.delete(email);
   }
 }

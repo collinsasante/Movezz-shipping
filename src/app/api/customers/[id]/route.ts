@@ -9,6 +9,7 @@ import {
   serverErrorResponse,
   notFoundResponse,
   badRequestResponse,
+  invalidateAuthCache,
 } from "@/lib/auth";
 import { z } from "zod";
 
@@ -151,6 +152,7 @@ export async function DELETE(
 
     // Delete customer from Airtable
     await customersApi.delete(id);
+    invalidateAuthCache({ customerId: id, firebaseUid });
 
     return Response.json({
       success: true,

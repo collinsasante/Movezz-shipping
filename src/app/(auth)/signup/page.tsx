@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-// Self-registration is disabled. Accounts are created by admins only.
+// Self-signup lives at /onboard (the link already shared with customers)
 export default function SignupPage() {
-  redirect("/login");
+  redirect("/onboard");
 }

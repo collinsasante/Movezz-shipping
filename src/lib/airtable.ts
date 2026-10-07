@@ -441,9 +441,10 @@ export const customersApi = {
   },
 
   async getByEmail(email: string): Promise<Customer | null> {
+    // Case-insensitive: "Jane@x.com" and "jane@x.com" are the same mailbox
     const records = await getAllRecords(
       TABLES.CUSTOMERS,
-      `{Email} = '${escapeFormula(email)}'`
+      `LOWER(TRIM({Email})) = '${escapeFormula(email.trim().toLowerCase())}'`
     );
     if (records.length === 0) return null;
     return mapCustomer(records[0]);
@@ -467,6 +468,7 @@ export const customersApi = {
       Notes: input.notes ?? "",
       // CreatedAt is a "Created time" field — Airtable fills it automatically
       CreatedBy: createdByEmail,
+      ...(input.firebaseUid && { FirebaseUID: input.firebaseUid }),
     });
 
     invalidateCustomerCache();
@@ -519,6 +521,7 @@ export const customersApi = {
 
   async linkFirebaseUid(id: string, uid: string): Promise<void> {
     await updateRecord(TABLES.CUSTOMERS, id, { FirebaseUID: uid });
+    invalidateCustomerCache();
   },
 
   async setPreferredWarehouse(id: string, warehouseId: string): Promise<void> {
@@ -1549,6 +1552,19 @@ export const usersApi = {
     return mapUser(record);
   },
 
+  async getByCustomerId(customerId: string): Promise<AppUser | null> {
+    const records = await getAllRecords(TABLES.USERS, `FIND('${escapeFormula(customerId)}', ARRAYJOIN({CustomerRecord}))`);
+    if (records.length === 0) return null;
+    return mapUser(records[0]);
+  },
+
+  // Points an existing Users row at a (new) Firebase login. Only call this from
+  // admin-initiated activation, never from a public endpoint.
+  async relinkFirebaseUid(id: string, firebaseUid: string, email: string): Promise<AppUser> {
+    const record = await updateRecord(TABLES.USERS, id, { FirebaseUID: firebaseUid, Email: email });
+    return mapUser(record);
+  },
+
   async updateLastLogin(id: string): Promise<void> {
     await updateRecord(TABLES.USERS, id, { LastLogin: toISOString() });
   },
@@ -1703,15 +1719,25 @@ export const whatsAppApi = {
     }
   },
 
-  async sendWelcome(phone: string, name: string, shippingMark: string, resetUrl: string): Promise<void> {
+  // link is an activation link (account created for them) or the login page
+  // (they chose a password at signup).
+  async sendWelcome(
+    phone: string,
+    name: string,
+    shippingMark: string,
+    link: string,
+    kind: "activate" | "login" = "activate"
+  ): Promise<void> {
     const firstName = name.trim().split(/\s+/)[0];
     const message =
       `Hello ${firstName}! 👋 Welcome to *De-MOVEZZ LOGISTICS*.\n\n` +
       `Your account has been created.\n` +
       `🔖 Shipping Mark: *${shippingMark}*\n\n` +
-      `Set up your password using the link below so you can log in and track your shipments:\n` +
-      `${resetUrl}\n\n` +
-      `_This link expires in 24 hours. Contact us if you need a new one._`;
+      (kind === "activate"
+        ? `Create your password using the link below so you can log in and track your shipments:\n` +
+          `${link}\n\n` +
+          `_This link expires in 1 hour. If it has expired, open it anyway to request a new one._`
+        : `Log in any time to track your shipments:\n${link}`);
     try {
       await whatsAppApi._send(phone, message);
     } catch {

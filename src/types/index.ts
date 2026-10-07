@@ -58,6 +58,8 @@ export interface CreateCustomerInput {
   email: string;
   notes?: string;
   shippingAddress?: string;
+  // Set when the Firebase login is created first, so the link is written atomically
+  firebaseUid?: string;
 }
 
 export interface UpdateCustomerInput {
