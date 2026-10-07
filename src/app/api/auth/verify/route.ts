@@ -1,12 +1,11 @@
 // POST /api/auth/verify — verify Firebase ID token and return app user
 // DELETE /api/auth/verify — sign out (clear cookie)
 import { NextRequest } from "next/server";
-import { verifyIdToken } from "@/lib/firebase-admin";
-import { usersApi, customersApi } from "@/lib/airtable";
+import { verifyIdToken, isDisabledAccountError } from "@/lib/firebase-admin";
+import { usersApi } from "@/lib/airtable";
+import { findOrRepairAppUser } from "@/lib/accounts";
 import { badRequestResponse } from "@/lib/auth";
 import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
-
-const IS_DEV = process.env.NODE_ENV === "development";
 
 export async function POST(request: NextRequest) {
   // Body size guard — Firebase ID tokens are ~1KB; reject anything over 16KB
@@ -20,10 +19,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json();
-    const { idToken } = body;
+    const body = await request.json().catch(() => ({}));
+    const idToken = typeof body?.idToken === "string" ? body.idToken : "";
 
-    if (!idToken) {
+    if (!idToken || idToken.length > 8192) {
       return badRequestResponse("idToken is required");
     }
 
@@ -32,89 +31,44 @@ export async function POST(request: NextRequest) {
     try {
       decoded = await verifyIdToken(idToken);
     } catch (verifyErr) {
-      const detail = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+      if (isDisabledAccountError(verifyErr)) {
+        return Response.json(
+          { success: false, error: "This account has been disabled. Contact support.", code: "ACCOUNT_DISABLED" },
+          { status: 403 }
+        );
+      }
+      console.warn("[verify] token rejected:", verifyErr instanceof Error ? verifyErr.message : verifyErr);
       return Response.json(
-        { success: false, error: "Invalid or expired token", detail },
+        { success: false, error: "Your session has expired. Please sign in again.", code: "INVALID_TOKEN" },
         { status: 401 }
       );
     }
 
-    // Look up user in Airtable
+    // Look up the Users row by UID, repairing it from a UID-linked Customer if it's missing.
+    // There is deliberately no email-based fallback and no "first login becomes
+    // super_admin" bootstrap: the first admin is provisioned with
+    // scripts/create-superadmin.mjs, and existing customers claim their account
+    // through an activation link (POST /api/customers/[id]/invite).
     let appUser: import("@/types").AppUser | null = null;
     try {
-      appUser = await usersApi.getByFirebaseUid(decoded.uid);
+      appUser = await findOrRepairAppUser(decoded.uid, decoded.email);
     } catch (dbErr) {
-      const msg = dbErr instanceof Error ? dbErr.message : String(dbErr);
+      console.error("[verify] Airtable lookup failed:", dbErr);
       return Response.json(
-        {
-          success: false,
-          error: "Cannot reach database. Check AIRTABLE_API_KEY and AIRTABLE_BASE_ID, and make sure the Users table exists.",
-          step: "airtable_read",
-          ...(IS_DEV && { detail: msg }),
-        },
+        { success: false, error: "We couldn't load your account right now. Please try again shortly.", code: "DB_UNAVAILABLE" },
         { status: 503 }
       );
     }
 
     if (!appUser) {
-      // Bootstrap: first Firebase login auto-creates super_admin if the Users table is empty.
-      let userCount = 0;
-      try {
-        userCount = await usersApi.countAll();
-      } catch (countErr) {
-        const msg = countErr instanceof Error ? countErr.message : String(countErr);
-        return Response.json(
-          {
-            success: false,
-            error: "Cannot count users in database. Check Airtable setup.",
-            step: "count_users",
-            ...(IS_DEV && { detail: msg }),
-          },
-          { status: 503 }
-        );
-      }
-
-      if (userCount === 0) {
-        try {
-          appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "super_admin");
-        } catch (createErr) {
-          const msg = createErr instanceof Error ? createErr.message : String(createErr);
-          return Response.json(
-            {
-              success: false,
-              error: "Failed to create your account in the database.",
-              step: "create_user",
-              ...(IS_DEV && { detail: msg }),
-            },
-            { status: 500 }
-          );
-        }
-      } else {
-        // Check if this Firebase user was created by an admin (email exists in Customers table)
-        const existingCustomer = await customersApi.getByEmail(decoded.email ?? "").catch(() => null);
-        if (existingCustomer) {
-          try {
-            appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "customer", existingCustomer.id);
-            // Link Firebase UID to customer record (non-fatal)
-            customersApi.linkFirebaseUid(existingCustomer.id, decoded.uid).catch(() => {});
-          } catch (createErr) {
-            const msg = createErr instanceof Error ? createErr.message : String(createErr);
-            return Response.json(
-              { success: false, error: "Failed to set up your account.", detail: msg, step: "auto_create_customer" },
-              { status: 500 }
-            );
-          }
-        } else {
-          return Response.json(
-            {
-              success: false,
-              error: "You are not registered in this system. Ask an administrator to add you.",
-              code: "NOT_REGISTERED",
-            },
-            { status: 404 }
-          );
-        }
-      }
+      return Response.json(
+        {
+          success: false,
+          error: "We couldn't find a De-MOVEZZ account for this login. Create an account, or contact support if you were invited.",
+          code: "NOT_REGISTERED",
+        },
+        { status: 404 }
+      );
     }
 
     // Enrich customer users with shippingMark + customerName (login-time only, not per-request)
@@ -124,16 +78,19 @@ export async function POST(request: NextRequest) {
     usersApi.updateLastLogin(appUser.id).catch(() => {});
 
     return Response.json(
-      { success: true, data: { user: appUser, uid: decoded.uid, email: decoded.email } },
+      {
+        success: true,
+        data: { user: appUser, uid: decoded.uid, email: decoded.email, emailVerified: decoded.emailVerified },
+      },
       {
         status: 200,
         headers: { "Set-Cookie": `auth-token=${idToken}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=3600` },
       }
     );
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error("[verify] unexpected error:", err);
     return Response.json(
-      { success: false, error: "Verification failed", ...(IS_DEV && { detail: message }) },
+      { success: false, error: "Sign-in failed. Please try again." },
       { status: 500 }
     );
   }

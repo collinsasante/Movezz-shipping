@@ -65,16 +65,62 @@ export async function verifyIdToken(idToken: string) {
   }
 
   const data = (await resp.json()) as {
-    users?: Array<{ localId: string; email?: string }>;
+    users?: Array<{ localId: string; email?: string; emailVerified?: boolean; disabled?: boolean }>;
   };
   const user = data.users?.[0];
   if (!user) throw new Error("No user found for token");
+  // Firebase already refuses to issue tokens to disabled accounts; this also
+  // cuts off a token that was issued before the account was disabled.
+  if (user.disabled) throw new Error("USER_DISABLED");
 
   return {
     uid: user.localId,
     email: user.email,
+    emailVerified: user.emailVerified === true,
     sub: user.localId,
   };
+}
+
+/** True when a Firebase error message means the account is disabled. */
+export function isDisabledAccountError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("USER_DISABLED");
+}
+
+/**
+ * Checks an email + password against Firebase and returns the account's UID.
+ * Used by signup to recover a Firebase account whose Airtable records were
+ * never created: knowing the password proves the caller owns that login.
+ * Throws with Firebase's error code (e.g. INVALID_LOGIN_CREDENTIALS, USER_DISABLED).
+ */
+export async function verifyPassword(email: string, password: string): Promise<{ uid: string }> {
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || getEnvVar("NEXT_PUBLIC_FIREBASE_API_KEY");
+  if (!apiKey) throw new Error("NEXT_PUBLIC_FIREBASE_API_KEY is not configured");
+
+  const resp = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: false }),
+    }
+  );
+  if (!resp.ok) {
+    const err = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(err.error?.message ?? `Firebase sign-in failed: ${resp.status}`);
+  }
+  const data = (await resp.json()) as { localId: string };
+  return { uid: data.localId };
+}
+
+/**
+ * A long random password nobody is told. Accounts created on someone's behalf
+ * (admin-created customers) get one of these; the owner sets their real
+ * password through the one-time activation link.
+ */
+export function generateUnusablePassword(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "");
 }
 
 // ── Service Account OAuth Token (in-memory cache) ────────────────────────────
@@ -193,7 +239,9 @@ export async function deleteFirebaseUser(uid: string) {
   }
 }
 
-export async function getFirebaseUserByEmail(email: string): Promise<{ localId: string; email: string } | null> {
+export async function getFirebaseUserByEmail(
+  email: string
+): Promise<{ localId: string; email: string; emailVerified?: boolean; disabled?: boolean } | null> {
   const token = await getAdminToken();
   const resp = await fetch(`${getBaseUrl()}/accounts:lookup`, {
     method: "POST",
@@ -204,7 +252,9 @@ export async function getFirebaseUserByEmail(email: string): Promise<{ localId: 
     body: JSON.stringify({ email: [email] }),
   });
   if (!resp.ok) return null;
-  const data = (await resp.json()) as { users?: Array<{ localId: string; email: string }> };
+  const data = (await resp.json()) as {
+    users?: Array<{ localId: string; email: string; emailVerified?: boolean; disabled?: boolean }>;
+  };
   return data.users?.[0] ?? null;
 }
 
@@ -222,14 +272,14 @@ export async function getFirebaseUser(uid: string) {
   if (!resp.ok) throw new Error("Failed to get user");
 
   const data = (await resp.json()) as {
-    users?: Array<{ localId: string; email: string }>;
+    users?: Array<{ localId: string; email: string; emailVerified?: boolean; disabled?: boolean }>;
   };
   return data.users?.[0] ?? null;
 }
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 
-function getAppUrl(): string {
+export function getAppUrl(): string {
   const url =
     process.env.APP_URL ??
     getCfEnv()["APP_URL"] ??
@@ -241,7 +291,7 @@ function getAppUrl(): string {
 
 // Rewrites a Firebase-hosted oobLink to our custom /auth/action page,
 // preserving the oobCode, apiKey, and lang params Firebase embedded.
-function rewriteToCustomDomain(oobLink: string, mode: string): string {
+function rewriteToCustomDomain(oobLink: string, mode: string, intent?: string): string {
   try {
     const src = new URL(oobLink);
     const oobCode = src.searchParams.get("oobCode");
@@ -253,6 +303,8 @@ function rewriteToCustomDomain(oobLink: string, mode: string): string {
     dest.searchParams.set("oobCode", oobCode);
     if (apiKey) dest.searchParams.set("apiKey", apiKey);
     dest.searchParams.set("lang", lang);
+    // intent only changes the page's wording; the oobCode is what's checked
+    if (intent) dest.searchParams.set("intent", intent);
     return dest.toString();
   } catch {
     return oobLink;
@@ -292,7 +344,10 @@ export async function generateEmailVerificationLink(email: string): Promise<stri
  * Generates a Firebase password reset link WITHOUT sending Firebase's own email.
  * Uses the admin token + returnOobLink=true so we can send our custom HTML email instead.
  */
-export async function generatePasswordResetLink(email: string): Promise<string> {
+export async function generatePasswordResetLink(
+  email: string,
+  intent?: "activate"
+): Promise<string> {
   const token = await getAdminToken();
   const resp = await fetch(`${getBaseUrl()}/accounts:sendOobCode`, {
     method: "POST",
@@ -314,7 +369,18 @@ export async function generatePasswordResetLink(email: string): Promise<string> 
 
   const data = (await resp.json()) as { oobLink?: string };
   if (!data.oobLink) throw new Error("No password reset link returned");
-  return rewriteToCustomDomain(data.oobLink, "resetPassword");
+  return rewriteToCustomDomain(data.oobLink, "resetPassword", intent);
+}
+
+/**
+ * One-time account activation link for an account created on the customer's
+ * behalf. It is a Firebase password-reset code (single use, expires, only
+ * reaches the owner's inbox) shown on the activation page instead of the
+ * reset page. The Firebase account is already linked to the right Customer
+ * by UID, so activating never relies on matching emails.
+ */
+export async function generateAccountActivationLink(email: string): Promise<string> {
+  return generatePasswordResetLink(email, "activate");
 }
 
 // setCustomClaims is a no-op — roles are sourced from Airtable, not JWT claims

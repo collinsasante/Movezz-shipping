@@ -8,6 +8,7 @@ import { AdminSidebar } from "@/components/layout/AdminSidebar";
 import { CustomerSidebar } from "@/components/layout/CustomerSidebar";
 import { AdminBottomNav } from "@/components/layout/AdminBottomNav";
 import { CustomerBottomNav } from "@/components/layout/CustomerBottomNav";
+import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
 import { Loader2, Copy, CheckCheck } from "lucide-react";
 import axios from "axios";
 
@@ -148,6 +149,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         )}
+        <EmailVerificationBanner />
         <div className="flex-1 overflow-y-auto pb-16 lg:pb-0">{children}</div>
       </main>
 

@@ -7,10 +7,27 @@ import { usersApi } from "./airtable";
 import type { AppUser, UserRole } from "@/types";
 
 // ── In-memory auth cache ──────────────────────────────────────────────────────
-// Caches the AppUser per token for 5 minutes to avoid an Airtable round-trip
-// on every polling request. The cache is cleared automatically when entries expire.
-const AUTH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// Caches the AppUser per token to avoid a Firebase + Airtable round-trip on
+// every polling request. The TTL is the longest a deleted account or changed
+// role can keep working on an isolate that has the token cached, so it is kept
+// short. Deletions on the same isolate also clear it via invalidateAuthCache();
+// other Cloudflare isolates expire on their own within the TTL.
+const AUTH_CACHE_TTL = 60 * 1000; // 1 minute
 const authCache = new Map<string, { user: AppUser; expiresAt: number }>();
+
+/** Drops cached sessions for a user (call after deleting or changing an account). */
+export function invalidateAuthCache(match: { userId?: string; customerId?: string; firebaseUid?: string }) {
+  for (const [key, val] of authCache.entries()) {
+    const u = val.user;
+    if (
+      (match.userId && u.id === match.userId) ||
+      (match.customerId && u.customerId === match.customerId) ||
+      (match.firebaseUid && u.firebaseUid === match.firebaseUid)
+    ) {
+      authCache.delete(key);
+    }
+  }
+}
 
 try {
   setInterval(() => {

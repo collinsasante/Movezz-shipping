@@ -26,7 +26,9 @@ import {
   Search,
   Hash,
   Boxes,
+  KeyRound,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
@@ -52,6 +54,8 @@ export default function CustomerDetailPage() {
   const [itemSearch, setItemSearch] = useState("");
   const [editForm, setEditForm] = useState({ name: "", phone: "", email: "", notes: "", status: "active" as "active" | "inactive", shippingType: "" as "air" | "sea" | "", shippingAddress: "", package: "" as "basic" | "business" | "enterprise" | "special" | "", shippingMark: "" });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const { appUser } = useAuth();
 
   useEffect(() => {
     try {
@@ -130,6 +134,22 @@ export default function CustomerDetailPage() {
     }
   };
 
+  // Emails the customer a one-time link to create their password and claim this account
+  const sendActivation = async () => {
+    setSendingInvite(true);
+    try {
+      const res = await axios.post(`/api/customers/${id}/invite`);
+      success("Activation link sent", res.data.message);
+    } catch (err) {
+      error(
+        "Couldn't send activation link",
+        axios.isAxiosError(err) ? err.response?.data?.error : undefined
+      );
+    } finally {
+      setSendingInvite(false);
+    }
+  };
+
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -176,6 +196,12 @@ export default function CustomerDetailPage() {
             Back
           </button>
           <div className="flex items-center gap-2">
+            {appUser?.role === "super_admin" && !confirmDelete && (
+              <Button size="sm" variant="outline" loading={sendingInvite} onClick={sendActivation}>
+                <KeyRound className="h-4 w-4 mr-1.5" />
+                Send activation link
+              </Button>
+            )}
             {confirmDelete ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-red-600">Delete customer?</span>

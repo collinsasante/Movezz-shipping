@@ -8,6 +8,8 @@ import { Eye, EyeOff } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import axios from "axios";
+import { authErrorMessage } from "@/lib/auth-errors";
+import { startSession } from "@/lib/client-session";
 
 function GoogleIcon() {
   return (
@@ -46,16 +48,11 @@ function LoginForm() {
     e.preventDefault();
     setLoading(true);
     try {
-      const fbUser  = await signIn(email, password);
-      const idToken = await fbUser.getIdToken();
-      const res     = await axios.post("/api/auth/verify", { idToken });
-      try { localStorage.setItem("pakk_user_cache", JSON.stringify(res.data.data.user)); } catch {}
-      goToDashboard(res.data.data.user.role);
+      const fbUser = await signIn(email, password);
+      const user   = await startSession(await fbUser.getIdToken());
+      goToDashboard(user.role);
     } catch (err: unknown) {
-      const msg = axios.isAxiosError(err)
-        ? err.response?.data?.error ?? "Login failed"
-        : err instanceof Error ? err.message : "Invalid email or password";
-      toastError("Login failed", msg);
+      toastError("Login failed", authErrorMessage(err, "Login failed. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -76,16 +73,13 @@ function LoginForm() {
         try { localStorage.setItem("pakk_user_cache", JSON.stringify(res.data.data.user)); } catch {}
         goToDashboard(res.data.data.user.role);
       } else {
-        toastError("Account not found", "Your account hasn't been set up yet. Contact your administrator.");
+        toastError(
+          "Account not found",
+          "No De-MOVEZZ account uses this Google login. Create an account first, or contact us if you were invited."
+        );
       }
     } catch (err: unknown) {
-      const raw = err instanceof Error ? err.message : "";
-      const msg = raw.includes("popup-closed")
-        ? "Sign-in cancelled"
-        : axios.isAxiosError(err)
-        ? err.response?.data?.error ?? "Google sign-in failed"
-        : "Google sign-in failed";
-      toastError("Sign-in failed", msg);
+      toastError("Sign-in failed", authErrorMessage(err, "Google sign-in failed"));
     } finally {
       setGoogleLoading(false);
     }
@@ -183,8 +177,8 @@ function LoginForm() {
 
       {/* Bottom link */}
       <p className="text-center text-sm text-gray-400 pb-8">
-        Need access?{" "}
-        <span className="text-gray-700 font-medium">Contact your De-MOVEZZ LOGISTICS administrator.</span>
+        Don&apos;t have an account?{" "}
+        <Link href="/onboard" className="text-gray-700 font-medium hover:underline">Create one</Link>
       </p>
     </div>
   );

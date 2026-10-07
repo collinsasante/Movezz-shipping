@@ -66,8 +66,16 @@ Run this one-time setup to create the first super admin:
 
 ```bash
 # After setting up .env.local
-npm run setup-admin
+npm run setup-admin -- admin@yourdomain.com
 ```
+
+It creates the Firebase login (printing a one-time password) and the Airtable
+`Users` record. If the email already has a Firebase login, pass its password:
+`EXISTING_PASSWORD='...' npm run setup-admin -- admin@yourdomain.com`.
+
+The app itself never makes anyone a super_admin automatically (there is no
+"first person to sign in becomes admin" behaviour). Additional admins and staff
+are added by an existing super_admin under **Admin → Staff**.
 
 Or manually:
 1. Create user in Firebase Console → Authentication → Add user
