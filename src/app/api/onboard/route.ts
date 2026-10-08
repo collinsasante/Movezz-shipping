@@ -1,126 +1,46 @@
-// POST /api/onboard — public endpoint, no auth required
-// Creates customer account + sends password setup email immediately on submission
+// POST /api/onboard — PUBLIC registration REQUEST (Phase 7G, D9).
+// It creates a `pending` registration request in PostgreSQL and nothing else: no Firebase account, no customer, no user, no password,
+// no role. A super_admin reviews it; after approval the applicant activates their own login (POST /api/auth/activate).
+// The response is identical whether the request was stored, ignored because the person already has an account, or ignored because
+// an identical request is open - the endpoint cannot be used to discover who is registered.
 import { NextRequest } from "next/server";
-import { generateUnusedInitialPassword } from "@/lib/initial-password";
-import {
-  customersApi,
-  usersApi,
-  pendingRegistrationsApi,
-  whatsAppApi,
-} from "@/lib/airtable";
-import {
-  createFirebaseUser,
-  setCustomClaims,
-  generatePasswordResetLink,
-  deleteFirebaseUser,
-} from "@/lib/firebase-admin";
-import { sendWelcomeEmail, sendPasswordResetEmail } from "@/lib/email";
-import { checkRateLimit, rateLimitedResponse, getClientIp } from "@/lib/rate-limit";
 import { z } from "zod";
+import { getPool } from "@/lib/db/client";
+import { submitRegistration, clientKeyFor } from "@/lib/db/registration";
+import { errorResponse } from "@/lib/pg-auth";
+import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
 
+// Explicit allow-list. `.strict()` REJECTS role, status, customerId, authUid, isActive, actor ... instead of silently dropping them.
 const Schema = z.object({
-  name: z.string().min(2).max(200),
-  phone: z.string().min(7).max(30),
-  phone2: z.string().max(30).optional(),
-  email: z.string().email().max(254),
-  existingMark: z.string().max(100).optional().default(""),
-  location: z.string().min(2).max(500),
-  notes: z.string().max(1000).optional(),
-});
+  name: z.string().trim().min(2).max(200),
+  phone: z.string().trim().min(7).max(30),
+  phone2: z.string().trim().max(30).optional().nullable(),
+  email: z.string().trim().email().max(254),
+  existingMark: z.string().trim().max(100).optional().nullable(),
+  location: z.string().trim().min(2).max(500),
+  notes: z.string().trim().max(1000).optional().nullable(),
+}).strict();
 
+const RECEIVED = { success: true, message: "Your registration request has been received." };
 
 export async function POST(request: NextRequest) {
+  const sizeErr = checkBodySize(request, 16_384);
+  if (sizeErr) return sizeErr;
   const ip = getClientIp(request);
-  if (!checkRateLimit(`onboard:${ip}`, 5, 60 * 60_000)) {
-    return rateLimitedResponse(3600);
-  }
+  // first line of defence (per server instance); the database enforces the real, cross-instance limits
+  if (!checkRateLimit(`onboard:${ip}`, 5, 60 * 60_000)) return rateLimitedResponse(3600);
+
+  let body: unknown;
+  try { body = await request.json(); } catch { return Response.json({ success: false, error: "Invalid request" }, { status: 400 }); }
+  const parsed = Schema.safeParse(body);
+  if (!parsed.success) return Response.json({ success: false, error: "Please check the form and try again." }, { status: 400 });
+  // second per-source limit on the normalized e-mail, so rotating IPs does not help
+  if (!checkRateLimit(`onboard-email:${parsed.data.email.toLowerCase()}`, 3, 24 * 60 * 60_000)) return rateLimitedResponse(3600);
 
   try {
-    const body = await request.json();
-    const parsed = Schema.safeParse(body);
-    if (!parsed.success) {
-      return Response.json(
-        { success: false, error: parsed.error.errors.map((e) => e.message).join(", ") },
-        { status: 400 }
-      );
-    }
-
-    const { name, phone, phone2, email, existingMark, location, notes } = parsed.data;
-
-    // Check for duplicate email/phone
-    const existingByPhone = await customersApi.getByPhone(phone);
-    if (existingByPhone) {
-      return Response.json(
-        { success: false, error: "An account with this phone number already exists. Try logging in or contact support." },
-        { status: 400 }
-      );
-    }
-
-    const initialPassword = generateUnusedInitialPassword();
-
-    // 1. Create Firebase user
-    let firebaseUser: { uid: string };
-    try {
-      firebaseUser = await createFirebaseUser(email, initialPassword);
-    } catch (fbErr: unknown) {
-      const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
-      if (msg.includes("EMAIL_EXISTS") || msg.includes("email-already-in-use") || msg.includes("already exists")) {
-        return Response.json(
-          { success: false, error: "An account with this email already exists. Try logging in or use Forgot Password." },
-          { status: 400 }
-        );
-      }
-      return Response.json(
-        { success: false, error: "Failed to create account. Please try again." },
-        { status: 500 }
-      );
-    }
-
-    // 2. Create customer in Airtable
-    let customer: Awaited<ReturnType<typeof customersApi.create>>;
-    try {
-      customer = await customersApi.create(
-        { name, phone, email, notes, shippingAddress: location },
-        "onboard-form"
-      );
-    } catch {
-      await deleteFirebaseUser(firebaseUser.uid).catch(() => {});
-      return Response.json(
-        { success: false, error: "Failed to save your details. Please try again." },
-        { status: 500 }
-      );
-    }
-
-    // 3. Link accounts
-    await usersApi.create(firebaseUser.uid, email, "customer", customer.id).catch(() => {});
-    await customersApi.linkFirebaseUid(customer.id, firebaseUser.uid).catch(() => {});
-    setCustomClaims(firebaseUser.uid, { role: "customer", customerId: customer.id }).catch(() => {});
-
-    // 4. Send password setup email + WhatsApp
-    try {
-      await sendWelcomeEmail(email, name, customer.shippingMark);
-      const resetUrl = await generatePasswordResetLink(email);
-      await Promise.allSettled([
-        sendPasswordResetEmail(email, resetUrl),
-        whatsAppApi.sendWelcome(phone, name, customer.shippingMark, resetUrl),
-      ]);
-    } catch {
-      // non-fatal — account exists, customer can use Forgot Password
-    }
-
-    // 5. Log to PendingRegistrations as Created (admin record)
-    pendingRegistrationsApi
-      .create({ name, phone, phone2, email, existingMark, location, notes })
-      .then((reg) => pendingRegistrationsApi.markCreated(reg.id))
-      .catch(() => {});
-
-    return Response.json({ success: true }, { status: 201 });
+    await submitRegistration(getPool(), parsed.data, clientKeyFor(ip));
+    return Response.json(RECEIVED, { status: 201 });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error("[POST /api/onboard]", detail);
-    return Response.json(
-      { success: false, error: "Something went wrong. Please try again.", ...(process.env.NODE_ENV === "development" && { detail }) },
-      { status: 500 }
-    );
+    return errorResponse(err);
   }
 }

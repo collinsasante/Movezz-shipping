@@ -3,56 +3,34 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Header } from "@/components/layout/Header";
 import { useToast } from "@/components/ui/toast";
-import { ClipboardCopy, Check, RefreshCw, UserPlus, Trash2 } from "lucide-react";
+import { RefreshCw, UserPlus, Check, X } from "lucide-react";
 import axios from "axios";
-import type { PendingRegistration } from "@/lib/airtable";
 
-type Filter = "Pending" | "Created" | "All";
-
-function CopyButton({ reg }: { reg: PendingRegistration }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    const text = [
-      `Name: ${reg.name}`,
-      `Phone: ${reg.phone}`,
-      reg.phone2 ? `Phone 2: ${reg.phone2}` : null,
-      `Email: ${reg.email}`,
-      reg.existingMark ? `Existing Mark: ${reg.existingMark}` : null,
-      `Location: ${reg.location}`,
-      reg.notes ? `Notes: ${reg.notes}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  return (
-    <button
-      onClick={copy}
-      title="Copy to clipboard"
-      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
-      {copied ? "Copied!" : "Copy"}
-    </button>
-  );
+// Registration requests (Phase 7G): a customer asks to register, a super_admin approves or rejects, and the approved
+// customer then activates their own login. Requests are historical records: they are never deleted.
+interface Registration {
+  id: string; name: string; email: string; phone: string | null; phone2: string | null; existing_mark: string | null;
+  location: string | null; notes: string | null; status: "pending" | "approved" | "rejected" | "activated" | "cancelled";
+  rejection_reason: string | null; created_at: string;
 }
+type Filter = "pending" | "approved" | "rejected" | "activated" | "all";
+const FILTERS: Filter[] = ["pending", "approved", "activated", "rejected", "all"];
+const BADGE: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-700", approved: "bg-blue-100 text-blue-700", activated: "bg-green-100 text-green-700",
+  rejected: "bg-red-100 text-red-700", cancelled: "bg-gray-100 text-gray-600",
+};
 
 export default function RegistrationsPage() {
   const { success, error } = useToast();
-  const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
-  const [filter, setFilter] = useState<Filter>("All");
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [filter, setFilter] = useState<Filter>("pending");
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const fetchRegistrations = useCallback(async () => {
     setLoading(true);
-    setSelected(new Set());
     try {
-      const params = filter !== "All" ? { status: filter } : {};
-      const res = await axios.get("/api/admin/registrations", { params });
+      const res = await axios.get("/api/admin/registrations", { params: filter !== "all" ? { status: filter } : {} });
       setRegistrations(res.data.data);
     } catch {
       error("Error", "Failed to load registrations");
@@ -61,188 +39,85 @@ export default function RegistrationsPage() {
     }
   }, [filter, error]);
 
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  useEffect(() => { fetchRegistrations(); }, [fetchRegistrations]);
 
-  const toggleAll = () => {
-    if (selected.size === registrations.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(registrations.map((r) => r.id)));
-    }
-  };
-
-  const deleteSelected = async () => {
-    if (selected.size === 0) return;
-    setDeleting(true);
+  const act = async (id: string, body: { action: "approve" } | { action: "reject"; reason: string }) => {
+    setBusy(id);
     try {
-      await Promise.all(
-        [...selected].map((id) => axios.delete(`/api/admin/registrations/${id}`))
-      );
-      success("Deleted", `${selected.size} registration${selected.size > 1 ? "s" : ""} deleted`);
-      setRegistrations((prev) => prev.filter((r) => !selected.has(r.id)));
-      setSelected(new Set());
-    } catch {
-      error("Error", "Failed to delete some registrations");
+      await axios.patch(`/api/admin/registrations/${id}`, body);
+      success(body.action === "approve" ? "Approved" : "Rejected", body.action === "approve" ? "The customer can now activate their login." : "The request was kept for the record.");
+      await fetchRegistrations();
+    } catch (e) {
+      error("Error", axios.isAxiosError(e) && e.response?.data?.error ? String(e.response.data.error) : "Action failed");
     } finally {
-      setDeleting(false);
+      setBusy(null);
     }
   };
 
-  useEffect(() => {
-    fetchRegistrations();
-  }, [fetchRegistrations]);
-
-  const allSelected = registrations.length > 0 && selected.size === registrations.length;
-  const someSelected = selected.size > 0 && !allSelected;
-  const pending = registrations.filter((r) => r.status === "Pending").length;
+  const reject = (id: string) => {
+    const reason = window.prompt("Reason for rejecting this request (required):");
+    if (reason && reason.trim()) act(id, { action: "reject", reason: reason.trim() });
+  };
 
   return (
     <div className="flex flex-col h-full">
-      <Header title="Registrations" subtitle="Accounts created via the onboarding form" />
-
+      <Header title="Registrations" subtitle="Requests from the onboarding form, waiting for approval" />
       <div className="flex-1 p-6 overflow-auto">
-        {/* Top bar */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {(["Pending", "Created", "All"] as Filter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  filter === f ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
+            {FILTERS.map((f) => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${filter === f ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
                 {f}
-                {f === "Pending" && pending > 0 && (
-                  <span className="ml-1.5 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5">
-                    {pending}
-                  </span>
-                )}
               </button>
             ))}
           </div>
-
           <div className="flex items-center gap-2">
-            {selected.size > 0 && (
-              <button
-                onClick={deleteSelected}
-                disabled={deleting}
-                className="flex items-center gap-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {deleting ? (
-                  <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-                Delete {selected.size} selected
-              </button>
-            )}
-            <button
-              onClick={fetchRegistrations}
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+            <button onClick={fetchRegistrations} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors">
+              <RefreshCw className="h-4 w-4" />Refresh
             </button>
-            <a
-              href="/onboard"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors"
-            >
-              <UserPlus className="h-4 w-4" />
-              Open Form
+            <a href="/onboard" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-2 transition-colors">
+              <UserPlus className="h-4 w-4" />Open Form
             </a>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 rounded-full border-2 border-gray-200 border-t-gray-900 animate-spin" />
-          </div>
+          <div className="flex items-center justify-center py-20"><div className="w-8 h-8 rounded-full border-2 border-gray-200 border-t-gray-900 animate-spin" /></div>
         ) : registrations.length === 0 ? (
           <div className="text-center py-20">
-            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-              <UserPlus className="h-6 w-6 text-gray-400" />
-            </div>
-            <p className="text-sm text-gray-500">No {filter !== "All" ? filter.toLowerCase() : ""} registrations yet.</p>
-            <p className="text-xs text-gray-400 mt-1">Share the registration form link with your customers.</p>
+            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3"><UserPlus className="h-6 w-6 text-gray-400" /></div>
+            <p className="text-sm text-gray-500">No {filter !== "all" ? filter : ""} registrations.</p>
           </div>
         ) : (
           <div className="space-y-1">
-            {/* Select-all row */}
-            <div className="flex items-center gap-3 px-4 py-2">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                ref={(el) => { if (el) el.indeterminate = someSelected; }}
-                onChange={toggleAll}
-                className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
-              />
-              <span className="text-xs text-gray-400">
-                {selected.size > 0 ? `${selected.size} of ${registrations.length} selected` : `Select all ${registrations.length}`}
-              </span>
-            </div>
-
             {registrations.map((reg) => (
-              <div
-                key={reg.id}
-                className={`bg-white border rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4 transition-colors ${
-                  selected.has(reg.id) ? "border-gray-400 bg-gray-50" : "border-gray-200"
-                }`}
-              >
-                {/* Checkbox */}
-                <div className="shrink-0 flex items-start gap-2 mt-0.5">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(reg.id)}
-                    onChange={() => toggleSelect(reg.id)}
-                    className="h-4 w-4 rounded border-gray-300 accent-gray-900 cursor-pointer"
-                  />
-                  <span
-                    className={`inline-flex h-2.5 w-2.5 rounded-full mt-1 ${
-                      reg.status === "Pending" ? "bg-amber-400" : "bg-green-500"
-                    }`}
-                  />
-                </div>
-
-                {/* Details */}
+              <div key={reg.id} className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-4">
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-gray-900">{reg.name}</span>
-                    {reg.existingMark && (
-                      <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">
-                        {reg.existingMark}
-                      </code>
-                    )}
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      reg.status === "Pending" ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"
-                    }`}>
-                      {reg.status}
-                    </span>
+                    {reg.existing_mark && <code className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">{reg.existing_mark}</code>}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${BADGE[reg.status] ?? BADGE.cancelled}`}>{reg.status}</span>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-gray-500">
-                    <span>{reg.phone}</span>
-                    {reg.phone2 && <span>{reg.phone2}</span>}
-                    <span>{reg.email}</span>
-                    <span>{reg.location}</span>
+                    <span>{reg.phone}</span>{reg.phone2 && <span>{reg.phone2}</span>}<span>{reg.email}</span><span>{reg.location}</span>
                   </div>
                   {reg.notes && <p className="text-xs text-gray-400 italic">{reg.notes}</p>}
-                  <p className="text-xs text-gray-300">
-                    {reg.submittedAt ? new Date(reg.submittedAt).toLocaleString() : ""}
-                  </p>
+                  {reg.rejection_reason && <p className="text-xs text-red-500">Rejected: {reg.rejection_reason}</p>}
+                  <p className="text-xs text-gray-300">{reg.created_at ? new Date(reg.created_at).toLocaleString() : ""}</p>
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 shrink-0">
-                  <CopyButton reg={reg} />
-                </div>
+                {reg.status === "pending" && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button disabled={busy === reg.id} onClick={() => act(reg.id, { action: "approve" })}
+                      className="flex items-center gap-1.5 text-sm font-medium text-white bg-gray-900 hover:bg-gray-700 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+                      <Check className="h-4 w-4" />Approve
+                    </button>
+                    <button disabled={busy === reg.id} onClick={() => reject(reg.id)}
+                      className="flex items-center gap-1.5 text-sm text-gray-700 border border-gray-200 hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+                      <X className="h-4 w-4" />Reject
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -258,7 +258,8 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
          WHERE p.prosecdef AND n.nspname IN ('public','movezz_sec') ORDER BY 2,3`)).rows;
       expect(fns.length).toBeGreaterThanOrEqual(12);
       const allow = new Set(["begin_actor", "current_actor_id", "current_actor_type", "require_actor", "append_audit", "append_status_event", "actor_role",
-        "actor_customer_id", "actor_context", "is_operator", "actor_owns_entity", "admin_create_user", "admin_set_user_role", "admin_set_user_active"]);
+        "actor_customer_id", "actor_context", "is_operator", "actor_owns_entity", "admin_create_user", "admin_set_user_role", "admin_set_user_active",
+        "submit_registration", "approve_registration", "reject_registration", "activate_registration"]);
       const refAlloc = new Set(["allocate_reference", "allocate_container_reference"]); // intentionally runtime-callable (reference numbers; no actor, no data read)
       for (const f of fns) {
         const label = `${f.schema}.${f.name}`;

@@ -88,11 +88,9 @@ describe(FIXED("staff powers decided (D6 / A4): no warehouse or supplier adminis
     expect(d.json?.data).toMatchObject({ totalRevenue: 0, pendingRevenue: 0, pendingOrders: [], recentOrders: [] });
     expect((await w.call("settings", "GET", { token: staff })).status).toBe(200);
   });
-  it("staff cannot trigger the Keepup payment-status sync (A4), cannot administer registrations, and cannot move an item to another customer", async () => {
+  it("staff cannot trigger the Keepup payment-status sync (A4) and cannot move an item to another customer (registration administration is PostgreSQL-backed: tests/db/registration-routes.test.ts)", async () => {
     const { w, staff } = await standardWorld();
     expect((await w.call("orders/keepup-sync", "POST", { token: staff })).status).toBe(403);
-    expect((await w.call("admin/registrations", "GET", { token: staff })).status).toBe(403);
-    expect((await w.call("admin/registrations/[id]", "DELETE", { token: staff, params: { id: "recR" } })).status).toBe(403);
     w.seed.item("recIX", "recCustA");
     expect((await w.call("items/[id]", "PATCH", { token: staff, params: { id: "recIX" }, body: { customerId: "recCustB" } })).status).toBe(403);
   });

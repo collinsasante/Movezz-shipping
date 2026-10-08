@@ -36,6 +36,7 @@ export const POLICY = {
   "warehouse.admin": [A],
   "supplier.admin": [A],
   "user.admin": [A],
+  "registration.admin": [A],     // list / view / approve / reject registration requests
   "customer.admin": [A],         // name, phone, email, shipping mark, tier, warehouse, status
   // operational: staff and admin
   "item.price": [A, S],

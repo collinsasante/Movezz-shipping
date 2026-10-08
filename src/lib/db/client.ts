@@ -31,6 +31,11 @@ export function getPool(): Pool {
   return pool;
 }
 
+/** Test hook: replaces (or clears) the process-wide pool so route handlers can be exercised against a test database. */
+export function setPoolForTests(p: Pool | undefined): void {
+  pool = p;
+}
+
 /** Runs `fn` in one READ COMMITTED transaction; commits on success, rolls back on any error. */
 export async function withTransaction<T>(db: Pool, fn: (tx: PoolClient) => Promise<T>): Promise<T> {
   const tx = await db.connect();

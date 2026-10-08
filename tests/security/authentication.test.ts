@@ -227,14 +227,15 @@ describe(FIXED("first-user bootstrap: no login is ever promoted to super_admin a
     expect(res.status).toBe(403);
     expect(res.json?.code).toBe("CUSTOMER_NOT_LINKED");
   });
-  it("public registration can only ever create a CUSTOMER: signup and onboarding ignore a role in the body", async () => {
+  it(FIXED("public registration can no longer create ANY account: a role in the body is rejected by onboarding (400) and signup is gone (410)"), async () => {
     const w = await freshWorld();
     const res = await w.call("onboard", "POST", { body: { name: "Mallory Evil", phone: "0244001234", email: "mallory@example.invalid", location: "Accra", role: "super_admin" } });
-    expect(res.status).toBe(201);
-    expect(w.db.all("Users").map((u) => u.fields["Role"])).toEqual(["customer"]);
+    expect(res.status).toBe(400);
     const signup = await w.call("auth/signup", "POST", { body: { flow: "email", name: "Eve Evil", phone: "0200000001", email: "eve@example.invalid", password: "a-long-enough-password", role: "super_admin" } });
-    expect(signup.status).toBe(201);
-    expect(w.db.all("Users").map((u) => u.fields["Role"])).toEqual(["customer", "customer"]);
+    expect(signup.status).toBe(410);
+    expect(w.db.all("Users")).toHaveLength(0);
+    expect(w.db.all("Customers")).toHaveLength(0);
+    expect(w.firebase.createFirebaseUser).not.toHaveBeenCalled();
   });
   it("staff cannot be created through any public endpoint; POST /api/users is admin-only and cannot create customers", async () => {
     const { w, admin, staff, custA } = await standardWorld();
@@ -285,13 +286,12 @@ describe(FIXED("initial passwords are unguessable, never returned, and never typ
     const [a, b] = vi.mocked(w.firebase.createFirebaseUser).mock.calls.map((c) => c[1]);
     expect(a).not.toBe(b);
   });
-  it("public /api/onboard uses the same generator and returns nothing secret", async () => {
-    const w = await freshWorld();
-    const res = await w.call("onboard", "POST", { body: { name: "Ada Mensah", phone: "0244001234", email: "ada@example.invalid", location: "Accra" } });
-    expect(res.status).toBe(201);
-    const used = vi.mocked(w.firebase.createFirebaseUser).mock.calls[0][1] as string;
-    expect(used).toMatch(strong);
-    expect(JSON.stringify(res.json)).not.toContain(used);
+  it("public registration handles no credentials at all (Phase 7G): no password, generator or Firebase account creation in the public routes", () => {
+    for (const f of ["src/app/api/onboard/route.ts", "src/app/api/auth/signup/route.ts", "src/app/api/auth/activate/route.ts"]) {
+      const src = readSource(f);
+      expect(src, f).not.toMatch(/createFirebaseUser|generateUnusedInitialPassword|generatePasswordResetLink|usersApi|customersApi|setCustomClaims/);
+      expect(src, f).not.toMatch(/req(uest)?\.json\(\)[^;]*password/i);
+    }
   });
   it("admin-created customers use it too", async () => {
     const { w, admin } = await standardWorld();
@@ -301,49 +301,40 @@ describe(FIXED("initial passwords are unguessable, never returned, and never typ
     expect(JSON.stringify(res.json)).not.toContain(String(vi.mocked(w.firebase.createFirebaseUser).mock.calls[0][1]));
   });
   it("source anchor: no Math.random password generation remains in the account-creation routes", () => {
-    for (const f of ["src/app/api/users/route.ts", "src/app/api/customers/route.ts", "src/app/api/onboard/route.ts"]) {
+    for (const f of ["src/app/api/users/route.ts", "src/app/api/customers/route.ts", "src/app/api/onboard/route.ts", "src/app/api/auth/activate/route.ts"]) {
       expect(readSource(f)).not.toContain("Math.random");
       expect(readSource(f)).not.toContain("PAKK-");
     }
   });
 });
 
-describe("public registration endpoints", () => {
-  it(PRESERVE("/api/onboard creates customer + login + welcome email + reset link, with NO email verification or approval"), async () => {
+describe("public registration endpoints (request -> approval -> activation; PostgreSQL-backed, see tests/db/registration*.test.ts)", () => {
+  it(FIXED("/api/onboard no longer creates a customer, a login, a Firebase account or any e-mail: it only submits a request"), async () => {
     const w = await freshWorld();
-    const res = await w.call("onboard", "POST", { body: { name: "Ada Mensah", phone: "0244001234", email: "ada@example.invalid", location: "Accra" } });
-    expect(res.status).toBe(201);
-    expect(w.db.all("Customers")).toHaveLength(1);
-    expect(w.db.all("Users")[0].fields).toMatchObject({ Role: "customer", Email: "ada@example.invalid" });
-    expect(w.email.sendWelcomeEmail).toHaveBeenCalled();
-    expect(w.email.sendPasswordResetEmail).toHaveBeenCalled();
+    await w.call("onboard", "POST", { body: { name: "Ada Mensah", phone: "0244001234", email: "ada@example.invalid", location: "Accra" } });
+    expect(w.db.all("Customers")).toHaveLength(0);
+    expect(w.db.all("Users")).toHaveLength(0);
+    expect(w.firebase.createFirebaseUser).not.toHaveBeenCalled();
+    expect(w.email.sendWelcomeEmail).not.toHaveBeenCalled();
+    expect(w.email.sendPasswordResetEmail).not.toHaveBeenCalled();
   });
-  it(PRESERVE("/api/onboard rejects a duplicate phone number (400)"), async () => {
-    const w = await freshWorld();
-    w.seed.customer("recX", { Phone: "0244001234" });
-    const res = await w.call("onboard", "POST", { body: { name: "Ada Mensah", phone: "0244001234", email: "ada@example.invalid", location: "Accra" } });
-    expect(res.status).toBe(400);
-  });
-  it(KNOWN_BUG("public endpoints reveal whether an email or phone is already registered"), async () => {
+  it(FIXED("/api/auth/signup is gone (410): the client never chooses a password and nothing is created or revealed about existing accounts"), async () => {
     const w = await freshWorld();
     w.seed.customer("recX", { Phone: "0244001234", Email: "taken@example.invalid" });
-    const res = await w.call("auth/signup", "POST", { body: { flow: "email", name: "Ada Mensah", phone: "0200000000", email: "taken@example.invalid", password: "a-long-enough-password" } });
-    expect(res.status).toBe(400);
-    expect(res.json?.error).toBe("An account with this email already exists");
+    const taken = await w.call("auth/signup", "POST", { body: { flow: "email", name: "Ada Mensah", phone: "0200000000", email: "taken@example.invalid", password: "client-chosen-pw" } });
+    const fresh = await w.call("auth/signup", "POST", { body: { flow: "email", name: "Ada Mensah", phone: "0244009999", email: "fresh@example.invalid", password: "client-chosen-pw" } });
+    expect(taken.status).toBe(410);
+    expect(JSON.stringify(taken.json)).toBe(JSON.stringify(fresh.json));
+    expect(w.firebase.createFirebaseUser).not.toHaveBeenCalled();
+    expect(w.db.all("Users")).toHaveLength(0);
   });
-  it(PRESERVE("email signup lets the CLIENT choose the password (>= 8 characters) and creates customer + user rows"), async () => {
-    const w = await freshWorld();
-    const res = await w.call("auth/signup", "POST", { body: { flow: "email", name: "Ada Mensah", phone: "0244001234", email: "ada@example.invalid", password: "client-chosen-pw" } });
-    expect(res.status).toBe(201);
-    expect(vi.mocked(w.firebase.createFirebaseUser).mock.calls[0]).toEqual(["ada@example.invalid", "client-chosen-pw"]);
-    expect(w.db.all("Users")).toHaveLength(1);
-  });
-  it(KNOWN_BUG("the signup/onboard rate limits are in-memory per process and keyed by a spoofable header"), async () => {
+  it(KNOWN_BUG("the onboarding rate limit is an in-memory per-process layer keyed by a header; the DATABASE throttle (per source hash, per e-mail, global) is the authoritative one"), async () => {
     const w = await freshWorld();
     const attempt = (n: number, ip: string) =>
       w.call("onboard", "POST", { body: { name: "Ada Mensah", phone: `02440011${String(n).padStart(2, "0")}`, email: `ada${n}@example.invalid`, location: "Accra" }, headers: { "x-forwarded-for": ip } });
-    for (let i = 0; i < 5; i++) expect((await attempt(i, "9.9.9.9")).status).toBe(201);
+    for (let i = 0; i < 5; i++) expect((await attempt(i, "9.9.9.9")).status).not.toBe(429);
     expect((await attempt(5, "9.9.9.9")).status).toBe(429);
-    expect((await attempt(6, "8.8.8.8")).status).toBe(201); // new "IP", new budget
+    expect((await attempt(6, "8.8.8.8")).status).not.toBe(429); // new "IP", new budget (hence the database layer)
   });
 });
+

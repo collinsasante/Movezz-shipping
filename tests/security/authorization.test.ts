@@ -3,7 +3,7 @@
 // legitimately answer 400/404/500 because the request body is intentionally minimal.
 import { describe, it, expect } from "vitest";
 import { standardWorld, listRouteMethods, type Role } from "../helpers/world";
-import { MATRIX } from "./authz-matrix";
+import { MATRIX, PG_BACKED } from "./authz-matrix";
 import { FIXED } from "../helpers/known";
 
 const ROLES: Role[] = ["super_admin", "warehouse_staff", "customer"];
@@ -12,7 +12,7 @@ describe("authorization matrix: completeness", () => {
   it("covers every exported route handler, and nothing that no longer exists", async () => {
     await standardWorld(); // module registry with mocks in place
     const actual = (await listRouteMethods()).map((e) => `${e.method} ${e.route}`);
-    const declared = MATRIX.map((e) => `${e.method} ${e.route}`).sort();
+    const declared = [...MATRIX, ...PG_BACKED].map((e) => `${e.method} ${e.route}`).sort();
     expect(actual.sort()).toEqual(declared);
   });
 });

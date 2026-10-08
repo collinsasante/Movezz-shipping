@@ -470,6 +470,57 @@ cache is now 5 seconds (was 5 minutes) and is flushed when a user or customer is
 5 s TTL across instances. Registration approval/activation is Phase 7G. Container create/edit/delete is stricter in the live app (super_admin)
 than D6's "staff manage containers"; left unchanged (not widened). Staff can still *read* the exchange-rate setting and supplier list.
 
+## 13f. Registration, approval and activation (Phase 7G, migration 0014)
+
+**Canonical path from Phase 7G on: PostgreSQL.** `POST /api/onboard` (public), `/api/admin/registrations*` (super_admin) and
+`POST /api/auth/activate` are PostgreSQL-backed and need `DATABASE_URL` + `ACTOR_CONTEXT_KEY`. The Airtable `PendingRegistrations` log and
+the immediate-provisioning code that wrote it (`/api/onboard` creating Firebase + Airtable accounts, `/api/auth/signup` with a client-chosen
+password) are retired: `signup` answers 410, `onboard` only files a request. `pendingRegistrationsApi` stays in the codebase unused (legacy
+history, read by the future migration tooling). There is no second registration system. *Until the 7I cutover the rest of the app still
+authenticates through Airtable (`/api/auth/verify`), so a login activated here is not yet usable in the Airtable-backed dashboard.*
+
+```
+public request (/onboard) -> registration_requests: pending
+        super_admin approve -> approved   (customer record created from the request; NO login yet)  |  reject -> rejected (kept, reason)
+        applicant creates THEIR OWN Firebase login (own password or Google), verifies the e-mail,
+        POST /api/auth/activate with the ID token -> activated   (customer login created: role customer, linked, active)
+```
+
+**Public submission.** Strict allow-list (`name, email, phone, phone2, existingMark, location, notes`); role, status, customer/user/auth ids,
+active flags, tier, warehouse, rates, passwords and actor fields are rejected (400), never copied. The route runs the service under the
+server's own `system` actor (HMAC assertion, 7C); `submit_registration` refuses any other actor. Normalization (lower-cased e-mail,
+collapsed whitespace, digits-only phone key) happens in a trigger. The answer is always "Your registration request has been received." -
+a person who already has a login/customer (active, inactive or archived), or an identical open request, creates nothing and cannot be
+told apart (no account enumeration). Races are decided by the partial unique indexes (`ON CONFLICT DO NOTHING`).
+
+**Abuse control.** In-memory per-source and per-e-mail limits (per server instance) *plus* database-enforced limits that do not depend on
+the instance: 5 per source hash per hour (salted SHA-256 of the IP, not the IP), 3 per e-mail per day, 300 per hour globally
+(`RATE_LIMITED` / 429). **CAPTCHA is not implemented** (none exists in the stack): recommended follow-up, ideally Cloudflare Turnstile.
+
+**Approval / rejection** (super_admin only: policy `registration.admin`, re-checked inside the SQL function from the verified actor):
+row lock, state check, reviewer/time/reason, audit, status event, and for approval the customer (shipping mark generated, unique) and a
+`registration.approved` outbox row for the future mail worker. Approving an approved request returns the same customer (no second customer,
+audit or notification). If the e-mail/phone now matches an existing login or customer the approval fails (`REGISTRATION_CONFLICT`) -
+existing accounts are never merged or revived without an explicit super_admin decision. Rejection needs a non-blank reason; requests are never deleted
+(`DELETE` is 405). Terminal states (`rejected`, `activated`, `cancelled`) and re-binding an approved request are blocked by triggers, even for the owner.
+
+**Activation / Firebase.** The server learns the Firebase identity only from `verifyIdToken` (uid, e-mail, **emailVerified must be true**; the body is
+ignored). `activate_registration` (system actor) matches the approved request by that verified e-mail, refuses an inactive/archived customer, a
+uid or e-mail that already has a user, or a customer that already has a login, then in ONE transaction inserts the user (`customer`, linked, active),
+marks the request `activated`, audits and records the status event. The same identity retrying gets the existing result (no writes); any other
+identity gets the same "not eligible" as an unknown e-mail. Concurrent activations serialize on the request row and the unique indexes
+(`auth_uid`, `lower(email)`, one login per customer).
+*Cross-system consistency:* the server never creates Firebase accounts for this flow - the applicant does - so there is no Firebase side effect
+to compensate. A failed activation leaves the request `approved` and the applicant retries (idempotent); an orphan Firebase login without a
+Movezz user has no access at all (`begin_actor` requires the PostgreSQL user). Nothing in this flow handles, generates, stores, mails or returns a password.
+
+**Admin API / isolation.** List/view/approve/reject require the Firebase token -> `users.auth_uid` -> trusted actor -> `super_admin`; staff and
+customers get 403, anonymous 401, malformed/unknown ids 404, a deactivated admin 401 on the very next request (no cache). `registration_requests` is
+read-only for the runtime role and visible only to a super_admin actor (row-level security).
+
+**Limits.** No applicant e-mail is sent yet (outbox row only; a worker is later work) - the admin tells the applicant, or they find /activate
+from the form's success page. Cancelled requests have no endpoint. The `auth/verify` legacy claim-by-verified-e-mail of an admin-created Airtable customer remains until the cutover.
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |

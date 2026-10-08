@@ -11,6 +11,7 @@ import {
   onAuthStateChanged,
   onIdTokenChanged,
   sendPasswordResetEmail,
+  sendEmailVerification,
   updatePassword,
   signInWithPopup,
   GoogleAuthProvider,
@@ -44,6 +45,11 @@ export async function createFirebaseUser(email: string, password: string) {
     password
   );
   return credential.user;
+}
+
+/** Asks Firebase to e-mail the signed-in user a verification link (activation requires a VERIFIED e-mail). */
+export async function sendVerificationEmail(user: User) {
+  await sendEmailVerification(user);
 }
 
 export async function signOut() {

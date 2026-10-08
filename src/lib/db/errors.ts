@@ -26,6 +26,9 @@ export type DomainErrorCode =
   | "CARTON_NOT_RELEASABLE"
   | "CANCELLATION_CONFLICT"
   | "NOT_AUTHORIZED"
+  | "REGISTRATION_NOT_ELIGIBLE"
+  | "RATE_LIMITED"
+  | "REGISTRATION_CONFLICT"
   | "INTEGRITY";
 
 export class DomainError extends Error {
@@ -46,6 +49,9 @@ const SQLSTATE_MAP: Record<string, DomainErrorCode> = {
   MV008: "DISCOUNT_NOT_AUTHORIZED", // discount by anyone but a super_admin
   MV009: "PRICING_NOT_FOUND", // no applicable authoritative rate / item / tier
   MV010: "PRICING_INVALID", // zero, negative, missing basis, or a line that disagrees with the authoritative price
+  MV013: "REGISTRATION_NOT_ELIGIBLE", // unknown request / no approved registration for this identity (deliberately one answer)
+  MV014: "RATE_LIMITED", // database-enforced registration throttle
+  MV015: "REGISTRATION_CONFLICT", // an existing account/customer needs explicit super_admin resolution
   MV012: "NOT_AUTHORIZED", // operation reserved for staff (full permission matrix: Phase 7F)
   MV011: "FX_RATE_INVALID", // invoice FX is not the current authoritative USD->GHS rate
   "23505": "DUPLICATE", // unique_violation

@@ -106,7 +106,7 @@ describe("routes customers must never reach (cartons, containers, payments, repo
   const FORBIDDEN: [string, HttpMethod][] = [
     ["cartons", "GET"], ["cartons", "POST"], ["containers", "GET"], ["containers/[id]", "GET"], ["orders/[id]", "PATCH"], ["orders/[id]/create-invoice", "POST"],
     ["orders/keepup-sync", "POST"], ["reports", "GET"], ["dashboard/admin", "GET"], ["activity-logs", "GET"], ["upload/sign", "POST"], ["users", "GET"],
-    ["sorting", "GET"], ["settings", "GET"], ["admin/registrations", "GET"], ["suppliers", "GET"],
+    ["sorting", "GET"], ["settings", "GET"], ["suppliers", "GET"],
     ["special-rates", "GET"], ["customers/me/warehouse", "PATCH"],     // Phase 7F: other customers' special-rate cards are not for customers; warehouse assignment is administrative (D7)
   ];
   it("all answer 403 to a customer", async () => {

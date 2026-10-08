@@ -53,23 +53,23 @@ export default function OnboardPage() {
             </svg>
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Check Your Email</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Request Received</h2>
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-              Your account has been created. We&apos;ve sent a password setup link to{" "}
-              <span className="font-medium text-gray-700">{form.email}</span>.
+              Thank you. Your registration request is awaiting approval by De-MOVEZZ LOGISTICS. Once it is approved, use{" "}
+              <span className="font-medium text-gray-700">{form.email}</span> to activate your login.
             </p>
           </div>
           <div className="bg-blue-50 rounded-xl p-4 text-left space-y-2">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Next steps</p>
             <ul className="text-sm text-gray-600 space-y-1.5 mt-1">
-              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">1.</span>Open the email from De-MOVEZZ LOGISTICS</li>
-              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">2.</span>Click the password setup link</li>
-              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">3.</span>Set your password and log in</li>
+              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">1.</span>We review your request</li>
+              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">2.</span>When it is approved, go to the activation page</li>
+              <li className="flex items-start gap-2"><span className="text-blue-400 mt-0.5">3.</span>Sign in with Google, or create your own password and verify your email</li>
             </ul>
           </div>
           <p className="text-xs text-gray-400">
-            Didn&apos;t receive the email? Check your spam folder or{" "}
-            <a href="/reset-password" className="text-gray-700 font-medium hover:underline">request a new link</a>.
+            Already approved?{" "}
+            <a href="/activate" className="text-gray-700 font-medium hover:underline">Activate your login</a>.
           </p>
           <a
             href="/login"
@@ -93,10 +93,10 @@ export default function OnboardPage() {
       <div className="flex-1 flex items-start justify-center px-6 py-8">
         <div className="w-full max-w-md">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-1.5">Create Your Account</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-1.5">Request an Account</h1>
             <p className="text-sm text-gray-400 leading-relaxed">
-              Fill in your details below. Once reviewed, your login will be set up
-              and a password link will be sent to your email.
+              Fill in your details below. Your request is reviewed by our team; once
+              it is approved you can activate your own login.
             </p>
           </div>
 

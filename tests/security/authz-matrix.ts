@@ -18,9 +18,6 @@ const r = (route: string, method: HttpMethod, guard: Guard): Entry => ({ route, 
 
 export const MATRIX: Entry[] = [
   r("activity-logs", "GET", [A]),
-  r("admin/registrations", "GET", [A]),
-  r("admin/registrations/[id]", "PATCH", [A]),
-  r("admin/registrations/[id]", "DELETE", [A]),
   r("auth/reset-password", "POST", "public"),
   r("auth/signup", "POST", "public"),
   r("auth/verify", "POST", "public"),
@@ -88,4 +85,16 @@ export const MATRIX: Entry[] = [
   r("warehouses", "POST", [A]),
   r("warehouses/[id]", "PATCH", [A]),
   r("warehouses/[id]", "DELETE", [A]),
+];
+
+/**
+ * Routes backed by PostgreSQL (Phase 7G). The Airtable fake cannot exercise them; their authorization is tested end to end against a
+ * real database in tests/db/registration-routes.test.ts (anonymous 401, staff 403, customer 403, super_admin 200, IDOR, malformed input).
+ */
+export const PG_BACKED: Entry[] = [
+  r("admin/registrations", "GET", [A]),
+  r("admin/registrations/[id]", "GET", [A]),
+  r("admin/registrations/[id]", "PATCH", [A]),
+  r("admin/registrations/[id]", "DELETE", [A]),
+  r("auth/activate", "POST", "public"),
 ];
