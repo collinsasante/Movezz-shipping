@@ -237,7 +237,7 @@ function mapCustomer(record: AirtableRecord<FieldSet>): Customer {
     exchangeRate: (f["ExchangeRate"] as number) ?? undefined,
     notes: (f["Notes"] as string) ?? undefined,
     preferredWarehouseId: (f["PreferredWarehouse"] as string) ?? undefined,
-    createdAt: (f["CreatedAt"] as string) ?? (record as any)._rawJson?.createdTime ?? "",
+    createdAt: (f["CreatedAt"] as string) ?? (record as unknown as { _rawJson?: { createdTime?: string } })._rawJson?.createdTime ?? "",
   };
 }
 
@@ -368,7 +368,7 @@ function mapUser(record: AirtableRecord<FieldSet>): AppUser {
     role: (f["Role"] as UserRole) ?? "customer",
     customerId: ((f["CustomerRecord"] as string[]) ?? [])[0] ?? undefined,
     customerName: (Array.isArray(rawName) ? rawName[0] : rawName) as string | undefined,
-    createdAt: (f["CreatedAt"] as string) ?? (record as any)._rawJson?.createdTime ?? "",
+    createdAt: (f["CreatedAt"] as string) ?? (record as unknown as { _rawJson?: { createdTime?: string } })._rawJson?.createdTime ?? "",
     lastLogin: (f["LastLogin"] as string) ?? undefined,
   };
 }
@@ -2119,7 +2119,7 @@ function mapWarehouse(record: AirtableRecord<FieldSet>): Warehouse {
     country: (f["Country"] as string) ?? undefined,
     phone: (f["Phone"] as string) ?? undefined,
     isActive: (f["IsActive"] as boolean) ?? true,
-    createdAt: (f["CreatedAt"] as string) ?? (record as any)._rawJson?.createdTime ?? "",
+    createdAt: (f["CreatedAt"] as string) ?? (record as unknown as { _rawJson?: { createdTime?: string } })._rawJson?.createdTime ?? "",
   };
 }
 

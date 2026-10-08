@@ -320,7 +320,7 @@ export default function ContainerDetailPage() {
                 <Select options={STATUS_OPTIONS} value={newStatus} onChange={(e) => setNewStatus(e.target.value as ContainerStatus)} />
                 {newStatus === "Arrived in Ghana" && (
                   <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-2">
-                    This will automatically update all {container.items?.length} items to "Arrived in Ghana".
+                    This will automatically update all {container.items?.length} items to &quot;Arrived in Ghana&quot;.
                   </p>
                 )}
                 <Button className="w-full" size="sm" onClick={updateStatus} loading={updatingStatus} disabled={newStatus === container.status}>

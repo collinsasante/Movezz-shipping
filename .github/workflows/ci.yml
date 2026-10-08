@@ -1,9 +1,8 @@
 name: CI
 
-# Safety net only: type-check, tests and build. No secrets, no deployment.
+# Safety net only: lint, type-check, tests, build and a critical-advisory gate. No secrets, no deployment.
 # (deploy.yml is unchanged and still deploys on push to main.)
-# Lint is intentionally absent: `npm run lint` is broken today (Next 16 removed `next lint`
-# and there is no ESLint config). See docs/CHARACTERIZATION-BASELINE.md.
+# Lint fails on errors only; existing warnings are tracked in docs/SECURITY-BASELINE.md.
 
 on:
   pull_request:
@@ -28,11 +27,17 @@ jobs:
 
       - run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Type-check
         run: npm run type-check
 
       - name: Tests
         run: npm test
+
+      - name: Dependency audit (fails on critical advisories only)
+        run: npm audit --audit-level=critical
 
       - name: Build
         run: npm run build

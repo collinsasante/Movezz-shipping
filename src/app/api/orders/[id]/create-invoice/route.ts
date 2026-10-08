@@ -5,7 +5,7 @@
 // DELETE /api/orders/[id]/create-invoice — cancel Keepup invoice and clear from order
 import { NextRequest } from "next/server";
 import { ordersApi, customersApi, itemsApi, settingsApi } from "@/lib/airtable";
-import { requireAuth, serverErrorResponse } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
 import { createKeepupSale, cancelKeepupSale } from "@/lib/keepup";
 import { groupItemsForBilling } from "@/lib/cbm";
 import { billingFor } from "@/lib/pricing";

@@ -113,8 +113,8 @@ export default function NewContainerPage() {
             <ol className="list-decimal list-inside space-y-1 text-blue-700">
               <li>Go to the container detail page</li>
               <li>Add items to the container</li>
-              <li>Update status to "Shipped to Ghana" when departing</li>
-              <li>When arrived, update to "Arrived in Ghana" — all items update automatically</li>
+              <li>Update status to &quot;Shipped to Ghana&quot; when departing</li>
+              <li>When arrived, update to &quot;Arrived in Ghana&quot; — all items update automatically</li>
             </ol>
           </div>
 
