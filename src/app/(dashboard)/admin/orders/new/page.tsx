@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { canGiveDiscount, checkDiscount } from "@/lib/discount";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,10 @@ export default function NewOrderPage() {
     new Date().toISOString().split("T")[0]
   );
   const [notes, setNotes] = useState("");
+  const { appUser } = useAuth();
+  const [discountInput, setDiscountInput] = useState("");
+  const [discountReason, setDiscountReason] = useState("");
+  const discountCheck = checkDiscount({ subtotal: Number(invoiceAmount) || 0, discount: discountInput, reason: discountReason, role: appUser?.role });
   const [usdToGhs, setUsdToGhs] = useState<number | null>(null);
   const draftRestoredRef = React.useRef(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
@@ -202,11 +208,12 @@ export default function NewOrderPage() {
       return error("Please select at least one item");
     if (Number(invoiceAmount) <= 0)
       return error("Invoice amount is required", "Items must have an est. shipping price set");
+    if (!discountCheck.ok) return error("Discount", discountCheck.error);
 
     setSubmitting(true);
     try {
       // same selection retried (double click / network retry) reuses one idempotency key; a different selection gets a new one
-      const fingerprint = JSON.stringify([selectedCustomerId, [...selectedItemIds].sort(), invoiceDate, notes]);
+      const fingerprint = JSON.stringify([selectedCustomerId, [...selectedItemIds].sort(), invoiceDate, notes, discountInput, discountReason]);
       if (!orderKey.current || orderKey.current.fp !== fingerprint) orderKey.current = { fp: fingerprint, key: `ord-${crypto.randomUUID()}` };
       const res = await axios.post("/api/orders", {
         customerId: selectedCustomerId,
@@ -214,6 +221,7 @@ export default function NewOrderPage() {
         invoiceAmount: Number(invoiceAmount),
         invoiceDate,
         notes: notes || undefined,
+        ...(discountCheck.ok && discountCheck.discount > 0 ? { discount: discountCheck.discount, discountReason: discountReason.trim() } : {}),
       }, { headers: { "Idempotency-Key": orderKey.current.key } });
       const orderId = res.data.data.id;
       // Auto-create Keepup invoice
@@ -328,6 +336,21 @@ export default function NewOrderPage() {
                     Auto-computed from sum of selected items&apos; est. shipping prices
                   </p>
                 </div>
+                {canGiveDiscount(appUser?.role) && (
+                  <div data-testid="discount-section" className="rounded-lg border border-gray-200 p-3 space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Discount (USD) <span className="text-gray-400 font-normal">optional, fixed when the invoice is issued</span></label>
+                    <input type="number" min="0" step="0.01" value={discountInput} onChange={(e) => setDiscountInput(e.target.value)} placeholder="0.00" className="h-10 w-full px-3 rounded-lg border border-gray-200 text-sm" />
+                    {discountInput.trim() !== "" && Number(discountInput) > 0 && (
+                      <input type="text" maxLength={500} value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} placeholder="Reason for the discount (required)" className="h-10 w-full px-3 rounded-lg border border-gray-200 text-sm" />
+                    )}
+                    {!discountCheck.ok && <p className="text-xs text-red-600">{discountCheck.error}</p>}
+                    <div className="text-xs text-gray-600 space-y-0.5" data-testid="invoice-totals">
+                      <div className="flex justify-between"><span>Subtotal</span><span>$ {(Number(invoiceAmount) || 0).toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span>Discount</span><span>− $ {(discountCheck.ok ? discountCheck.discount : 0).toFixed(2)}</span></div>
+                      <div className="flex justify-between font-semibold"><span>Total</span><span>$ {(discountCheck.ok ? discountCheck.total : Number(invoiceAmount) || 0).toFixed(2)}{usdToGhs != null && discountCheck.ok ? ` ≈ ${formatCurrency(discountCheck.total * usdToGhs, "GHS")}` : ""}</span></div>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Invoice Date <span className="text-red-500">*</span>

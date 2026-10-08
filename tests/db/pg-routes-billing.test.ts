@@ -71,6 +71,22 @@ dbDescribe("Groups D/E on PostgreSQL: orders, payments, cancellation (real route
     expect((await ordersPost(req("/api/orders", "POST", { token: admin, body: { customerId: custA, itemIds: ids2, discount: 500, discountReason: "x" } }))).status).toBeGreaterThanOrEqual(400);
   });
 
+  it("discount at creation: zero, valid with reason, no reason, too large, non-admin, and a fully discounted (zero-total) invoice", async () => {
+    const mk = async (extra: Record<string, unknown>, token = admin) => { const ids = [await item(db.admin, custA)]; return json(await ordersPost(req("/api/orders", "POST", { token, body: { customerId: custA, itemIds: ids, ...extra } }))); };
+    const none = await mk({}); expect(none.status).toBe(201); expect(none.body.data).toMatchObject({ invoiceAmount: 350, totalUsd: 350, status: "Pending" }); expect(none.body.data.discount).toBeUndefined();
+    const ok = await mk({ discount: 50, discountReason: "loyalty" }); expect(ok.status).toBe(201); expect(ok.body.data).toMatchObject({ invoiceAmount: 350, discount: 50, totalUsd: 300, totalGhs: 3750 });
+    expect((await mk({ discount: 50 })).status).toBe(422);                                  // reason mandatory
+    expect((await mk({ discount: 50, discountReason: "   " })).status).toBe(422);
+    expect((await mk({ discount: 351, discountReason: "x" })).status).toBeGreaterThanOrEqual(400);   // larger than the subtotal
+    expect((await mk({ discount: -5, discountReason: "x" })).status).toBe(400);
+    expect((await mk({ discount: 10, discountReason: "x" }, staff)).status).toBe(403);      // staff cannot create invoices at all
+    const full = await mk({ discount: 350, discountReason: "goodwill gift" });               // locked rule: a zero-total invoice is settled at once, never "Pending"
+    if (full.status === 201) expect(full.body.data).toMatchObject({ totalUsd: 0, totalGhs: 0, status: "Paid", balanceDue: 0 });
+    else expect([400, 422]).toContain(full.status);
+    // after issue the discount is immutable
+    expect((await orderPatch(req("", "PATCH", { token: admin, body: { discount: 0 } }), ctx({ id: ok.body.data.id }))).status).toBe(409);
+  });
+
   it("reads: admin and the owning customer only; staff have no financial access; other customers get 404", async () => {
     const { res } = await mkOrder(); const id = res.body.data.id;
     expect((await ordersGet(req("/api/orders", "GET", { token: staff }))).status).toBe(403);

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuth } from "@/context/AuthContext";
+import { visibleAdminNav } from "@/lib/nav";
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,11 +24,12 @@ const bottomItems = [
 
 export function AdminBottomNav() {
   const pathname = usePathname();
+  const { appUser } = useAuth();
   const { openSidebar } = useSidebar();
 
   return (
     <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-gray-900 border-t border-gray-700 flex items-stretch h-16 safe-area-pb">
-      {bottomItems.map((item) => {
+      {visibleAdminNav(bottomItems, appUser?.role).map((item) => {
         const isActive = item.exact
           ? pathname === item.href
           : pathname.startsWith(item.href);

@@ -144,6 +144,21 @@ dbDescribe("Group A on PostgreSQL: auth, users, customers (real routes)", () => 
     });
   });
 
+  describe("link-login: more cases", () => {
+    it("unknown customer, caller-supplied owner, customer token for their own id, failed lookup", async () => {
+      const link = (token: string, id: string, body: unknown = { firebaseUid: "fb_more_1" }) => linkLogin(req(`/api/customers/${id}/link-login`, "POST", { token, body }), ctx(id));
+      fb.getFirebaseUser.mockResolvedValue({ localId: "fb_more_1", email: "more1@example.invalid", emailVerified: true });
+      expect((await link(admin, "00000000-0000-4000-8000-0000000000aa")).status).toBe(404);              // well-formed id, no such customer
+      expect((await link(ca, custA, { firebaseUid: "fb_more_1" })).status).toBe(403);                      // a customer cannot link even their own id
+      expect((await link(staff, custB, { firebaseUid: "fb_more_1" })).status).toBe(403);
+      expect((await q("SELECT count(*)::int AS n FROM users WHERE auth_uid = 'fb_more_1'"))[0].n).toBe(0);
+      fb.getFirebaseUser.mockRejectedValueOnce(new Error("firebase down"));
+      const target = await customer(db.admin);
+      expect((await link(admin, target)).status).toBe(409);                                               // lookup failed: nothing linked, no guess
+      expect((await q("SELECT count(*)::int AS n FROM users WHERE customer_id = $1", [target]))[0].n).toBe(0);
+    });
+  });
+
   describe("customers", () => {
     it("staff and admin list; customers cannot; search and pagination work", async () => {
       expect((await customersGet(req("/api/customers", "GET", { token: staff }))).status).toBe(200);
