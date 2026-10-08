@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ export default function NewOrderPage() {
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const orderKey = useRef<{ fp: string; key: string } | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
 
@@ -204,13 +205,16 @@ export default function NewOrderPage() {
 
     setSubmitting(true);
     try {
+      // same selection retried (double click / network retry) reuses one idempotency key; a different selection gets a new one
+      const fingerprint = JSON.stringify([selectedCustomerId, [...selectedItemIds].sort(), invoiceDate, notes]);
+      if (!orderKey.current || orderKey.current.fp !== fingerprint) orderKey.current = { fp: fingerprint, key: `ord-${crypto.randomUUID()}` };
       const res = await axios.post("/api/orders", {
         customerId: selectedCustomerId,
         itemIds: selectedItemIds,
         invoiceAmount: Number(invoiceAmount),
         invoiceDate,
         notes: notes || undefined,
-      });
+      }, { headers: { "Idempotency-Key": orderKey.current.key } });
       const orderId = res.data.data.id;
       // Auto-create Keepup invoice
       try {

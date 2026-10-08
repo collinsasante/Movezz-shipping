@@ -148,7 +148,8 @@ dbDescribe("Groups D/E on PostgreSQL: orders, payments, cancellation (real route
     expect((await createInvoice(req("", "POST", { token: admin, body: { regenerate: true } }), ctx({ id }))).status).toBe(409);
     expect((await createInvoice(req("", "POST", { token: staff }), ctx({ id }))).status).toBeGreaterThanOrEqual(403);
     await q("UPDATE keepup_sync SET keepup_sale_id = 'S1', sync_state = 'synced' WHERE invoice_id = $1", [id]).catch(() => {});
-    expect((await clearInvoice(req("", "DELETE", { token: admin }), ctx({ id }))).status).toBe(409);
+    expect((await clearInvoice(req("", "DELETE", { token: admin }), ctx({ id }))).status).toBe(200);   // no-op: the cancel screen calls it first
+    expect((await q("SELECT keepup_sale_id FROM invoices WHERE id = $1", [id]))[0].keepup_sale_id).toBeNull();
     const k = await json(await keepupSync(req("", "POST", { token: admin })));
     expect(k.body).toMatchObject({ success: true, updated: 0 });
     expect((await keepupSync(req("", "POST", { token: staff }))).status).toBe(403);

@@ -147,9 +147,11 @@ export const createInvoicePost = (request: NextRequest, p: P) => pgServiceRoute(
   } else if (regenerate) throw new DomainError("INVALID_STATE", "Only a synchronisation that failed can be retried");
   return { status: 202, body: { success: true, data: { saleId: null, link: null, existing: false, syncState: row.sync_state ?? "pending" }, message: "The invoice is queued for Keepup synchronisation" } };
 });
+// The cancel screen calls this before DELETE /api/orders/[id]. Keepup links are owned by the synchronisation worker and cancellation is one transaction
+// in the invoice service, so there is nothing to clear: report success without changing anything (the real cancellation follows).
 export const createInvoiceDelete = (request: NextRequest, p: P) => pgServiceRoute(request, p.params, async (c) => {
   await adminOnly(c.actor);
-  throw new DomainError("INVALID_STATE", "Keepup links are managed by the synchronisation worker and cannot be cleared here");
+  return { body: { success: true, message: "Nothing to clear: Keepup links are managed by the synchronisation worker" } };
 });
 export const keepupSyncPost = (request: NextRequest) => pgRoute(request, undefined, ["super_admin"], async (c) => {
   // PostgreSQL is the ledger and pushes to Keepup through the worker; there is nothing to pull back into the orders

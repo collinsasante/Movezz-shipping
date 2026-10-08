@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,13 @@ export default function AdminOrderDetailPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
+  // One idempotency key per intentional payment: a double-click or a network retry of the SAME payment reuses it (the server records it once);
+  // a different amount, or the next payment after a success, gets a new key. Only the PostgreSQL backend uses the header; Airtable ignores it.
+  const paymentKey = useRef<{ key: string; amount: number } | null>(null);
+  const keyForPayment = (amount: number) => {
+    if (!paymentKey.current || paymentKey.current.amount !== amount) paymentKey.current = { key: `pay-${crypto.randomUUID()}`, amount };
+    return paymentKey.current.key;
+  };
 
   // Edit invoice modal
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -204,9 +211,11 @@ export default function AdminOrderDetailPage() {
       error("Invalid amount", "Please enter a valid payment amount");
       return;
     }
+    if (savingPayment) return;   // a second click while the first request is in flight is ignored
     setSavingPayment(true);
     try {
-      await axios.patch(`/api/orders/${id}`, { paymentAmount: amount });
+      await axios.patch(`/api/orders/${id}`, { paymentAmount: amount }, { headers: { "Idempotency-Key": keyForPayment(amount) } });
+      paymentKey.current = null;   // this payment is done; the next one is a new intention
       success("Payment recorded");
       setPaymentModalOpen(false);
       setPaymentAmount("");
