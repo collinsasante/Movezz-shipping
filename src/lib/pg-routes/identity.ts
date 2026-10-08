@@ -1,7 +1,7 @@
 // Group A: sign-in, staff users and customers on PostgreSQL. Same URLs, envelopes and status codes as the Airtable routes.
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { verifyIdToken, createFirebaseUser, deleteFirebaseUser, setCustomClaims, generatePasswordResetLink } from "@/lib/firebase-admin";
+import { verifyIdToken, getFirebaseUser, createFirebaseUser, deleteFirebaseUser, setCustomClaims, generatePasswordResetLink } from "@/lib/firebase-admin";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "@/lib/email";
 import { generateUnusedInitialPassword } from "@/lib/initial-password";
 import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
@@ -228,3 +228,31 @@ export const customerDelete = (request: NextRequest, { params }: { params: Param
   await recordAudit(tx, { action: "customer.archive", entityType: "customer", entityId: p.id });
   return { body: { success: true, message: "Customer deleted successfully" } };
 });
+
+// ---------------------------------------------------------------- linking an EXISTING (e.g. imported) customer to a Firebase login
+// Operator workflow (docs/CUTOVER-CHECKLIST.md): the customer creates their own Firebase login and verifies the e-mail; a super_admin who has
+// confirmed out of band that this person owns the customer record submits the Firebase uid. The server re-checks the identity with Firebase
+// (never trusting the client), links exactly that uid to exactly that customer, and refuses every conflict instead of merging.
+const LinkLogin = z.object({ firebaseUid: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/, "firebaseUid is invalid") }).strict();
+export const customerLinkLogin = (request: NextRequest, { params }: { params: Params }) => {
+  if (!checkRateLimit(`link-login:${getClientIp(request)}`, 30, 60 * 60_000)) return Promise.resolve(rateLimitedResponse(3600));
+  return pgRoute(request, params, ["super_admin"], async ({ tx, params: p, request: r }) => {
+    await authorize(tx, "user.admin");
+    const { firebaseUid } = parseInput(LinkLogin, await readJson(r));
+    if (!isUuid(p.id)) throw new DomainError("NOT_FOUND", "Customer not found");
+    const fb = await getFirebaseUser(firebaseUid).catch(() => { throw new DomainError("INVALID_STATE", "The Firebase identity could not be verified. Try again."); });
+    if (!fb) throw new DomainError("NOT_FOUND", "No such Firebase identity");
+    if (fb.emailVerified !== true || !fb.email) throw new DomainError("INVALID_INPUT", "The Firebase identity must have a verified e-mail address");
+    const c = (await tx.query("SELECT id, name, status, archived_at FROM customers WHERE id = $1 FOR UPDATE", [p.id])).rows[0];
+    if (!c) throw new DomainError("NOT_FOUND", "Customer not found");
+    if (c.status !== "active" || c.archived_at) throw new DomainError("INVALID_STATE", "Only an active customer can be linked to a login; inactive customers are never revived here");
+    const byCustomer = (await tx.query("SELECT id, auth_uid FROM users WHERE customer_id = $1", [p.id])).rows[0];
+    if (byCustomer) {
+      if (byCustomer.auth_uid === firebaseUid) return ok({ userId: byCustomer.id, customerId: p.id, alreadyLinked: true }, { message: "This login is already linked to the customer" });
+      throw new DomainError("DUPLICATE", "This customer already has a different login; resolve it explicitly before linking another");
+    }
+    if ((await tx.query("SELECT 1 FROM users WHERE auth_uid = $1 OR lower(email) = lower($2)", [firebaseUid, fb.email])).rows[0]) throw new DomainError("DUPLICATE", "This Firebase identity or e-mail already belongs to another Movezz user");
+    const id = (await tx.query("SELECT movezz_sec.admin_create_user($1::text, $2::text, $3::text, 'customer', $4::uuid) AS id", [firebaseUid, fb.email, c.name, p.id])).rows[0].id;   // audited with the verified actor
+    return ok({ userId: id, customerId: p.id, alreadyLinked: false }, { message: "Login linked to the customer" }, 201);
+  });
+};

@@ -224,7 +224,7 @@ export async function getFirebaseUser(uid: string) {
   if (!resp.ok) throw new Error("Failed to get user");
 
   const data = (await resp.json()) as {
-    users?: Array<{ localId: string; email: string }>;
+    users?: Array<{ localId: string; email: string; emailVerified?: boolean }>;
   };
   return data.users?.[0] ?? null;
 }

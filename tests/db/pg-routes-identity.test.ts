@@ -7,7 +7,7 @@ import { setPoolForTests } from "../../src/lib/db/client";
 import { dataBackend } from "../../src/lib/backend";
 
 const tokens = new Map<string, { uid: string; email?: string; emailVerified: boolean }>();
-const fb = vi.hoisted(() => ({ createFirebaseUser: vi.fn(), deleteFirebaseUser: vi.fn(async () => {}), setCustomClaims: vi.fn(async () => {}), generatePasswordResetLink: vi.fn(async () => "https://example.invalid/reset") }));
+const fb = vi.hoisted(() => ({ getFirebaseUser: vi.fn(), createFirebaseUser: vi.fn(), deleteFirebaseUser: vi.fn(async () => {}), setCustomClaims: vi.fn(async () => {}), generatePasswordResetLink: vi.fn(async () => "https://example.invalid/reset") }));
 vi.mock("@/lib/firebase-admin", () => ({ verifyIdToken: async (t: string) => { const v = tokens.get(t); if (!v) throw new Error("bad token"); return { sub: v.uid, ...v }; }, ...fb }));
 vi.mock("@/lib/email", () => ({ sendPasswordResetEmail: vi.fn(async () => {}), sendWelcomeEmail: vi.fn(async () => {}) }));
 
@@ -16,6 +16,7 @@ import { GET as verifyCookie } from "../../src/app/api/auth/verify-cookie/route"
 import { GET as usersGet, POST as usersPost } from "../../src/app/api/users/route";
 import { DELETE as userDelete } from "../../src/app/api/users/[id]/route";
 import { GET as customersGet, POST as customersPost } from "../../src/app/api/customers/route";
+import { POST as linkLogin } from "../../src/app/api/customers/[id]/link-login/route";
 import { GET as customerGet, PATCH as customerPatch, DELETE as customerDelete } from "../../src/app/api/customers/[id]/route";
 
 let ipn = 0;
@@ -109,6 +110,37 @@ dbDescribe("Group A on PostgreSQL: auth, users, customers (real routes)", () => 
       expect((await userDelete(req(`/api/users/${adminId}`, "DELETE", { token: admin }), ctx(adminId))).status).toBe(403);    // nobody removes their own account (the last-super-admin rule is tested at the database level)
       expect((await userDelete(req(`/api/users/${staffId}`, "DELETE", { token: staff }), ctx(staffId))).status).toBe(403);
       expect((await userDelete(req("/api/users/not-a-uuid", "DELETE", { token: admin }), ctx("not-a-uuid"))).status).toBe(404);
+    });
+  });
+
+  describe("linking an existing customer to a Firebase login", () => {
+    it("super_admin only, verified identity only, idempotent, and every conflict is refused (no e-mail claiming, no merging)", async () => {
+      const imported = await customer(db.admin); const other = await customer(db.admin);
+      const link = (token: string | undefined, id: string, body: unknown = { firebaseUid: "fb_import_1" }) => linkLogin(req(`/api/customers/${id}/link-login`, "POST", { token, body }), ctx(id));
+      fb.getFirebaseUser.mockResolvedValue({ localId: "fb_import_1", email: "imported1@example.invalid", emailVerified: true });
+      expect((await link(undefined, imported)).status).toBe(401);
+      expect((await link(staff, imported)).status).toBe(403); expect((await link(ca, imported)).status).toBe(403);
+      expect((await link(admin, imported, { firebaseUid: "fb_import_1", customerId: other })).status).toBe(400);      // no client-controlled extras
+      expect((await link(admin, imported, { firebaseUid: "x" })).status).toBe(400);
+      expect((await link(admin, "zz")).status).toBe(404);
+      fb.getFirebaseUser.mockResolvedValueOnce({ localId: "fb_import_1", email: "imported1@example.invalid", emailVerified: false });
+      expect((await link(admin, imported)).status).toBe(400);                                                         // unverified e-mail
+      fb.getFirebaseUser.mockResolvedValueOnce(null);
+      expect((await link(admin, imported)).status).toBe(404);                                                         // unknown identity
+      const first = await json(await link(admin, imported));
+      expect(first.status).toBe(201); expect(first.body.data).toMatchObject({ customerId: imported, alreadyLinked: false });
+      expect((await q("SELECT role, customer_id, email FROM users WHERE auth_uid = 'fb_import_1'"))[0]).toMatchObject({ role: "customer", customer_id: imported, email: "imported1@example.invalid" });
+      expect((await q("SELECT count(*)::int AS n FROM audit_logs WHERE action = 'user.create' AND entity_id = $1", [first.body.data.userId]))[0].n).toBe(1);   // audited
+      const again = await json(await link(admin, imported));
+      expect(again.status).toBe(200); expect(again.body.data.alreadyLinked).toBe(true);                               // idempotent
+      expect((await link(admin, other)).status).toBe(409);                                                            // same identity -> second customer: refused
+      expect((await link(admin, imported, { firebaseUid: "fb_import_2" })).status).toBe(409);                         // customer already has another login: refused
+      expect((await q("SELECT count(*)::int AS n FROM users WHERE customer_id IN ($1,$2)", [imported, other]))[0].n).toBe(1);
+      const inactive = await customer(db.admin); await q("UPDATE customers SET status = 'inactive' WHERE id = $1", [inactive]);
+      fb.getFirebaseUser.mockResolvedValue({ localId: "fb_import_3", email: "i3@example.invalid", emailVerified: true });
+      expect((await link(admin, inactive, { firebaseUid: "fb_import_3" })).status).toBe(409);                         // never revives an inactive customer
+      const tokenForNew = tok("fb_import_1");
+      expect((await verify(req("/api/auth/verify", "POST", { body: { idToken: tokenForNew } }))).status).toBe(200);   // and the customer can now sign in
     });
   });
 
