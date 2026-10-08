@@ -494,7 +494,7 @@ export default function AdminOrderDetailPage() {
                     <span className="text-xs text-gray-700">{order.createdBy}</span>
                   </div>
                 )}
-                {order.keepupSaleId && (
+                {(order.keepupSaleId || (order as { currency?: string }).currency === "GHS") && (   // PostgreSQL orders carry their own GHS ledger even before a Keepup sale exists
                   <div className="border-t border-gray-50 pt-3 space-y-1.5">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Payment Info</p>
                     {keepupTotal != null && (
