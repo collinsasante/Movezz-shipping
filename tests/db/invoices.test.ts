@@ -22,7 +22,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
     const c = await customer(db.admin);
     const itemIds: string[] = [];
     for (const p of opts.prices ?? ["100.00"]) itemIds.push(await item(db.admin, c, { tier_price_usd: p }));
-    const r = await createInvoice(db.app, { customerId: c, itemIds, discountUsd: opts.discount, actorUserId: actor, idempotencyKey: key("inv") });
+    const r = await createInvoice(db.app, { customerId: c, itemIds, discountUsd: opts.discount, discountReason: opts.discount ? "Approved test discount" : undefined, actorUserId: actor, idempotencyKey: key("inv") });
     return { c, itemIds, ...r };
   };
 
@@ -182,7 +182,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       await expect(bad).rejects.toMatchObject({ code: "MV006" });
       expect(await sqlstate(db.admin.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X2',$1,100,12.5,1249.99)`, [c]))).toBe("23514");
       // an estimated (reconstructed) legacy invoice is exempt from the exact-GHS rule, and may have no lines
-      await db.admin.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, fx_estimated, total_ghs, legacy_airtable_id) VALUES ('ORD-X3',$1,100,12.5,true,1300,'recLEG1')`, [c]);
+      await db.admin.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, fx_estimated, total_ghs, legacy_airtable_id, provenance, provenance_note) VALUES ('ORD-X3',$1,100,12.5,true,1300,'recLEG1','estimated','historic rate unknown')`, [c]);
     });
     it("a line cannot reference another customer's item", async () => {
       const { invoice } = await invoiceFor();

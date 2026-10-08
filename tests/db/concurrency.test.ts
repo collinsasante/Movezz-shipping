@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, type TestDb } from "./helpers";
 import { createInvoice, recordPayment } from "../../src/lib/db/invoices";
-import { allocateReference } from "../../src/lib/db/references";
+import { allocateReference, allocateContainerReference } from "../../src/lib/db/references";
 import { DomainError } from "../../src/lib/db/errors";
 
 async function settle<T>(ps: Promise<T>[]) {
@@ -36,12 +36,16 @@ dbDescribe("concurrency (PostgreSQL)", () => {
     expect(await allocateReference(db.app, "invoice")).toBe("ORD-00001");
     expect(await allocateReference(db.app, "supplier")).toBe("SUP-0001");
     expect(await allocateReference(db.app, "carton")).toBe("CTN-0001");
-    expect(await allocateReference(db.app, "container", "2026")).toBe("PMX-CON-2026-001");
-    expect(await allocateReference(db.app, "container", "2026")).toBe("PMX-CON-2026-002");
-    expect(await allocateReference(db.app, "container", "2027")).toBe("PMX-CON-2027-001"); // restarts per year
+    // Containers: the year is only PRINTED; the sequence is global and never restarts (docs/DECISIONS.md D1).
+    // (Phase 6 asserted PMX-CON-2027-001 here - the superseded per-year reset; replaced in Phase 7B.)
+    expect(await allocateContainerReference(db.app, 2026)).toBe("PMX-CON-2026-001");
+    expect(await allocateContainerReference(db.app, 2026)).toBe("PMX-CON-2026-002");
+    expect(await allocateContainerReference(db.app, 2027)).toBe("PMX-CON-2027-003");
+    expect(await allocateContainerReference(db.app, 2027)).toBe("PMX-CON-2027-004");
     await db.admin.query("SELECT seed_reference_counter('carton','',9999)");
     expect(await allocateReference(db.app, "carton")).toBe("CTN-10000"); // lpad() would have produced CTN-1000
-    await expect(allocateReference(db.app, "container")).rejects.toThrow(/year scope/);
+    await expect(allocateReference(db.app, "container" as never)).rejects.toThrow(/allocate_container_reference/);
+    await expect(allocateContainerReference(db.app, 1999)).rejects.toThrow(/invalid container year/);
     await expect(allocateReference(db.app, "nonsense" as never)).rejects.toThrow();
   });
 

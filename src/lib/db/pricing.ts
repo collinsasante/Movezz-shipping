@@ -49,8 +49,8 @@ export async function priceItem(db: Queryable, itemId: string, opts: { specialRa
 
   if (opts.specialRateId) {
     // resolve_special_rate raises MV002 (-> SPECIAL_RATE_NOT_APPLICABLE) for unknown / inactive / expired / future / other customer's cards
-    const card = (await db.query(`SELECT * FROM resolve_special_rate($1, $2, now())`, [opts.specialRateId, item.customer_id])).rows[0];
-    const specialRate = String(sea ? card.sea_rate_usd : card.air_rate_usd);
+    const card = (await db.query(`SELECT * FROM resolve_special_rate($1, $2, now(), $3)`, [opts.specialRateId, item.customer_id, item.freight_type])).rows[0];
+    const specialRate = String(sea ? card.sea_rate_usd : card.air_rate_usd); // never null: resolve_special_rate rejects a card without this freight's rate
     const specialPrice = await price(specialRate);
     await db.query(
       `UPDATE items SET package_tier = $2, tier_rate_usd = $3, tier_price_usd = $4, billing_basis = 'special',

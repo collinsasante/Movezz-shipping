@@ -271,6 +271,18 @@ current routes run (Airtable `filterByFormula` use) and should be revisited with
 * Row-level security was **not** used: ownership is enforced in repositories plus composite FKs. RLS with a per-request
   `SET LOCAL app.customer_id` is a possible later hardening.
 
+## 13a. Phase 7B changes (migration 0009)
+
+Applied on top of everything above; see the "Conformance update — Phase 7B" table in DECISIONS.md. Summary of what changed
+in this document's earlier statements: container sequence is global (§8); `resolve_special_rate` takes the freight type
+and special-card rates are nullable and `> 0` (§4); prices and rates must be `> 0` (§3); `invoices.discount_reason`
+(required when the discount is above zero) and `provenance`/`provenance_note` columns exist (§3); a zero-total invoice is
+`Paid` without a payment and uses Keepup sync state `not_required` (§3, §7); `registration_requests` has an `activated`
+state (§2); FX rates are bounded 0.1–1000; the runtime role can only *call* the reference allocators; customer
+deactivation propagates to logins. Compatibility handling: the migration first runs a read-only pre-flight and aborts
+with counts if existing rows violate any new rule — it never rewrites financial values (one labelling-only update marks
+invoices that already had `fx_estimated = true` as provenance `estimated`).
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |

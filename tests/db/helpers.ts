@@ -135,3 +135,20 @@ export async function specialRate(db: Q, over: Record<string, unknown> = {}) {
 export async function sqlstate(p: Promise<unknown>): Promise<string> {
   try { await p; return "OK"; } catch (e) { return (e as { code?: string }).code ?? "ERR"; }
 }
+
+/** An EMPTY database (no migrations applied) for upgrade-path tests. */
+export async function createBareTestDb() {
+  const name = `mvz_test_${randomBytes(6).toString("hex")}`;
+  const root = new pg.Pool({ connectionString: ADMIN_URL, max: 2 });
+  await ensureRole(root);
+  await root.query(`CREATE DATABASE ${name}`);
+  const u = new URL(ADMIN_URL!);
+  u.pathname = `/${name}`;
+  const url = u.toString();
+  const admin = new pg.Pool({ connectionString: url, max: 5 });
+  admin.on("error", () => {});
+  return {
+    name, url, admin,
+    async close() { await admin.end(); await root.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await root.end(); },
+  };
+}

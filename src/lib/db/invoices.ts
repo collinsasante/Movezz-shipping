@@ -12,6 +12,7 @@ export interface CreateInvoiceInput {
   itemIds?: string[];               // loose items (not in a carton)
   cartonIds?: string[];             // open cartons; their member items are billed through the carton line
   discountUsd?: string;             // decimal string, default "0"
+  discountReason?: string;          // required by the database when discountUsd > 0 (authorization is Phase 7D)
   invoiceDate?: string;             // YYYY-MM-DD
   notes?: string;
   actorUserId: string | null;
@@ -39,7 +40,7 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
   const discount = input.discountUsd ?? "0";
   if (!/^\d+(\.\d{1,2})?$/.test(discount)) throw new DomainError("INVALID_INPUT", "Discount must be a non-negative amount with at most 2 decimals");
 
-  const requestHash = fingerprint({ c: input.customerId, i: itemIds, k: cartonIds, d: discount, date: input.invoiceDate ?? null, n: input.notes ?? null });
+  const requestHash = fingerprint({ c: input.customerId, i: itemIds, k: cartonIds, d: discount, r: input.discountReason ?? null, date: input.invoiceDate ?? null, n: input.notes ?? null });
 
   return withTransaction(db, async (tx) => {
     const idem = await beginIdempotent(tx, { scope: "invoice.create", actorUserId: input.actorUserId, key: input.idempotencyKey, requestHash });
@@ -97,12 +98,12 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
     // 4. everything below is the same transaction
     const ref = await allocateReference(tx, "invoice");
     const inv = (await tx.query<InvoiceRow>(
-      `INSERT INTO invoices (invoice_ref, customer_id, invoice_date, subtotal_usd, discount_usd, fx_rate, fx_rate_id, total_ghs,
+      `INSERT INTO invoices (invoice_ref, customer_id, invoice_date, subtotal_usd, discount_usd, discount_reason, fx_rate, fx_rate_id, total_ghs,
                              external_idempotency_key, notes, created_by)
-       VALUES ($1, $2, coalesce($3::date, current_date), $4::numeric, $5::numeric, $6::numeric, $7,
+       VALUES ($1, $2, coalesce($3::date, current_date), $4::numeric, $5::numeric, $11, $6::numeric, $7,
                round(($4::numeric - $5::numeric) * $6::numeric, 2), $8, $9, $10)
        RETURNING *`,
-      [ref, input.customerId, input.invoiceDate ?? null, subtotal, discount, fx.rate, fx.id, input.idempotencyKey, input.notes ?? null, input.actorUserId]
+      [ref, input.customerId, input.invoiceDate ?? null, subtotal, discount, fx.rate, fx.id, input.idempotencyKey, input.notes ?? null, input.actorUserId, input.discountReason ?? null]
     )).rows[0];
 
     let n = 0;
@@ -123,7 +124,7 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
           [id, input.actorUserId, `invoiced on ${ref}`]);
       }
     }
-    await tx.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id) VALUES ('invoice', $1, NULL, 'Pending', $2)`, [inv.id, input.actorUserId]);
+    await tx.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id) VALUES ('invoice', $1, NULL, $3, $2)`, [inv.id, input.actorUserId, inv.status]); // 'Paid' for a zero-total invoice (the database settles it)
     await tx.query(
       `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, after_data, request_id, ip_address, user_agent)
        VALUES ($1, 'invoice.create', 'invoice', $2, $3, $4, $5, $6)`,
@@ -131,7 +132,9 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
        input.request?.requestId ?? null, input.request?.ip ?? null, input.request?.userAgent ?? null]
     );
     // Keepup is created later by a worker from this row (never inline): the state machine starts at 'pending'.
-    await tx.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key) VALUES ('invoice', $1, $2)`, [inv.id, `invoice:${inv.id}`]);
+    // A zero-total invoice is Movezz-only (docs/DECISIONS.md A2): no Keepup sale, sync state 'not_required'.
+    await tx.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key, sync_state) VALUES ('invoice', $1, $2, $3)`,
+      [inv.id, `invoice:${inv.id}`, Number(inv.total_ghs) === 0 ? "not_required" : "pending"]);
     if (customer.email) {
       await tx.query(
         `INSERT INTO notification_outbox (event_type, channel, recipient, payload, dedupe_key) VALUES ('invoice.created', 'email', $1, $2, $3)`,

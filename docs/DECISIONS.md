@@ -247,6 +247,27 @@ authenticated server context, never from the browser.
 
 ---
 
+## Conformance update — Phase 7B (schema layer, migration `0009_phase7_business_constraints.sql`)
+
+Database-level enforcement now in place (service-level behavior is still Phase 7C–7G):
+
+| Item | Phase 7B status |
+|---|---|
+| D1 global container sequence | **Fixed**: one global counter; `allocate_container_reference(year)` prints the year only. Old per-year counter rows are kept, never deleted, and the global counter is seeded above them and above every existing container number. |
+| D4 / A2 zero-value invoice | **Fixed (DB)**: `total_ghs = 0` ⇒ status `Paid` (or `Cancelled`), set automatically, no payment row; Keepup sync state `not_required` is mandatory for them and forbidden for others. `createInvoice` was only adapted to write the right status event / sync state. |
+| D5 zero price | **Fixed (DB backstop)**: `> 0` checks on item/carton/package/line prices and rates; a native invoice needs a positive subtotal. The friendly pricing error and the invoice-time check are Phase 7D. |
+| D10 special-rate zero / context | **Fixed (DB)**: card rates nullable and `> 0`, at least one required; `resolve_special_rate(card, customer, at, freight)` now requires the freight and rejects a card without that freight's rate; the item trigger enforces it. |
+| D16 / A3 discount reason | **Schema done**: `discount_reason` required only when `discount_usd > 0`, at least one non-whitespace character, frozen with the snapshot. The `super_admin` check and audit of the reason are Phase 7D/7C. |
+| D9 activation | **Schema done**: `activated` status + `activated_at`, enforced transitions, open-request uniqueness covers `approved`. Service is Phase 7G. |
+| D11 provenance | **Schema done**: `provenance` + `provenance_note` on invoices, lines, items, special rates; estimated/ambiguous values require an explanation. Quarantine tooling is Phase 7H. |
+| D12 FX bounds | **Fixed (DB)**: 0.1–1000 on `fx_rates` (USD→GHS) and on the frozen invoice rate. |
+| D19 counter hardening | **Fixed**: the runtime role has no access to `reference_counters`; only `SECURITY DEFINER` allocation functions. |
+| D8 active-state consistency | **Fixed (DB)**: an active login cannot belong to an inactive/archived customer; deactivating/archiving a customer deactivates its login with a status event; reactivation is an explicit second step. |
+
+Still open after 7B: D3 release workflow (7E), authorization/ownership repositories (7F), audit coverage and server-derived
+actor (7C), discount authority check (7D), migration tooling (7H). Also noted: other existing reason columns
+(`cancel_reason`, `void_reason`, `rejection_reason`) still use `btrim()` and would accept tab/newline-only text.
+
 ## Conformance of the Phase 6 implementation (state at commit `52d0016`)
 
 Recorded so no one has to rediscover it. **No implementation code was changed at this gate.** "Conflict" means the
