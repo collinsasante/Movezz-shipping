@@ -45,6 +45,7 @@ export const MATRIX: Entry[] = [
   r("dashboard/admin", "GET", [A, S]),
   r("dashboard/customer", "GET", [C, A]),
   r("health", "GET", "public"),
+  r("ready", "GET", "public"),     // readiness (PostgreSQL backend only: 501 in Airtable mode); tested in tests/db/readiness.test.ts
   r("items", "GET", [A, S, C]),
   r("items", "POST", [A, S]),
   r("items/[id]", "GET", [A, S, C]),

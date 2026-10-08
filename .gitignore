@@ -50,3 +50,4 @@ staging-exports/
 *.dump.gpg
 reports/
 .env.staging*
+.keepup-worker-*/

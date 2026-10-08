@@ -32,6 +32,8 @@ export type KeepupCreateOutcome =
   | { kind: "ambiguous"; reason: string };
 
 export interface KeepupGateway {
+  /** What this gateway really is. Readiness and tooling must look at this, never infer "live" from the fact that a call succeeded. */
+  readonly kind?: "mock" | "http-sandbox" | "http-production";
   createSale(req: KeepupSaleRequest, opts: { signal?: AbortSignal }): Promise<KeepupCreateOutcome>;
 }
 
@@ -74,6 +76,7 @@ export function assertSafeKeepupBaseUrl(raw: string, environment: "sandbox" | "p
 }
 
 export class HttpKeepupGateway implements KeepupGateway {
+  get kind(): "http-sandbox" | "http-production" { return this.cfg.environment === "production" ? "http-production" : "http-sandbox"; }
   private readonly base: URL;
   private readonly timeoutMs: number;
   private readonly maxBytes: number;
@@ -158,6 +161,7 @@ let mockSaleSeq = 0;                            // process-wide: two mock gatewa
 
 /** Deterministic in-memory Keepup for tests: scripted outcomes per call, plus a record of every request it "received". */
 export class MockKeepupGateway implements KeepupGateway {
+  readonly kind = "mock" as const;
   readonly received: KeepupSaleRequest[] = [];
   private script: (KeepupCreateOutcome | Error | ((r: KeepupSaleRequest) => KeepupCreateOutcome | Promise<KeepupCreateOutcome>))[] = [];
   /** Queue outcomes consumed in order; when empty, every call creates a fresh sale (MOCK-1, MOCK-2, ...). */

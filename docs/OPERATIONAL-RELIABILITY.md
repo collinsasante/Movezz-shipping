@@ -171,3 +171,8 @@ via `authorize`; customers cannot read `keepup_sync`, `notification_outbox`, `id
 Structured JSON events (`src/lib/db/log.ts`): `actor.rejected`, `authorization.denied`, `operation.rejected`, `db.transaction_failed`, `route.rejected`, `route.failed`, `keepup.claimed/synced/outcome_unknown/…`, `outbox.claimed/sent/retry_scheduled/…`.
 Active only with a sink or `MOVEZZ_LOG=json`. Correlation id = request id (actor events) or `keepup:<id>` / `outbox:<id>`. Secret-like keys and personal fields (email, phone, name, payload) are redacted. Workers were rehearsed with mocks only
 (crash/restart, outcome-unknown, retry) and no real notification or Keepup call; they remain disabled by default.
+
+## Addendum — Keepup mode, operator CLI and readiness
+* `MOVEZZ_KEEPUP_MODE` (`src/lib/integrations/keepup-runtime.ts`) decides the gateway: `disabled` (default; no gateway is built), `mock`, `sandbox` (needs a local or sandbox/staging/test base URL), `live` (production host, only with `MOVEZZ_KEEPUP_ALLOW_PRODUCTION=true`). Gateways expose `kind` (`mock | http-sandbox | http-production`). There is no silent fallback to the mock.
+* `scripts/keepup-worker.mjs --once` runs one worker pass against a local/staging database (strict target guard) and refuses `live`; verified end to end against a local stub server (`tests/db/keepup-readiness.test.ts`): sale created and recorded once, an HTTP 500 lands in `needs_reconciliation` and is never re-sent, a 422 is `failed` with back-off.
+* `GET /api/ready` (separate from `/api/health`): see `docs/CUTOVER-RUNBOOK.md` §6.4. Still not implemented: a scheduled production worker, Keepup payment/cancel/edit/refund propagation, verification against the real Keepup API.

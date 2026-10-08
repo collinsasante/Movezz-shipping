@@ -38,6 +38,8 @@ Status today: production is Airtable-backed and unchanged. The PostgreSQL backen
 
 WhatsApp semantics (PostgreSQL): opt-in per item-status update, only for invoiced items and real status changes, sent in-request after COMMIT, best effort with an 8 s timeout. A provider failure never fails or rolls back the operation, and there is no retry or delivery guarantee (a message can be lost; a client retry of a *different* request can send another). A durable outbox sender is a possible later improvement, not a cutover requirement. Phone numbers are sent as stored (digits only); numbers without a country code will be rejected by Meta.
 
+Exporter: `scripts/airtable-export.mjs` (read-only; two-pass consistency; deterministic snapshot + manifest; independent-fingerprint and independent-count verification) now exists and is tested against a fake Airtable only. It is the only code in the repository that would contact Airtable's API after cutover work begins, uses its own credential variables, and is removed with the rest of the Airtable tooling once the archive plan no longer needs it.
+
 Not found: dual-write, runtime fallback to Airtable from the PostgreSQL branch, Airtable use in `src/lib/keepup.ts`, middleware, `pg-routes`, `db`, workers, or `whatsapp.ts`.
 
 ## 3. Historical data (owner decision required)

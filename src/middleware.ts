@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 // ROUTE PROTECTION MIDDLEWARE
 // ============================================================
 
+// Exact-match probes: liveness and readiness must be reachable by an uptime monitor that carries no cookie (readiness is token-gated for detail).
+const PUBLIC_EXACT = ["/api/health", "/api/ready"];
 const PUBLIC_PATHS = ["/login", "/reset-password", "/auth", "/api/auth", "/onboard", "/api/onboard", "/activate"];
 
 const ROLE_ROUTES: Record<string, string[]> = {
@@ -40,7 +42,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths without auth
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (PUBLIC_EXACT.includes(pathname) || PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return applySecurityHeaders(NextResponse.next());
   }
 
