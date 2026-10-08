@@ -320,3 +320,6 @@ Application: redeploy the previous build (documented, not executed). Database: f
 ## 21. Remaining risks
 Only 4 routes are PostgreSQL-backed; all others are still Airtable-only (the application is not ready to run on PostgreSQL). Real data shape/volume (RPV). Owner-level import role. Whole-snapshot memory.
 Signing-key residual risk: see `docs/DECISIONS.md` Addendum C.
+
+## 22. Phase 7K — quarantine resolution (VL)
+`node scripts/db-quarantine.mjs list|summary|resolve` (same environment guard as the importer; reads use a read-only session). `resolve --id N --resolution excluded|corrected_in_new_snapshot --reason "..." --resolved-by LABEL [--new-snapshot SHA256]` records one append-only decision in `import_quarantine_resolutions` (migration 0017); a second decision for the same row, an update or a delete is refused by the database, and the runtime role has no access. A "correction" only points to a new snapshot, which goes through the full importer. See `docs/CUTOVER-CHECKLIST.md`.

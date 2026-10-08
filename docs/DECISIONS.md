@@ -356,3 +356,14 @@ explicit owner decision before a production import (details and the behaviour im
 * **B3 (legacy carton tier, cancellation reason/time):** may remain unresolved for staging; BDR before cutover.
 * **B4 (quarantine resolution process):** may remain unresolved for staging; blocks production cutover.
 * **Phase 7C signing-key residual risk** (the actor HMAC key is held by the application and by whoever can run the importer): **acceptable for staging** with disposable, non-production keys; **blocking for production** until the key is provisioned from a secrets store, is separate from the migration key, is rotated/retired after import, and backups are encrypted or exclude `movezz_sec.actor_keys` (verified: the rehearsal dump excludes it). Moving signing out of the application process would be an architecture change and is not required for staging.
+
+
+---
+
+## Addendum D — Phase 7K blocker resolution (no business rule invented)
+
+* **Quarantine resolution (B4) is implemented:** migration 0017 + `scripts/db-quarantine.mjs`. A decision is `excluded` or `corrected_in_new_snapshot` (new snapshot fingerprint required), with a reason (≥10 chars) and the deciding person; append-only, owner-only, never edits data.
+* **B2:** no new code. The explicit super_admin `admin_create_user` path is the linking flow; registration keeps refusing imported customers by design.
+* **B3:** not required for post-cutover operation; unknown values stay unknown. **Still a business decision:** B1 (verified financial/payment source, or approval to leave orders/invoices in Airtable as a read-only archive).
+* **Actor key:** production now refuses a missing, short or non-random `ACTOR_CONTEXT_KEY`; secret-store provisioning remains a deployment requirement. Classification from Addendum C is unchanged.
+* **Finding that dominates readiness:** 39 of 43 API routes are Airtable-only (`docs/CUTOVER-CHECKLIST.md` §3).

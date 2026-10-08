@@ -25,7 +25,7 @@ export default defineConfig([
   {
     // The importer is plain .mjs (it runs as a CLI without a TypeScript runner). Its tests poke at loosely typed report objects and
     // deliberately hostile snapshots, so `any` is allowed in those test files only.
-    files: ["tests/db/import-*.test.ts", "tests/db/source-shape.test.ts", "tests/db/staging-rehearsal.test.ts"],
+    files: ["tests/db/import-*.test.ts", "tests/db/source-shape.test.ts", "tests/db/staging-rehearsal.test.ts", "tests/db/quarantine-resolution.test.ts"],
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
   globalIgnores([".next/**", ".open-next/**", "node_modules/**", "coverage/**", "out/**", "build/**", "next-env.d.ts", "public/**"]),

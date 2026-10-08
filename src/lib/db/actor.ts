@@ -34,6 +34,8 @@ export function actorKeyFromEnv(): Buffer {
   if (!raw) throw new DomainError("ACTOR_INVALID", "ACTOR_CONTEXT_KEY is not configured");
   const key = Buffer.from(raw, "base64");
   if (key.length < 32) throw new DomainError("ACTOR_INVALID", "ACTOR_CONTEXT_KEY must decode to at least 32 bytes");
+  // Production refuses a key that cannot have come from a random generator (repeated bytes, a short pattern, a placeholder).
+  if (process.env.NODE_ENV === "production" && new Set(key).size < 16) throw new DomainError("ACTOR_INVALID", "ACTOR_CONTEXT_KEY is not a random key");
   return key;
 }
 
