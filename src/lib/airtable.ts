@@ -2203,6 +2203,13 @@ export interface AppSettings {
 }
 
 export const settingsApi = {
+  /** The configured USD->GHS rate, or null when it is missing/invalid. Never defaults to 1: money code must refuse instead. */
+  async getRate(): Promise<number | null> {
+    const records = await getAllRecords(TABLES.SETTINGS);
+    const rate = records.length > 0 ? records[0].fields["UsdToGhs"] : undefined;
+    return typeof rate === "number" && Number.isFinite(rate) && rate > 0 ? rate : null;
+  },
+
   async get(): Promise<AppSettings | null> {
     const records = await getAllRecords(TABLES.SETTINGS);
     if (records.length === 0) return null;

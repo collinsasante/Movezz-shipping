@@ -54,13 +54,14 @@ describe("create-invoice: USD order -> GHS Keepup invoice", () => {
     expect(lines(s.w)[0].price).toBe(0);
   });
 
-  it(KNOWN_BUG("a discount larger than the invoice is accepted and silently clamped to a 0 net amount"), async () => {
-    // Future behavior (Phase 3 R-18): 0 <= discount <= subtotal, enforced with a CHECK constraint. Documents current behavior only.
+  it(FIXED("a discount larger than the invoice is rejected (it used to be silently clamped to a 0 net amount)"), async () => {
     const s = await orderWith({ items: { recI1: {} } });
     const patch = await s.w.call("orders/[id]", "PATCH", { token: s.admin, params: { id: "recOrd1" }, body: { discount: 500 } });
-    expect(patch.status).toBe(200);
-    await createInvoice(s);
-    expect(lines(s.w)[0].price).toBe(0);
+    expect(patch.status).toBe(400);
+    expect(s.w.db.get("Orders", "recOrd1")?.fields["Discount"]).toBeUndefined();
+    // lowering the invoice below an existing discount is rejected too
+    s.w.db.update("Orders", "recOrd1", { Discount: 80 });
+    expect((await s.w.call("orders/[id]", "PATCH", { token: s.admin, params: { id: "recOrd1" }, body: { invoiceAmount: 50 } })).status).toBe(400);
   });
 
   it("rejects a negative discount with 400", async () => {
@@ -83,26 +84,31 @@ describe("create-invoice: USD order -> GHS Keepup invoice", () => {
   });
 });
 
-describe(KNOWN_BUG("the exchange rate is read live and silently defaults to 1"), () => {
-  // Future behavior (Phase 3 R-19): the rate is frozen on the invoice; a missing rate is an error.
-  it("documents that with NO Settings row the invoice is created at rate 1 (USD number sent as GHS)", async () => {
+describe("create-invoice: the exchange rate", () => {
+  it(FIXED("with no configured rate the invoice is refused (409), not created at rate 1"), async () => {
     const s = await orderWith({ items: { recI1: {} }, rate: null });
     const res = await createInvoice(s);
-    expect(res.status).toBe(200);
-    expect(lines(s.w)[0].price).toBe(100);
+    expect(res.status).toBe(409);
+    expect(s.w.keepup.createKeepupSale).not.toHaveBeenCalled();
+    expect(s.w.db.get("Orders", "recOrd1")?.fields["KeepupSaleId"]).toBeUndefined();
   });
-  it("documents that nothing about the rate or GHS amount is stored on the order (no FX snapshot)", async () => {
+  it(FIXED("an invalid rate (0 or negative) is refused the same way"), async () => {
+    const s = await orderWith({ items: { recI1: {} }, rate: 0 });
+    expect((await createInvoice(s)).status).toBe(409);
+  });
+  it(KNOWN_BUG("nothing about the rate or GHS amount is stored on the order (no FX snapshot)"), async () => {
+    // Needs the PostgreSQL phase: usd_total, fx_rate and ghs_total frozen on the invoice (an Airtable schema change is not made here).
     const s = await orderWith({ items: { recI1: {} } });
     await createInvoice(s);
     expect(Object.keys(s.w.db.get("Orders", "recOrd1")?.fields ?? {}).sort()).toEqual(
       ["Customer", "InvoiceAmount", "InvoiceDate", "Items", "KeepupLink", "KeepupSaleId", "OrderRef", "Status"].sort()
     );
   });
-  it("documents that re-creating the invoice after the rate changed produces a DIFFERENT GHS amount for the same USD invoice", async () => {
+  it(KNOWN_BUG("regenerating after the rate changed produces a DIFFERENT GHS amount for the same USD invoice"), async () => {
     const s = await orderWith({ items: { recI1: {} }, rate: 10 });
     await createInvoice(s);
     s.w.db.all("Settings")[0].fields["UsdToGhs"] = 12;
-    await createInvoice(s);
+    await createInvoice(s, { regenerate: true });
     expect([lines(s.w, 0)[0].price, lines(s.w, 1)[0].price]).toEqual([1000, 1200]);
   });
 });
@@ -137,23 +143,38 @@ describe("create-invoice: splitting the net GHS amount across lines and rounding
     expect(lines(s.w)[0].price).toBe(411.52); // round(33.333 x 12.3456 x 100) / 100
   });
 
-  it(PRESERVE("with a client itemPriceMap for ALL items, splits proportionally to those client prices"), async () => {
-    const s = await orderWith({ items: { recI1: { Length: 100, Width: 100, Height: 10 }, recI2: { Length: 100, Width: 100, Height: 30 } }, amount: 100 });
-    await createInvoice(s, { itemPriceMap: { recI1: 30, recI2: 10 } }); // opposite of the CBM split
-    expect(lines(s.w).map((l) => l.price)).toEqual([937.5, 312.5]);
+  it(FIXED("a client-supplied itemPriceMap is ignored: lines are weighted by the stored item prices"), async () => {
+    const s = await orderWith({
+      items: {
+        recI1: { Length: 100, Width: 100, Height: 10, PkgEstShipping: 10 },
+        recI2: { Length: 100, Width: 100, Height: 30, PkgEstShipping: 30 },
+      },
+      amount: 100,
+    });
+    await createInvoice(s, { itemPriceMap: { recI1: 900, recI2: 1 } }); // forged: tries to push the total onto item 1
+    expect(lines(s.w).map((l) => l.price)).toEqual([312.5, 937.5]); // 10:30 stored prices
+    expect(sum(lines(s.w).map((l) => l.price))).toBe(1250);
   });
-
-  it("falls back to the CBM split when the client map misses any item", async () => {
+  it(FIXED("a special-rate item's line is weighted by its special price, not its tier price"), async () => {
+    const s = await orderWith({
+      items: {
+        recI1: { PkgEstShipping: 10, EstShippingPrice: 30, IsSpecialItem: true, specialRateName: "Bulk Lagos" },
+        recI2: { PkgEstShipping: 10 },
+      },
+      amount: 40,
+    });
+    await createInvoice(s);
+    expect(lines(s.w).map((l) => l.price)).toEqual([375, 125]); // 30:10 of 500
+  });
+  it("without stored prices it falls back to the CBM split", async () => {
     const s = await orderWith({ items: { recI1: { Length: 100, Width: 100, Height: 10 }, recI2: { Length: 100, Width: 100, Height: 30 } }, amount: 100 });
     await createInvoice(s, { itemPriceMap: { recI1: 30 } });
     expect(lines(s.w).map((l) => l.price)).toEqual([312.5, 937.5]);
   });
-
-  it(KNOWN_BUG("a client price map that sums to 0 produces NaN line prices"), async () => {
-    // Future behavior: server-side pricing makes the client map obsolete. Documents current behavior only.
+  it(FIXED("an all-zero client price map no longer produces NaN line prices"), async () => {
     const s = await orderWith({ items: { recI1: {}, recI2: {} }, amount: 100 });
     await createInvoice(s, { itemPriceMap: { recI1: 0, recI2: 0 } });
-    expect(lines(s.w).every((l) => Number.isNaN(l.price))).toBe(true);
+    expect(lines(s.w).map((l) => l.price)).toEqual([625, 625]);
   });
 
   it(PRESERVE("a carton is ONE invoice line named after the carton, priced like any other group"), async () => {
@@ -220,14 +241,14 @@ describe("replacing an existing Keepup invoice", () => {
   it(PRESERVE("stores the NEW sale first and then cancels the old one"), async () => {
     const s = await orderWith({ items: { recI1: {} }, order: { KeepupSaleId: "KU-OLD" } });
     vi.mocked(s.w.keepup.createKeepupSale).mockResolvedValueOnce({ saleId: "KU-NEW", link: "https://keepup.example.invalid/new" });
-    await createInvoice(s);
+    await createInvoice(s, { regenerate: true });
     expect(s.w.db.get("Orders", "recOrd1")?.fields["KeepupSaleId"]).toBe("KU-NEW");
     expect(s.w.keepup.cancelKeepupSale).toHaveBeenCalledWith("KU-OLD");
   });
   it(PRESERVE("a failure to cancel the old sale is swallowed"), async () => {
     const s = await orderWith({ items: { recI1: {} }, order: { KeepupSaleId: "KU-OLD" } });
     vi.mocked(s.w.keepup.cancelKeepupSale).mockRejectedValueOnce(new Error("keepup down"));
-    expect((await createInvoice(s)).status).toBe(200);
+    expect((await createInvoice(s, { regenerate: true })).status).toBe(200);
   });
   it(PRESERVE("a Keepup failure returns 500 and leaves the order untouched"), async () => {
     const s = await orderWith({ items: { recI1: {} } });
@@ -236,12 +257,41 @@ describe("replacing an existing Keepup invoice", () => {
     expect(res.status).toBe(500);
     expect(s.w.db.get("Orders", "recOrd1")?.fields["KeepupSaleId"]).toBeUndefined();
   });
-  it(KNOWN_BUG("a PARTIALLY PAID order may be re-invoiced at the full amount, cancelling the sale that holds the payments"), async () => {
+  it(FIXED("a PARTIALLY PAID order cannot be regenerated (it would cancel the sale that holds the payments)"), async () => {
     const s = await orderWith({ items: { recI1: {} }, order: { Status: "Partial", AmountPaid: 40, KeepupSaleId: "KU-OLD" } });
+    const res = await createInvoice(s, { regenerate: true });
+    expect(res.status).toBe(409);
+    expect(s.w.keepup.createKeepupSale).not.toHaveBeenCalled();
+    expect(s.w.keepup.cancelKeepupSale).not.toHaveBeenCalled();
+  });
+  it(FIXED("create-invoice is idempotent: an order that already has a sale gets that sale back and no new external sale"), async () => {
+    const s = await orderWith({ items: { recI1: {} }, order: { KeepupSaleId: "KU-OLD", KeepupLink: "https://keepup.example.invalid/old" } });
     const res = await createInvoice(s);
     expect(res.status).toBe(200);
-    expect(lines(s.w)[0].price).toBe(1250); // AmountPaid is ignored
-    expect(s.w.keepup.cancelKeepupSale).toHaveBeenCalledWith("KU-OLD");
+    expect(res.json?.data).toMatchObject({ saleId: "KU-OLD", link: "https://keepup.example.invalid/old", existing: true });
+    expect(s.w.keepup.createKeepupSale).not.toHaveBeenCalled();
+    expect(s.w.keepup.cancelKeepupSale).not.toHaveBeenCalled();
+  });
+  it(FIXED("two simultaneous create-invoice calls create exactly one Keepup sale"), async () => {
+    const s = await orderWith({ items: { recI1: {} } });
+    const [a, b] = await Promise.all([createInvoice(s), createInvoice(s)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(s.w.keepup.createKeepupSale).toHaveBeenCalledTimes(1);
+    expect(a.json?.data.saleId).toBe(b.json?.data.saleId);
+  });
+  it(FIXED("the customer is emailed once, in GHS, with the link of the sale that exists"), async () => {
+    const s = await orderWith({ items: { recI1: {} }, order: { Discount: 10 } });
+    await createInvoice(s);
+    await createInvoice(s); // repeat
+    await vi.waitFor(() => expect(s.w.email.sendInvoiceCreatedEmail).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(s.w.email.sendInvoiceCreatedEmail).mock.calls[0][0]).toMatchObject({
+      invoiceAmount: 1125, currency: "GHS", keepupLink: "https://keepup.example.invalid/s/KU-TEST-1", itemCount: 1,
+    });
+  });
+  it(FIXED("regenerating does not email the customer again"), async () => {
+    const s = await orderWith({ items: { recI1: {} }, order: { KeepupSaleId: "KU-OLD" } });
+    await createInvoice(s, { regenerate: true });
+    expect(s.w.email.sendInvoiceCreatedEmail).not.toHaveBeenCalled();
   });
   it(PRESERVE("DELETE cancels the Keepup sale and clears the ids; 400 when there is none"), async () => {
     const s = await orderWith({ items: { recI1: {} }, order: { KeepupSaleId: "KU-OLD", KeepupLink: "https://x.invalid" } });
@@ -288,43 +338,37 @@ describe("POST /api/orders", () => {
     expect(w.db.get("Orders", "recOrdOld")?.fields["Items"]).toEqual(["recBItem"]);
   });
 
-  it(KNOWN_BUG("creating an order also creates a Keepup sale in raw USD numbers, and emails the customer its link"), async () => {
-    // Future behavior (Phase 3 R-17/R-22): one invoice, in GHS at a frozen rate, created once through an idempotent job.
+  it(FIXED("creating an order no longer creates a Keepup sale or emails: create-invoice is the single authoritative creation"), async () => {
     const { w, admin } = await standardWorld();
     w.seed.settings(12.5);
     w.seed.item("recI1", "recCustA");
     w.seed.item("recI2", "recCustA");
     const res = await w.call("orders", "POST", { token: admin, body: body({ itemIds: ["recI1", "recI2"] }) });
     expect(res.status).toBe(201);
-    expect((w.keepup.createKeepupSale as ReturnType<typeof vi.fn>).mock.calls[0][0].items.map((l: LineItem) => l.price)).toEqual([50, 50]); // USD, NOT x12.5
-    await vi.waitFor(() => expect(w.email.sendInvoiceCreatedEmail).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(w.email.sendInvoiceCreatedEmail).mock.calls[0][0]).toMatchObject({ invoiceAmount: 100, keepupLink: "https://keepup.example.invalid/s/KU-TEST-1" });
+    expect(w.keepup.createKeepupSale).not.toHaveBeenCalled();
+    expect(w.email.sendInvoiceCreatedEmail).not.toHaveBeenCalled();
+    expect(res.json?.data.keepupSaleId).toBeUndefined();
   });
 
-  it(KNOWN_BUG("the UI's two-step flow (POST /api/orders then create-invoice) creates TWO Keepup sales; the emailed link is the one that gets cancelled"), async () => {
+  it(FIXED("the UI's two-step flow (POST /api/orders then create-invoice) yields exactly ONE Keepup sale, in GHS, and one email with its link"), async () => {
     const { w, admin } = await standardWorld();
     w.seed.settings(12.5);
     w.seed.item("recI1", "recCustA");
-    vi.mocked(w.keepup.createKeepupSale)
-      .mockResolvedValueOnce({ saleId: "KU-FIRST", link: "https://keepup.example.invalid/first" })
-      .mockResolvedValueOnce({ saleId: "KU-SECOND", link: "https://keepup.example.invalid/second" });
     const created = await w.call("orders", "POST", { token: admin, body: body() });
     const orderId = created.json?.data.id as string;
     await w.call("orders/[id]/create-invoice", "POST", { token: admin, params: { id: orderId }, body: {} }); // what orders/new/page.tsx does next
-    expect(w.keepup.createKeepupSale).toHaveBeenCalledTimes(2);
-    expect(w.keepup.cancelKeepupSale).toHaveBeenCalledWith("KU-FIRST");
-    expect(w.db.get("Orders", orderId)?.fields["KeepupSaleId"]).toBe("KU-SECOND");
-    await vi.waitFor(() => expect(w.email.sendInvoiceCreatedEmail).toHaveBeenCalled());
-    expect(vi.mocked(w.email.sendInvoiceCreatedEmail).mock.calls[0][0].keepupLink).toBe("https://keepup.example.invalid/first"); // dead link
+    expect(w.keepup.createKeepupSale).toHaveBeenCalledTimes(1);
+    expect(w.keepup.cancelKeepupSale).not.toHaveBeenCalled();
+    expect((w.keepup.createKeepupSale as ReturnType<typeof vi.fn>).mock.calls[0][0].items.map((l: LineItem) => l.price)).toEqual([1250]); // 100 USD x 12.5
+    expect(w.db.get("Orders", orderId)?.fields["KeepupSaleId"]).toBe("KU-TEST-1");
+    await vi.waitFor(() => expect(w.email.sendInvoiceCreatedEmail).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(w.email.sendInvoiceCreatedEmail).mock.calls[0][0]).toMatchObject({ invoiceAmount: 1250, currency: "GHS", keepupLink: "https://keepup.example.invalid/s/KU-TEST-1" });
   });
 
-  it(KNOWN_BUG("the initial Keepup lines are invoiceAmount / n rounded per line, so Keepup's total can differ from the order total"), async () => {
-    const { w, admin } = await standardWorld();
-    for (const id of ["recI1", "recI2", "recI3"]) w.seed.item(id, "recCustA");
-    await w.call("orders", "POST", { token: admin, body: body({ itemIds: ["recI1", "recI2", "recI3"] }) });
-    const prices = (w.keepup.createKeepupSale as ReturnType<typeof vi.fn>).mock.calls[0][0].items.map((l: LineItem) => l.price);
-    expect(prices).toEqual([33.33, 33.33, 33.33]);
-    expect(Math.round(sum(prices) * 100) / 100).toBe(99.99); // order says 100
+  it(FIXED("the line prices always add back to the GHS total (distribution is by create-invoice, remainder on the last line)"), async () => {
+    const s = await orderWith({ items: { recI1: {}, recI2: {}, recI3: {} }, amount: 100, rate: 1 });
+    await createInvoice(s);
+    expect(lines(s.w).map((l) => l.price)).toEqual([33.33, 33.33, 33.34]);
   });
 
   it(PRESERVE("a Keepup failure does not fail order creation (no email is sent)"), async () => {

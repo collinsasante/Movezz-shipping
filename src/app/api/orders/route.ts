@@ -1,7 +1,7 @@
 // GET  /api/orders  — list orders
-// POST /api/orders  — create order (admin only)
+// POST /api/orders  — create order (admin only). Does not touch Keepup; see create-invoice.
 import { NextRequest } from "next/server";
-import { ordersApi, customersApi, itemsApi } from "@/lib/airtable";
+import { ordersApi, itemsApi } from "@/lib/airtable";
 import {
   requireAuth,
   serverErrorResponse,
@@ -9,8 +9,6 @@ import {
   forbiddenResponse,
 } from "@/lib/auth";
 import { invoiceTotalUsd } from "@/lib/pricing";
-import { createKeepupSale } from "@/lib/keepup";
-import { sendInvoiceCreatedEmail } from "@/lib/email";
 import { z } from "zod";
 
 const CreateOrderSchema = z.object({
@@ -91,76 +89,9 @@ export async function POST(request: NextRequest) {
 
     const order = await ordersApi.create(parsed.data, user.email);
 
-    // Create invoice in Keepup (non-fatal — don't block if it fails)
-    try {
-      const [customer, items] = await Promise.all([
-        customersApi.getById(parsed.data.customerId).catch(() => null),
-        Promise.all(
-          parsed.data.itemIds.map((id) =>
-            itemsApi.getById(id).catch(() => null)
-          )
-        ),
-      ]);
-
-      const validItems = items.filter(Boolean);
-      const pricePerItem =
-        validItems.length > 0
-          ? parsed.data.invoiceAmount / validItems.length
-          : parsed.data.invoiceAmount;
-
-      const lineItems = validItems.length > 0
-        ? validItems.map((item) => {
-            const qty = item!.quantity ?? 1;
-            let cbmNote = "";
-            if (item!.length && item!.width && item!.height) {
-              const factor = item!.dimensionUnit === "inches" ? 16.387064 : 1;
-              const cbm = (item!.length * item!.width * item!.height * factor * qty) / 1_000_000;
-              cbmNote = ` [CBM: ${cbm.toFixed(4)} m3]`;
-            }
-            const trackingNote = item!.trackingNumber ? ` [TRK: ${item!.trackingNumber}]` : "";
-            const rawName = (item!.description ? `Freight: ${item!.description}` : `Freight Item (${item!.itemRef})`) + trackingNote + cbmNote;
-            return {
-              item_name: rawName.replace(/[^\x20-\x7E]/g, ""),
-              quantity: 1,
-              price: Math.round(pricePerItem * 100) / 100,
-              item_type: "product",
-            };
-          })
-        : [{ item_name: `Freight - ${order.orderRef}`, quantity: 1, price: Math.round(parsed.data.invoiceAmount * 100) / 100, item_type: "product" }];
-
-      const keepupResult = await createKeepupSale({
-        customerName: customer?.name,
-        customerEmail: customer?.email,
-        customerPhone: customer?.phone,
-        invoiceDate: parsed.data.invoiceDate,
-        items: lineItems,
-      });
-
-      // Store the keepup sale ID back on the order
-      await ordersApi.storeKeepupIds(
-        order.id,
-        keepupResult.saleId,
-        keepupResult.link
-      );
-      order.keepupSaleId = keepupResult.saleId;
-      order.keepupLink = keepupResult.link;
-
-      // Send invoice email to customer (non-fatal, inside try so customer is in scope)
-      if (customer?.email) {
-        sendInvoiceCreatedEmail({
-          to: customer.email,
-          customerName: customer.name,
-          orderRef: order.orderRef,
-          invoiceAmount: parsed.data.invoiceAmount,
-          invoiceDate: parsed.data.invoiceDate,
-          itemCount: parsed.data.itemIds.length,
-          keepupLink: order.keepupLink,
-          notes: parsed.data.notes,
-        }).catch(() => {});
-      }
-    } catch {
-      // Keepup sale creation failed (non-fatal)
-    }
+    // No Keepup sale is created here. The one authoritative creation is POST /api/orders/[id]/create-invoice
+    // (GHS at the current rate, discount applied, carton grouping, idempotent). Creating one here as well
+    // produced two sales for every order, the first in raw USD numbers.
 
     return Response.json(
       {

@@ -3,7 +3,7 @@
 // NOTE: Keepup's own documentation is not reachable from this environment, so everything below is the
 // behavior of OUR client, not a verified statement about Keepup's server (idempotency, webhooks: UNVERIFIED).
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 type K = typeof import("@/lib/keepup");
 type Call = { url: string; init: RequestInit; json: Record<string, any> | undefined }; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -82,19 +82,28 @@ describe(KNOWN_BUG("createKeepupSale failure handling and idempotency"), () => {
   // These tests document OUR client's current behavior only.
   const items = [{ item_name: "x", quantity: 1, price: 1, item_type: "product" }];
 
-  it("documents that ANY failed response (even 500) triggers an immediate second request without the phone number - a possible duplicate sale", async () => {
+  it(FIXED("a 5xx response is NOT retried (the sale may exist; a retry could duplicate it)"), async () => {
     stubFetch({ status: 500, body: { error: "boom" } }, okSale);
+    await expect((await load()).createKeepupSale({ customerPhone: "0244001234", items })).rejects.toThrow("boom");
+    expect(calls).toHaveLength(1);
+  });
+  it(PRESERVE("a validation rejection (400/422, so no sale was created) is retried once without the phone number"), async () => {
+    stubFetch({ status: 422, body: { error: "bad phone" } }, okSale);
     const res = await (await load()).createKeepupSale({ customerPhone: "0244001234", items });
     expect(res.saleId).toBe("4242");
     expect(calls).toHaveLength(2);
     expect(calls[0].json).toHaveProperty("phone_number");
     expect(calls[1].json).not.toHaveProperty("phone_number");
   });
-  it("documents that no idempotency key is ever sent and no request timeout/abort signal is set", async () => {
+  it(FIXED("every create request carries a timeout signal"), async () => {
+    stubFetch(okSale);
+    await (await load()).createKeepupSale({ items });
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
+  });
+  it("documents that no idempotency key is sent (Keepup documents none; duplicates are prevented by our own one-sale-per-order rule)", async () => {
     stubFetch(okSale);
     await (await load()).createKeepupSale({ items });
     expect(Object.keys(calls[0].init.headers as Record<string, string>).sort()).toEqual(["Authorization", "Content-Type"]);
-    expect(calls[0].init.signal).toBeUndefined();
   });
   it("documents that no retry happens when there is no phone number to drop (one attempt, then throw the upstream message)", async () => {
     stubFetch({ status: 422, body: { error: "invalid items" } });
@@ -135,9 +144,9 @@ describe("reading and updating sales", () => {
     stubFetch({ body: { data: {} } });
     await expect((await load()).getKeepupSale("S-1")).rejects.toThrow(/missing total_amount/);
   });
-  it(KNOWN_BUG("a sale whose total is 0 (e.g. a 100% discount) cannot be read: 0 is treated as 'missing'"), async () => {
+  it(FIXED("a sale whose total is 0 (e.g. a 100% discount) is readable: only an unreadable total is 'missing'"), async () => {
     stubFetch({ body: { data: { total_amount: "0", amount_paid: "0" } } });
-    await expect((await load()).getKeepupSale("S-1")).rejects.toThrow(/missing total_amount/);
+    expect(await (await load()).getKeepupSale("S-1")).toMatchObject({ totalAmount: 0, amountPaid: 0, balanceDue: 0 });
   });
   it(PRESERVE("fetchKeepupShareLink never throws (null on any failure)"), async () => {
     stubFetch({ status: 500, body: {} });

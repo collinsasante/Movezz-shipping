@@ -189,6 +189,8 @@ export async function sendInvoiceCreatedEmail(opts: {
   itemCount: number;
   keepupLink?: string;
   notes?: string;
+  /** Currency of `invoiceAmount`. The customer pays the Keepup invoice in GHS, so callers pass "GHS". */
+  currency?: "USD" | "GHS";
 }): Promise<void> {
   const {
     to,
@@ -199,11 +201,12 @@ export async function sendInvoiceCreatedEmail(opts: {
     itemCount,
     keepupLink,
     notes,
+    currency = "USD",
   } = opts;
   const firstName = customerName.split(" ")[0];
   const amountStr = new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
   }).format(invoiceAmount);
 
   const html = baseLayout(
@@ -242,12 +245,14 @@ export async function sendPaymentConfirmedEmail(opts: {
   customerName: string;
   orderRef: string;
   invoiceAmount: number;
+  /** Currency of `invoiceAmount` (the amount paid). Payments are made in GHS. */
+  currency?: "USD" | "GHS";
 }): Promise<void> {
-  const { to, customerName, orderRef, invoiceAmount } = opts;
+  const { to, customerName, orderRef, invoiceAmount, currency = "USD" } = opts;
   const firstName = customerName.split(" ")[0];
   const amountStr = new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency,
   }).format(invoiceAmount);
 
   const html = baseLayout(
@@ -404,14 +409,16 @@ export async function sendPartialPaymentEmail(opts: {
   amountPaid: number;
   balanceDue: number;
   keepupLink?: string;
+  /** Currency of the amounts. Payments are made in GHS. */
+  currency?: "USD" | "GHS";
 }): Promise<void> {
-  const { to, customerName, orderRef, amountPaid, balanceDue, keepupLink } =
+  const { to, customerName, orderRef, amountPaid, balanceDue, keepupLink, currency = "USD" } =
     opts;
   const firstName = customerName.split(" ")[0];
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
-      currency: "USD",
+      currency,
     }).format(n);
 
   const html = baseLayout(

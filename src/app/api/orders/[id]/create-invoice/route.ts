@@ -1,10 +1,17 @@
-// POST /api/orders/[id]/create-invoice — create Keepup invoice for an existing order
+// POST /api/orders/[id]/create-invoice — create the (single) Keepup invoice for an order.
+//   Idempotent: if the order already has a Keepup sale this returns it and creates nothing, unless the body
+//   says { regenerate: true } (replace the sale: the new one is stored first, then the old one cancelled).
+//   Concurrent calls for one order are serialised in-process; see lib/locks.ts for what that does not cover.
 // DELETE /api/orders/[id]/create-invoice — cancel Keepup invoice and clear from order
 import { NextRequest } from "next/server";
 import { ordersApi, customersApi, itemsApi, settingsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 import { createKeepupSale, cancelKeepupSale } from "@/lib/keepup";
 import { groupItemsForBilling } from "@/lib/cbm";
+import { billingFor } from "@/lib/pricing";
+import { netInvoiceGhs, round2 } from "@/lib/money";
+import { withLock } from "@/lib/locks";
+import { sendInvoiceCreatedEmail } from "@/lib/email";
 
 export async function POST(
   request: NextRequest,
@@ -15,18 +22,19 @@ export async function POST(
 
   try {
     const { id } = await params;
-    const body = await request.json().catch(() => ({})) as { itemPriceMap?: Record<string, number> };
-    const { itemPriceMap } = body;
-    const [order, appSettings] = await Promise.all([
-      ordersApi.getById(id),
-      settingsApi.get(),
-    ]);
-    const usdToGhs = appSettings?.usdToGhs && appSettings.usdToGhs > 0 ? appSettings.usdToGhs : 1;
-    const discountUsd = order.discount && order.discount > 0 ? order.discount : 0;
-    // Invoice amount in GHS — use pre-discount base so we can add a visible discount line item
-    const invoiceAmountGhs = Math.round(order.invoiceAmount * usdToGhs * 100) / 100;
-    const discountGhs = Math.round(discountUsd * usdToGhs * 100) / 100;
-    const netAmountGhs = Math.max(0, Math.round((invoiceAmountGhs - discountGhs) * 100) / 100);
+    const body = await request.json().catch(() => ({})) as { regenerate?: boolean };
+    // Only the operator's intent is taken from the body. Prices, the exchange rate and the split of the
+    // total across lines are all derived server-side (a client-supplied price map is ignored).
+    return await withLock(`invoice:${id}`, () => createInvoice(id, body.regenerate === true));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return Response.json({ success: false, error: msg }, { status: 500 });
+  }
+}
+
+async function createInvoice(id: string, regenerate: boolean): Promise<Response> {
+  {
+    const order = await ordersApi.getById(id);
 
     if (order.status === "Paid") {
       return Response.json(
@@ -34,6 +42,34 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Idempotency: one authoritative sale per order.
+    if (order.keepupSaleId && !regenerate) {
+      return Response.json({
+        success: true,
+        data: { saleId: order.keepupSaleId, link: order.keepupLink, existing: true },
+        message: "Invoice already exists in Keepup",
+      });
+    }
+
+    // Replacing a sale that already holds payments would cancel the record of those payments.
+    if (order.keepupSaleId && (order.status === "Partial" || (order.amountPaid ?? 0) > 0)) {
+      return Response.json(
+        { success: false, error: "This invoice has payments recorded against it and cannot be regenerated" },
+        { status: 409 }
+      );
+    }
+
+    // The Keepup invoice is in GHS. Without a configured rate we refuse rather than guess (never default to 1).
+    const usdToGhs = await settingsApi.getRate();
+    if (usdToGhs === null) {
+      return Response.json(
+        { success: false, error: "The USD to GHS exchange rate is not configured. Set it in Settings before creating an invoice." },
+        { status: 409 }
+      );
+    }
+    // Discount is subtracted in USD before the single conversion, so nothing is converted twice.
+    const netAmountGhs = netInvoiceGhs(order.invoiceAmount, order.discount, usdToGhs);
 
     const [customer, items] = await Promise.all([
       customersApi.getById(order.customerId).catch(() => null),
@@ -59,38 +95,27 @@ export async function POST(
       // priced by the carton's own dimensions instead of each item's individually.
       const groups = groupItemsForBilling(validItems);
 
-      // Use client-provided per-item prices if available (from calcItemPrice with customer tier rates),
-      // aggregated up to a per-group total so consolidated cartons still get one line item.
-      const hasClientPrices = itemPriceMap && validItems.every((item) => itemPriceMap[item.id] != null);
-
-      let groupPrices: number[];
-      if (hasClientPrices) {
-        // Use client prices but adjust last group so sum matches net total (avoids rounding drift)
-        const rawSums = groups.map((g) => g.items.reduce((s, item) => s + itemPriceMap![item.id], 0));
-        const rawTotal = rawSums.reduce((s, p) => s + p, 0);
-        groupPrices = rawSums.map((p, i) =>
-          i < rawSums.length - 1
-            ? Math.round(freightTotal * (p / rawTotal) * 100) / 100
-            : 0
-        );
-        let running = groupPrices.reduce((s, p) => s + p, 0);
-        groupPrices[groupPrices.length - 1] = Math.round((freightTotal - running) * 100) / 100;
-      } else {
-        // Fallback: split proportionally by CBM (or equally if no CBM)
-        const cbms = groups.map((g) => g.cbm);
-        const totalCbm = cbms.reduce((s, c) => s + c, 0);
-        const useCbm = totalCbm > 0;
-        groupPrices = [];
-        let runningSum = 0;
-        for (let i = 0; i < groups.length; i++) {
-          if (i < groups.length - 1) {
-            const proportion = useCbm ? cbms[i] / totalCbm : 1 / groups.length;
-            const p = Math.round(freightTotal * proportion * 100) / 100;
-            groupPrices.push(p);
-            runningSum += p;
-          } else {
-            groupPrices.push(Math.round((freightTotal - runningSum) * 100) / 100);
-          }
+      // Lines are weighted by the stored item prices (special price for special-rate items, tier price
+      // otherwise); if nothing carries a price they are weighted by CBM, then equally. The weights only
+      // distribute the total - they never change it.
+      const weights = groups.map((g) => g.items.reduce((sum, item) => sum + billingFor(item).priceUsd, 0));
+      const weightTotal = weights.reduce((sum, w) => sum + w, 0);
+      const cbms = groups.map((g) => g.cbm);
+      const totalCbm = cbms.reduce((sum, c) => sum + c, 0);
+      const shares = weightTotal > 0
+        ? weights.map((x) => x / weightTotal)
+        : totalCbm > 0
+          ? cbms.map((c) => c / totalCbm)
+          : groups.map(() => 1 / groups.length);
+      const groupPrices: number[] = [];
+      let runningSum = 0;
+      for (let i = 0; i < groups.length; i++) {
+        if (i < groups.length - 1) {
+          const price = round2(freightTotal * shares[i]);
+          groupPrices.push(price);
+          runningSum += price;
+        } else {
+          groupPrices.push(round2(freightTotal - runningSum));
         }
       }
 
@@ -134,14 +159,27 @@ export async function POST(
       await cancelKeepupSale(oldSaleId).catch(() => {});
     }
 
+    // The customer is told about a NEW invoice once, with the link of the sale that actually exists and the
+    // amount they will pay (GHS). Re-generating an existing invoice does not email again.
+    if (!oldSaleId && customer?.email) {
+      sendInvoiceCreatedEmail({
+        to: customer.email,
+        customerName: customer.name,
+        orderRef: order.orderRef,
+        invoiceAmount: netAmountGhs,
+        currency: "GHS",
+        invoiceDate: order.invoiceDate,
+        itemCount: order.itemIds.length,
+        keepupLink: keepupResult.link,
+        notes: order.notes,
+      }).catch(() => {});
+    }
+
     return Response.json({
       success: true,
       data: { saleId: keepupResult.saleId, link: keepupResult.link },
       message: "Invoice created in Keepup",
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return Response.json({ success: false, error: msg }, { status: 500 });
   }
 }
 

@@ -67,12 +67,19 @@ describe(KNOWN_BUG("invoice totals, discounts and payment status are accepted fr
     expect(res.status).toBe(200);
     expect(w.db.get("Orders", "recO1")?.fields["Status"]).toBe("Paid");
   });
-  it("documents that a discount larger than the invoice, and an amount edit after invoicing, are accepted", async () => {
+  it(FIXED("a discount larger than the invoice is rejected"), async () => {
     const { w, admin } = await standardWorld();
     w.seed.order("recO1", "recCustA", { InvoiceAmount: 100, KeepupSaleId: "KU-1" });
-    const res = await w.call("orders/[id]", "PATCH", { token: admin, params: { id: "recO1" }, body: { discount: 99999, invoiceAmount: 1 } });
+    const res = await w.call("orders/[id]", "PATCH", { token: admin, params: { id: "recO1" }, body: { discount: 99999 } });
+    expect(res.status).toBe(400);
+    expect(w.db.get("Orders", "recO1")?.fields["Discount"]).toBeUndefined();
+  });
+  it("documents that the invoice amount can still be edited after a Keepup invoice exists (Keepup is not re-synced; see payments tests)", async () => {
+    const { w, admin } = await standardWorld();
+    w.seed.order("recO1", "recCustA", { InvoiceAmount: 100, KeepupSaleId: "KU-1" });
+    const res = await w.call("orders/[id]", "PATCH", { token: admin, params: { id: "recO1" }, body: { invoiceAmount: 1 } });
     expect(res.status).toBe(200);
-    expect(w.db.get("Orders", "recO1")?.fields).toMatchObject({ Discount: 99999, InvoiceAmount: 1 });
+    expect(w.db.get("Orders", "recO1")?.fields).toMatchObject({ InvoiceAmount: 1 });
   });
 });
 
@@ -91,11 +98,12 @@ describe("exchange rate", () => {
     await w.call("orders/[id]/create-invoice", "POST", { token: admin, params: { id: "recO1" }, body: { usdToGhs: 999, exchangeRate: 999 } });
     expect(vi.mocked(w.keepup.createKeepupSale).mock.calls[0][0].items[0].price).toBe(1000);
   });
-  it(KNOWN_BUG("the rate has no sanity bounds (0.0001 and 1,000,000,000 are accepted)"), async () => {
+  it(FIXED("the rate has sanity bounds (0.1 to 1000)"), async () => {
     const { w, admin } = await standardWorld();
-    expect((await w.call("settings", "PUT", { token: admin, body: { usdToGhs: 0.0001, shippingRatePerCbm: 1 } })).status).toBe(200);
-    expect((await w.call("settings", "PUT", { token: admin, body: { usdToGhs: 1_000_000_000, shippingRatePerCbm: 1 } })).status).toBe(200);
+    expect((await w.call("settings", "PUT", { token: admin, body: { usdToGhs: 0.0001, shippingRatePerCbm: 1 } })).status).toBe(400);
+    expect((await w.call("settings", "PUT", { token: admin, body: { usdToGhs: 1_000_000_000, shippingRatePerCbm: 1 } })).status).toBe(400);
     expect((await w.call("settings", "PUT", { token: admin, body: { usdToGhs: 0, shippingRatePerCbm: 1 } })).status).toBe(400);
+    expect((await w.call("settings", "PUT", { token: admin, body: { usdToGhs: 12.5, shippingRatePerCbm: 1 } })).status).toBe(200);
   });
   it(KNOWN_BUG("ShippingRatePerCbm is stored by Settings but never used by any pricing code"), async () => {
     const { w, admin } = await standardWorld();

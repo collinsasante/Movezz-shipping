@@ -100,20 +100,22 @@ export async function createKeepupSale(
     return body;
   };
 
-  // Try with phone first; if rejected, retry without phone
-  let res = await fetch(`${BASE}/sales/add`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(buildBody(true)),
-  });
-  let data = await res.json().catch(() => ({})) as Record<string, unknown>;
-
-  if (!res.ok && normalizedPhone) {
-    res = await fetch(`${BASE}/sales/add`, {
+  // Try with phone first. Only a validation rejection (400/422) - which means no sale was created - is
+  // retried without the phone number. A 5xx, a timeout or a network error is ambiguous (the sale may exist),
+  // so it is NOT retried here: the caller reports the failure and the operator decides, which avoids a
+  // duplicate sale. Keepup documents no idempotency key, so none is sent (see docs/SECURITY-BASELINE.md).
+  const post = (includePhone: boolean) =>
+    fetch(`${BASE}/sales/add`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify(buildBody(false)),
+      body: JSON.stringify(buildBody(includePhone)),
+      signal: AbortSignal.timeout(20_000),
     });
+  let res = await post(true);
+  let data = await res.json().catch(() => ({})) as Record<string, unknown>;
+
+  if (!res.ok && normalizedPhone && (res.status === 400 || res.status === 422)) {
+    res = await post(false);
     data = await res.json().catch(() => ({})) as Record<string, unknown>;
   }
 
@@ -174,7 +176,9 @@ export async function getKeepupSale(saleId: string): Promise<KeepupSaleStatus> {
   // Response may be nested under data or at root
   const d = (data as Record<string, unknown>).data ?? data;
   const r = d as Record<string, unknown>;
-  const totalAmount = parseFloat(String(r.total_amount ?? r.amount ?? r.grand_total ?? "")) || null;
+  const parsedTotal = parseFloat(String(r.total_amount ?? r.amount ?? r.grand_total ?? ""));
+  // 0 is a legitimate total (e.g. a fully discounted invoice); only an unreadable value is "missing".
+  const totalAmount = Number.isNaN(parsedTotal) ? null : parsedTotal;
   const rawAmountPaid = parseFloat(String(r.amount_paid ?? r.amount_received ?? r.paid_amount ?? r.paid ?? ""));
   const amountPaid = isNaN(rawAmountPaid) ? 0 : rawAmountPaid;
   const rawBalanceDue = parseFloat(String(r.balance_due ?? r.balance ?? r.amount_due ?? r.remaining ?? ""));

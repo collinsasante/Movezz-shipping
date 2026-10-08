@@ -1,10 +1,11 @@
 // Payments and the currency/unit bugs identified in the Phase 2 audit.
-// Money model today: invoice amount in USD; payments typed in GHS (dialog label "Payment Amount (GHS)");
-// Keepup holds the GHS invoice. Nothing converts between them on the server.
+// Money model: invoice amount in USD; payments typed in GHS (dialog label "Payment Amount (GHS)");
+// Keepup holds the GHS invoice. The server converts the USD invoice to GHS ONCE (lib/money.ts) and only ever
+// compares GHS with GHS. Exchange-rate snapshots are NOT stored yet (PostgreSQL phase) - see the KNOWN_BUG block below.
 import { describe, it, expect, vi } from "vitest";
 import { standardWorld, type World } from "../helpers/world";
 import { readSource } from "../helpers/sourceFn";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 const ORDER_PAGE = "src/app/(dashboard)/admin/orders/[id]/page.tsx";
 
@@ -37,111 +38,158 @@ describe("recording a payment: PATCH /api/orders/[id] { paymentAmount }", () => 
   });
 });
 
-describe(KNOWN_BUG("payment currency mismatch: GHS payment compared with USD invoice amount"), () => {
-  // Phase 2 audit item 1. Future behavior (Phase 3 R-20): payments in GHS are compared with total_ghs only.
-  // This test documents current behavior only. It must be replaced or inverted when the Phase 7/9 implementation fixes the underlying issue.
-  it("documents current payment comparison behavior: GHS 100 settles a USD 100 invoice that is really GHS 1,250", async () => {
+describe(FIXED("payments are GHS amounts compared with the GHS invoice"), () => {
+  it("GHS 100 no longer settles a USD 100 invoice that is GHS 1,250: it is a partial payment", async () => {
     const s = await invoiced(); // USD 100 at 12.5 = GHS 1,250 owed
     const res = await pay(s, { paymentAmount: 100 });
     expect(res.status).toBe(200);
-    expect(order(s.w)).toMatchObject({ Status: "Paid", AmountPaid: 100, BalanceDue: 0 });
-    expect(res.json?.data).toMatchObject({ status: "Paid", amountPaid: 100, balanceDue: 0 });
+    expect(order(s.w)).toMatchObject({ Status: "Partial", AmountPaid: 100, BalanceDue: 1150 });
+    expect(res.json?.data).toMatchObject({ status: "Partial", amountPaid: 100, balanceDue: 1150 });
   });
-  it("documents that the 'balance due' is computed as USD invoice minus GHS paid", async () => {
+  it("paying the full GHS amount settles the invoice", async () => {
     const s = await invoiced();
-    const res = await pay(s, { paymentAmount: 40 });
-    expect(res.json?.data).toMatchObject({ status: "Partial", amountPaid: 40, balanceDue: 60 }); // 100 (USD) - 40 (GHS)
+    const res = await pay(s, { paymentAmount: 1250 });
+    expect(res.json?.data).toMatchObject({ status: "Paid", amountPaid: 1250, balanceDue: 0 });
   });
-  it("documents that the server never reads the exchange rate while recording a payment", async () => {
+  it("two payments add up in GHS and the last one settles", async () => {
+    const s = await invoiced();
+    await pay(s, { paymentAmount: 1000 });
+    const res = await pay(s, { paymentAmount: 250 });
+    expect(res.json?.data).toMatchObject({ status: "Paid", amountPaid: 1250, balanceDue: 0 });
+  });
+  it("the discount is applied before conversion: (100 - 20) x 12.5 = GHS 1,000", async () => {
+    const s = await invoiced({ Discount: 20 });
+    const res = await pay(s, { paymentAmount: 1000 });
+    expect(res.json?.data).toMatchObject({ status: "Paid", balanceDue: 0 });
+  });
+  it("the balance uses the configured rate; changing the rate changes what a payment settles (documented FX limit)", async () => {
     const s = await invoiced();
     s.w.db.all("Settings")[0].fields["UsdToGhs"] = 99;
-    await pay(s, { paymentAmount: 100 });
-    expect(order(s.w)["Status"]).toBe("Paid");
+    const res = await pay(s, { paymentAmount: 100 });
+    expect(res.json?.data).toMatchObject({ status: "Partial", balanceDue: 9800 });
   });
-  it("documents that the client UI makes the same comparison with the converted amount (source anchors)", () => {
+  it("with no configured rate a payment is refused (409) and nothing is written", async () => {
+    const s = await invoiced();
+    s.w.db.all("Settings")[0].fields["UsdToGhs"] = 0;
+    const res = await pay(s, { paymentAmount: 100 });
+    expect(res.status).toBe(409);
+    expect(order(s.w)["AmountPaid"]).toBeUndefined();
+    expect(s.w.keepup.recordKeepupPayment).not.toHaveBeenCalled();
+  });
+  it("source anchor: the dialog is labelled GHS and the page no longer compares against a USD-converted total", () => {
     const src = readSource(ORDER_PAGE);
     expect(src).toContain("Payment Amount (GHS)");
-    expect(src).toContain("const newStatus = newPaid >= invoiceGhs");
+    expect(src).toContain("const invoiceGhs = keepupTotal ?? 0");
   });
 });
 
-describe(KNOWN_BUG("overpayment, races and silent Keepup divergence"), () => {
-  it("documents that a payment larger than the invoice is accepted (balance clamps to 0)", async () => {
+describe(FIXED("overpayment, races, Keepup divergence and payment emails"), () => {
+  it("an overpayment is rejected (400) and nothing is recorded", async () => {
     const s = await invoiced();
-    await pay(s, { paymentAmount: 5000 });
-    expect(order(s.w)).toMatchObject({ Status: "Paid", AmountPaid: 5000 });
+    const res = await pay(s, { paymentAmount: 5000 });
+    expect(res.status).toBe(400);
+    expect(order(s.w)["AmountPaid"]).toBeUndefined();
+    expect(s.w.keepup.recordKeepupPayment).not.toHaveBeenCalled();
   });
-  it("documents a lost update: two simultaneous payments overwrite each other (read-modify-write)", async () => {
+  it("paying more than the REMAINING balance is rejected too", async () => {
+    const s = await invoiced();
+    await pay(s, { paymentAmount: 1000 });
+    expect((await pay(s, { paymentAmount: 300 })).status).toBe(400);
+    expect(order(s.w)["AmountPaid"]).toBe(1000);
+  });
+  it("two simultaneous payments in one process both count (serialised per order)", async () => {
     const s = await invoiced({ InvoiceAmount: 1000 });
     await Promise.all([pay(s, { paymentAmount: 40 }), pay(s, { paymentAmount: 30 })]);
-    const paid = order(s.w)["AmountPaid"] as number;
-    expect([30, 40]).toContain(paid);
-    expect(paid).not.toBe(70);
+    expect(order(s.w)["AmountPaid"]).toBe(70);
   });
-  it("documents that a Keepup payment failure is swallowed: Movezz says paid, Keepup does not", async () => {
+  it(KNOWN_BUG("two simultaneous payments handled by DIFFERENT isolates/instances can still overwrite each other (no cross-process lock on Airtable)"), () => {
+    // Cannot be reproduced against the single-process fake; fixed by a PostgreSQL transaction / row lock (payments table, append-only).
+    expect(true).toBe(true);
+  });
+  it("a Keepup payment failure is no longer silent: the payment is saved and the response carries a warning", async () => {
     const s = await invoiced();
     vi.mocked(s.w.keepup.recordKeepupPayment).mockRejectedValueOnce(new Error("keepup down"));
     const res = await pay(s, { paymentAmount: 100 });
     expect(res.status).toBe(200);
     expect(order(s.w)["AmountPaid"]).toBe(100);
+    expect(res.json?.warnings?.[0]).toMatch(/Keepup/);
   });
-  it("documents that recording a payment sends NO email (emails key off the requested status, which the UI does not send)", async () => {
+  it("recording a payment now sends the matching email with the real GHS figures", async () => {
     const s = await invoiced();
-    await pay(s, { paymentAmount: 100 });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(s.w.email.sendPaymentConfirmedEmail).not.toHaveBeenCalled();
-    expect(s.w.email.sendPartialPaymentEmail).not.toHaveBeenCalled();
+    await pay(s, { paymentAmount: 250 });
+    await vi.waitFor(() => expect(s.w.email.sendPartialPaymentEmail).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(s.w.email.sendPartialPaymentEmail).mock.calls[0][0]).toMatchObject({ amountPaid: 250, balanceDue: 1000, currency: "GHS" });
+    await pay(s, { paymentAmount: 1000 });
+    await vi.waitFor(() => expect(s.w.email.sendPaymentConfirmedEmail).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(s.w.email.sendPaymentConfirmedEmail).mock.calls[0][0]).toMatchObject({ invoiceAmount: 1250, currency: "GHS" });
   });
 });
 
-describe(KNOWN_BUG("marking an order Paid sends the USD invoice amount to Keepup as if it were GHS"), () => {
-  // Phase 2 audit item 2. Documents current behavior only.
-  it("documents current Keepup payment amount behavior: status 'Paid' records invoiceAmount (USD 100) against a GHS 1,250 sale", async () => {
+describe(FIXED("marking an order Paid settles the GHS outstanding amount, not the USD invoice amount"), () => {
+  it("records the GHS outstanding amount in Keepup and stores it on the order", async () => {
     const s = await invoiced();
     const res = await pay(s, { status: "Paid" });
     expect(res.status).toBe(200);
-    expect(s.w.keepup.recordKeepupPayment).toHaveBeenCalledWith("KU-1", 100);
-    expect(order(s.w)["Status"]).toBe("Paid");
-    expect(order(s.w)["AmountPaid"]).toBeUndefined(); // no payment amount is stored at all on this path
+    expect(s.w.keepup.recordKeepupPayment).toHaveBeenCalledWith("KU-1", 1250);
+    expect(order(s.w)).toMatchObject({ Status: "Paid", AmountPaid: 1250, BalanceDue: 0 });
   });
-  it("documents that the 'Paid' email shows the USD invoice amount", async () => {
+  it("after a partial payment only the remainder is sent (no double payment)", async () => {
+    const s = await invoiced({ Status: "Partial", AmountPaid: 250 });
+    await pay(s, { status: "Paid" });
+    expect(s.w.keepup.recordKeepupPayment).toHaveBeenCalledWith("KU-1", 1000);
+  });
+  it("the 'Paid' email shows the GHS amount", async () => {
     const s = await invoiced();
     await pay(s, { status: "Paid" });
     await vi.waitFor(() => expect(s.w.email.sendPaymentConfirmedEmail).toHaveBeenCalled());
-    expect(vi.mocked(s.w.email.sendPaymentConfirmedEmail).mock.calls[0][0]).toMatchObject({ invoiceAmount: 100, orderRef: "ORD-recOrd1" });
+    expect(vi.mocked(s.w.email.sendPaymentConfirmedEmail).mock.calls[0][0]).toMatchObject({ invoiceAmount: 1250, currency: "GHS", orderRef: "ORD-recOrd1" });
   });
-  it("documents that the 'Partial' email uses a hard-coded 50% / 50% placeholder instead of real amounts", async () => {
+  it("a 'Partial' status with no known amounts sends no invented 50/50 email", async () => {
     const s = await invoiced();
     await pay(s, { status: "Partial" });
-    await vi.waitFor(() => expect(s.w.email.sendPartialPaymentEmail).toHaveBeenCalled());
-    expect(vi.mocked(s.w.email.sendPartialPaymentEmail).mock.calls[0][0]).toMatchObject({ amountPaid: 50, balanceDue: 50 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.w.email.sendPartialPaymentEmail).not.toHaveBeenCalled();
+  });
+  it("Mark Paid with no rate configured and a Keepup sale is refused (409)", async () => {
+    const s = await invoiced();
+    s.w.db.all("Settings")[0].fields["UsdToGhs"] = 0;
+    expect((await pay(s, { status: "Paid" })).status).toBe(409);
+    expect(order(s.w)["Status"]).toBe("Pending");
   });
 });
 
-describe(KNOWN_BUG("double conversion: GET /api/orders/[id] returns Keepup GHS totals; the page multiplies them by the rate again"), () => {
-  // Phase 2 audit item 3 (and 4: balance mixes today's rate with older payments). Documents current behavior only.
-  it("documents current double-conversion behavior (server side): keepupTotalAmount is the raw Keepup GHS figure", async () => {
+describe(FIXED("GET /api/orders/[id] never puts a USD figure in a GHS field"), () => {
+  it("keepup figures are the raw Keepup GHS values and the server adds the GHS net total", async () => {
     const s = await invoiced();
     vi.mocked(s.w.keepup.getKeepupSale).mockResolvedValueOnce({ totalAmount: 1250, amountPaid: 250, balanceDue: 1000 });
     const res = await s.w.call("orders/[id]", "GET", { token: s.admin, params: { id: "recOrd1" } });
-    expect(res.json?.data).toMatchObject({ invoiceAmount: 100, keepupTotalAmount: 1250, keepupAmountPaid: 250, keepupBalanceDue: 1000 });
+    expect(res.json?.data).toMatchObject({ invoiceAmount: 100, invoiceTotalGhs: 1250, keepupTotalAmount: 1250, keepupAmountPaid: 250, keepupBalanceDue: 1000 });
   });
-  it("documents that when Keepup is unreachable the SAME field carries the USD invoice amount instead", async () => {
-    const s = await invoiced();
+  it("when Keepup is unreachable the Keepup total is null (not the USD amount); paid/balance come from the stored GHS payments", async () => {
+    const s = await invoiced({ AmountPaid: 250, BalanceDue: 1000, Status: "Partial" });
     vi.mocked(s.w.keepup.getKeepupSale).mockRejectedValueOnce(new Error("down"));
     const res = await s.w.call("orders/[id]", "GET", { token: s.admin, params: { id: "recOrd1" } });
-    expect(res.json?.data).toMatchObject({ keepupTotalAmount: 100, keepupAmountPaid: 0, keepupBalanceDue: 100 });
+    expect(res.json?.data).toMatchObject({ keepupTotalAmount: null, keepupAmountPaid: 250, keepupBalanceDue: 1000, invoiceTotalGhs: 1250 });
   });
-  it("documents that a Paid order whose Keepup payment is 0 is reported as paid in the USD invoice amount", async () => {
+  it("a Paid order whose Keepup payment is 0 is no longer reported as paid in USD", async () => {
     const s = await invoiced({ Status: "Paid" });
     vi.mocked(s.w.keepup.getKeepupSale).mockResolvedValueOnce({ totalAmount: 1250, amountPaid: 0, balanceDue: 1250 });
     const res = await s.w.call("orders/[id]", "GET", { token: s.admin, params: { id: "recOrd1" } });
-    expect(res.json?.data).toMatchObject({ keepupAmountPaid: 100, keepupBalanceDue: 0 });
+    expect(res.json?.data).toMatchObject({ keepupAmountPaid: 0 });
+    expect(res.json?.data.keepupAmountPaid).not.toBe(100);
   });
-  it("documents the client-side conversions (source anchors in the order detail page)", () => {
+  it("with no rate configured the GHS total is null, never USD-as-GHS", async () => {
+    const s = await invoiced();
+    s.w.db.all("Settings")[0].fields["UsdToGhs"] = 0;
+    vi.mocked(s.w.keepup.getKeepupSale).mockRejectedValueOnce(new Error("down"));
+    const res = await s.w.call("orders/[id]", "GET", { token: s.admin, params: { id: "recOrd1" } });
+    expect(res.json?.data).toMatchObject({ invoiceTotalGhs: null, keepupTotalAmount: null });
+  });
+  it("source anchors: the page shows Keepup/GHS figures as-is (no second multiplication by the rate)", () => {
     const src = readSource(ORDER_PAGE);
-    expect(src).toContain("formatCurrency(keepupTotal * usdToGhs, \"GHS\")"); // Keepup GHS total x rate
-    expect(src).toContain("order.invoiceAmount * usdToGhs - (keepupPaid ?? 0)"); // today's rate minus older GHS payments
+    expect(src).toContain('formatCurrency(keepupTotal, "GHS")');
+    expect(src).not.toContain('formatCurrency(keepupTotal * usdToGhs, "GHS")');
+    expect(src).not.toContain("order.invoiceAmount * usdToGhs - (keepupPaid ?? 0)");
   });
 });
 

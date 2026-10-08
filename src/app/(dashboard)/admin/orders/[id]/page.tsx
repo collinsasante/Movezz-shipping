@@ -32,6 +32,8 @@ import { Textarea } from "@/components/ui/textarea";
 interface OrderDetail extends Order {
   items?: Item[];
   keepupTotalAmount?: number | null;
+  /** Net invoice (after discount) in GHS at the current rate; null when no rate is configured */
+  invoiceTotalGhs?: number | null;
   keepupAmountPaid?: number | null;
   keepupBalanceDue?: number | null;
 }
@@ -147,7 +149,8 @@ export default function AdminOrderDetailPage() {
       const keepupTotalApi = o.keepupTotalAmount ?? null;
       setKeepupPaid(airtablePaid != null ? airtablePaid : keepupPaidApi);
       setKeepupBalance(airtableBalance != null ? airtableBalance : keepupBalanceApi);
-      setKeepupTotal(keepupTotalApi ?? o.invoiceAmount);
+      // Keepup totals are already GHS. The fallback is the server-derived GHS figure, never the USD amount.
+      setKeepupTotal(keepupTotalApi ?? o.invoiceTotalGhs ?? null);
       // Fetch customer phone + package tier
       if (o.customerId) {
         axios.get(`/api/customers/${o.customerId}`).then((cRes) => {
@@ -169,37 +172,9 @@ export default function AdminOrderDetailPage() {
     if (!order) return;
     setCreatingInvoice(true);
     try {
-      // Split invoice amount proportionally by CBM (or equally if no dimensions) —
-      // items sharing a carton number price together as one consolidated group.
-      const items = order.items ?? [];
-      const groups = groupItemsForBilling(items);
-      const cbms = groups.map((g) => g.cbm);
-      const totalCbmForInvoice = cbms.reduce((s, c) => s + c, 0);
-      const priceMap: Record<string, number> = {};
-      let running = 0;
-      groups.forEach((group, i) => {
-        const proportion = totalCbmForInvoice > 0 ? cbms[i] / totalCbmForInvoice : 1 / groups.length;
-        const groupPrice =
-          i < groups.length - 1
-            ? Math.round(order.invoiceAmount * proportion * 100) / 100
-            : Math.round((order.invoiceAmount - running) * 100) / 100;
-        if (i < groups.length - 1) running += groupPrice;
-        // Split the group's price evenly across its items — the invoice route re-sums
-        // per group, so this intra-group split only needs to add back up to groupPrice.
-        let groupRunning = 0;
-        group.items.forEach((item, j) => {
-          if (j < group.items.length - 1) {
-            const p = Math.round((groupPrice / group.items.length) * 100) / 100;
-            priceMap[item.id] = p;
-            groupRunning += p;
-          } else {
-            priceMap[item.id] = Math.round((groupPrice - groupRunning) * 100) / 100;
-          }
-        });
-      });
-
-      const itemPriceMap = Object.keys(priceMap).length > 0 ? priceMap : undefined;
-      await axios.post(`/api/orders/${id}/create-invoice`, { itemPriceMap });
+      // The server derives prices, the exchange rate and the line split. A first invoice is created once;
+      // clicking again on an order that already has one must say so explicitly to replace it.
+      await axios.post(`/api/orders/${id}/create-invoice`, { regenerate: !!order.keepupSaleId });
       success("Invoice created in Keepup");
       load();
     } catch (err: unknown) {
@@ -236,10 +211,10 @@ export default function AdminOrderDetailPage() {
       setPaymentModalOpen(false);
       setPaymentAmount("");
       // Optimistically update payment figures (amounts in GHS)
-      const invoiceGhs = (order?.invoiceAmount ?? 0) * usdToGhs;
+      const invoiceGhs = keepupTotal ?? 0;
       const newPaid = (keepupPaid ?? 0) + amount;
       const newBalance = Math.max(0, (keepupBalance ?? invoiceGhs) - amount);
-      const newTotal = keepupTotal ?? (order?.invoiceAmount ?? null);
+      const newTotal = keepupTotal;
       setKeepupPaid(newPaid);
       setKeepupBalance(newBalance);
       setKeepupTotal(newTotal);
@@ -516,7 +491,7 @@ export default function AdminOrderDetailPage() {
                     {keepupTotal != null && (
                       <div className="flex justify-between items-center text-xs">
                         <span className="text-gray-400">Invoice Total</span>
-                        <span className="font-semibold text-gray-800">{formatCurrency(keepupTotal * usdToGhs, "GHS")}</span>
+                        <span className="font-semibold text-gray-800">{formatCurrency(keepupTotal, "GHS")}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-center text-xs">
@@ -525,8 +500,8 @@ export default function AdminOrderDetailPage() {
                     </div>
                     <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1.5 mt-1">
                       <span className="text-gray-500 font-medium">Balance Due</span>
-                      <span className={`font-bold ${Math.max(0, order.invoiceAmount * usdToGhs - (keepupPaid ?? 0)) <= 0 ? "text-green-700" : "text-orange-600"}`}>
-                        {formatCurrency(Math.max(0, order.invoiceAmount * usdToGhs - (keepupPaid ?? 0)), "GHS")}
+                      <span className={`font-bold ${Math.max(0, (keepupTotal ?? 0) - (keepupPaid ?? 0)) <= 0 ? "text-green-700" : "text-orange-600"}`}>
+                        {formatCurrency(Math.max(0, (keepupTotal ?? 0) - (keepupPaid ?? 0)), "GHS")}
                       </span>
                     </div>
                   </div>

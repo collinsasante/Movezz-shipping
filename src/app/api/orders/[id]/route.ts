@@ -2,7 +2,9 @@
 // PATCH  /api/orders/[id]  — update order (status, amount)
 // DELETE /api/orders/[id]  — delete order
 import { NextRequest } from "next/server";
-import { ordersApi, itemsApi, customersApi } from "@/lib/airtable";
+import { ordersApi, itemsApi, customersApi, settingsApi } from "@/lib/airtable";
+import { netInvoiceGhs, round2, isSettled } from "@/lib/money";
+import { withLock } from "@/lib/locks";
 import {
   requireAuth,
   serverErrorResponse,
@@ -54,7 +56,10 @@ export async function GET(
       }
     }
 
-    // Fetch Keepup payment status (non-fatal)
+    // Keepup payment status (non-fatal). Keepup amounts are GHS. When Keepup is unavailable we say so
+    // (null) rather than substituting the USD invoice amount into a GHS field.
+    const rate = await settingsApi.getRate().catch(() => null);
+    const invoiceTotalGhs = rate === null ? null : netInvoiceGhs(order.invoiceAmount, order.discount, rate);
     let keepupTotalAmount: number | null = null;
     let keepupAmountPaid: number | null = null;
     let keepupBalanceDue: number | null = null;
@@ -65,24 +70,9 @@ export async function GET(
         keepupAmountPaid = ks.amountPaid;
         keepupBalanceDue = ks.balanceDue;
       } catch {
-        // Keepup API unavailable — derive sensible defaults from order status so summary still renders
-        keepupTotalAmount = order.invoiceAmount;
-        if (order.status === "Paid") {
-          keepupAmountPaid = order.invoiceAmount;
-          keepupBalanceDue = 0;
-        } else {
-          keepupAmountPaid = 0;
-          keepupBalanceDue = order.invoiceAmount;
-        }
-      }
-      // Fallback: if Keepup returns 0 but order is already marked Paid/Partial, derive from status
-      if (order.status === "Paid" && (keepupAmountPaid ?? 0) === 0) {
-        keepupTotalAmount = keepupTotalAmount ?? order.invoiceAmount;
-        keepupAmountPaid = order.invoiceAmount;
-        keepupBalanceDue = 0;
-      } else if (order.status === "Partial" && (keepupAmountPaid ?? 0) === 0 && keepupTotalAmount) {
-        // Derive amount paid from balance due if Keepup field names differ
-        keepupAmountPaid = keepupTotalAmount - (keepupBalanceDue ?? keepupTotalAmount);
+        // Keepup unavailable: fall back to the GHS payments recorded on the order itself.
+        keepupAmountPaid = order.amountPaid ?? null;
+        keepupBalanceDue = order.balanceDue ?? null;
       }
     }
 
@@ -99,7 +89,7 @@ export async function GET(
 
     return Response.json({
       success: true,
-      data: { ...order, items, keepupTotalAmount, keepupAmountPaid, keepupBalanceDue },
+      data: { ...order, items, invoiceTotalGhs, keepupTotalAmount, keepupAmountPaid, keepupBalanceDue },
     });
   } catch {
     return notFoundResponse("Order not found");
@@ -125,51 +115,91 @@ export async function PATCH(
       );
     }
 
-    const order = await ordersApi.update(id, parsed.data, user.email);
+    return await withLock(`order:${id}`, async () => {
+    const existing = await ordersApi.getById(id);
 
-    // Record payment in Keepup if paymentAmount provided
-    if (parsed.data.paymentAmount !== undefined) {
-      const newPaid = (order.amountPaid ?? 0) + parsed.data.paymentAmount;
-      const newBalance = Math.max(0, order.invoiceAmount - newPaid);
-      const newStatus = newPaid >= order.invoiceAmount ? "Paid" : "Partial";
-      // Save payment amounts to Airtable (always, regardless of Keepup)
+    // A discount can never exceed the invoice it discounts.
+    const effectiveInvoice = parsed.data.invoiceAmount ?? existing.invoiceAmount;
+    const effectiveDiscount = parsed.data.discount ?? existing.discount ?? 0;
+    if (effectiveDiscount > effectiveInvoice) {
+      return badRequestResponse("The discount cannot be larger than the invoice amount");
+    }
+
+    // Money movement is in GHS. Without a configured rate we cannot compare a GHS payment with a USD
+    // invoice, so refuse before changing anything (never default the rate to 1).
+    const movesMoney = parsed.data.paymentAmount !== undefined || (parsed.data.status === "Paid" && existing.status !== "Paid");
+    let rate: number | null = null;
+    if (movesMoney) {
+      rate = await settingsApi.getRate();
+      if (rate === null && (parsed.data.paymentAmount !== undefined || existing.keepupSaleId)) {
+        return Response.json(
+          { success: false, error: "The USD to GHS exchange rate is not configured. Set it in Settings before recording payments." },
+          { status: 409 }
+        );
+      }
+    }
+    const totalGhs = rate === null ? null : netInvoiceGhs(effectiveInvoice, effectiveDiscount, rate);
+
+    // Payments are GHS amounts. Reject an overpayment instead of silently marking the order Paid.
+    if (parsed.data.paymentAmount !== undefined && totalGhs !== null) {
+      const balanceGhs = Math.max(0, round2(totalGhs - (existing.amountPaid ?? 0)));
+      if (parsed.data.paymentAmount > balanceGhs + 0.005) {
+        return badRequestResponse(`Payment exceeds the balance due (GHS ${balanceGhs.toFixed(2)})`);
+      }
+    }
+
+    const order = await ordersApi.update(id, parsed.data, user.email);
+    const warnings: string[] = [];
+    let paymentRecordedGhs: number | null = null;
+
+    if (parsed.data.paymentAmount !== undefined && totalGhs !== null) {
+      const newPaid = round2((existing.amountPaid ?? 0) + parsed.data.paymentAmount);
+      const newBalance = Math.max(0, round2(totalGhs - newPaid));
+      const newStatus = isSettled(newPaid, totalGhs) ? "Paid" : "Partial";
       await ordersApi.update(id, { status: newStatus, amountPaid: newPaid, balanceDue: newBalance }, user.email);
       order.status = newStatus;
       order.amountPaid = newPaid;
       order.balanceDue = newBalance;
-      // Also record in Keepup (non-fatal)
+      paymentRecordedGhs = parsed.data.paymentAmount;
       if (order.keepupSaleId) {
-        try { await recordKeepupPayment(order.keepupSaleId, parsed.data.paymentAmount); } catch {}
+        try { await recordKeepupPayment(order.keepupSaleId, parsed.data.paymentAmount); }
+        catch { warnings.push("The payment was saved but could not be recorded in Keepup; record it there manually."); }
+      }
+    } else if (parsed.data.status === "Paid" && existing.status !== "Paid" && totalGhs !== null) {
+      // "Mark Paid": settle whatever is still outstanding, in GHS.
+      const outstanding = Math.max(0, round2(totalGhs - (existing.amountPaid ?? 0)));
+      await ordersApi.update(id, { amountPaid: totalGhs, balanceDue: 0 }, user.email);
+      order.amountPaid = totalGhs;
+      order.balanceDue = 0;
+      paymentRecordedGhs = outstanding;
+      if (order.keepupSaleId && outstanding > 0) {
+        try { await recordKeepupPayment(order.keepupSaleId, outstanding); }
+        catch { warnings.push("The order was marked Paid but the payment could not be recorded in Keepup; record it there manually."); }
       }
     }
 
-    // Sync payment to Keepup when marked as Paid (non-fatal)
-    if (parsed.data.status === "Paid" && order.keepupSaleId) {
-      try {
-        await recordKeepupPayment(order.keepupSaleId, order.invoiceAmount);
-      } catch {
-        // Keepup payment record failed (non-fatal)
-      }
-    }
-
-    // Send payment emails (non-fatal)
-    if (parsed.data.status === "Paid" || parsed.data.status === "Partial") {
+    // Payment emails follow the order's EFFECTIVE status and carry the real GHS amounts.
+    const paymentRequested = paymentRecordedGhs !== null || parsed.data.status === "Paid" || parsed.data.status === "Partial";
+    if (paymentRequested && (order.status === "Paid" || order.status === "Partial")) {
       customersApi.getById(order.customerId).then((customer) => {
         if (!customer?.email) return;
-        if (parsed.data.status === "Paid") {
+        if (order.status === "Paid") {
           sendPaymentConfirmedEmail({
             to: customer.email,
             customerName: customer.name,
             orderRef: order.orderRef,
-            invoiceAmount: order.invoiceAmount,
+            invoiceAmount: totalGhs ?? order.invoiceAmount,
+            currency: totalGhs !== null ? "GHS" : "USD",
           }).catch(() => {});
-        } else if (parsed.data.status === "Partial") {
+        } else if (order.amountPaid !== undefined && order.balanceDue !== undefined) {
+          // Only sent when the real GHS figures are known - never an invented 50/50 split.
           sendPartialPaymentEmail({
             to: customer.email,
             customerName: customer.name,
             orderRef: order.orderRef,
-            amountPaid: order.invoiceAmount * 0.5, // placeholder — Keepup has actual amounts
-            balanceDue: order.invoiceAmount * 0.5,
+            amountPaid: order.amountPaid,
+            balanceDue: order.balanceDue,
+            currency: "GHS",
             keepupLink: order.keepupLink,
           }).catch(() => {});
         }
@@ -191,6 +221,8 @@ export async function PATCH(
       success: true,
       data: order,
       message: "Order updated successfully",
+      ...(warnings.length ? { warnings } : {}),
+    });
     });
   } catch {
     return serverErrorResponse("Failed to update order");

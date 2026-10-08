@@ -6,7 +6,8 @@ import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth
 import { z } from "zod";
 
 const SaveSettingsSchema = z.object({
-  usdToGhs: z.number().positive("USD → GHS rate must be positive"),
+  // Sanity bounds: catches a typo (0.0001, 1200000) that would silently reprice every GHS invoice and payment.
+  usdToGhs: z.number().min(0.1, "USD → GHS rate looks too low").max(1000, "USD → GHS rate looks too high"),
   shippingRatePerCbm: z.number().positive("Shipping rate must be positive"),
 });
 
