@@ -1,6 +1,8 @@
 // PATCH  /api/cartons/[cartonNumber] — edit carton dimensions / add / remove items
 // DELETE /api/cartons/[cartonNumber] — dissolve a carton
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { cartonsApi, BusinessError } from "@/lib/airtable";
 import {
   requireAuth,
@@ -24,6 +26,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ cartonNumber: string }> }
 ) {
+  if (isPostgresBackend()) return pg.cartonPatch(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -59,6 +62,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ cartonNumber: string }> }
 ) {
+  if (isPostgresBackend()) return pg.cartonDelete(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

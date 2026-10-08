@@ -1,6 +1,8 @@
 // POST   /api/containers/[id]/items  — add item to container
 // DELETE /api/containers/[id]/items  — remove item from container
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { containersApi, BusinessError } from "@/lib/airtable";
 import {
   requireAuth,
@@ -17,6 +19,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.containerItemsPost(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -53,6 +56,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.containerItemsDelete(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

@@ -1,6 +1,8 @@
 // PATCH /api/items/[id]/status — update item status
 // Triggers WhatsApp notification and logs history
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { itemsApi, customersApi, BusinessError } from "@/lib/airtable";
 import {
   requireAuth,
@@ -30,6 +32,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.itemStatusPatch(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

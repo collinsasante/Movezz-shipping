@@ -1,6 +1,8 @@
 // PATCH /api/containers/[id]/status
 // Updates container status and cascades to items on "Arrived in Ghana"
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { containersApi, BusinessError } from "@/lib/airtable";
 import {
   requireAuth,
@@ -19,6 +21,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.containerStatusPatch(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;

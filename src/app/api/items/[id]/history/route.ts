@@ -1,5 +1,7 @@
 // GET /api/items/[id]/history — status history for an item
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { itemsApi, statusHistoryApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, notFoundResponse } from "@/lib/auth";
 
@@ -7,6 +9,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.itemHistoryGet(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

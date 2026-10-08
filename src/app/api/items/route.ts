@@ -1,6 +1,8 @@
 // GET  /api/items  — list items
 // POST /api/items  — create item (warehouse staff / admin)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { itemsApi, containersApi, specialRatesApi } from "@/lib/airtable";
 import { validateSpecialClaim } from "@/lib/pricing";
 import {
@@ -37,6 +39,7 @@ const CreateItemSchema = z.object({
 
 // GET /api/items
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.itemsGet(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -98,6 +101,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/items
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.itemsPost(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

@@ -12,7 +12,7 @@ import { getActorContext, type ActorContext, type Role } from "@/lib/db/authz";
 import { DomainError } from "@/lib/db/errors";
 
 export interface Reply { status?: number; body: Record<string, unknown>; headers?: Record<string, string> }
-export interface RouteCtx { tx: PoolClient; actor: ActorContext; request: NextRequest; params: Record<string, string>; requestId: string }
+export interface RouteCtx { tx: PoolClient; actor: ActorContext; request: NextRequest; params: Record<string, string>; requestId: string; after: (fn: () => Promise<unknown>) => void }
 
 const LEGACY = new Set(["ACTOR_INVALID", "NOT_AUTHORIZED", "REGISTRATION_NOT_ELIGIBLE", "NOT_FOUND", "INVALID_STATE", "REGISTRATION_CONFLICT", "RATE_LIMITED"]);
 const STATUS: Record<string, number> = {
@@ -58,11 +58,13 @@ export async function pgRoute(
     if (!a) return Response.json({ success: false, error: "Authentication required" }, { status: 401 });
     const actor: ActorAssertion = { ...a, requestId };
     const p = (await params) ?? {};
+    const later: Array<() => Promise<unknown>> = [];
     const reply = await withActorTransaction(getPool(), actor, async (tx) => {
       const ctx = await getActorContext(tx);
       if (roles) requireRole(ctx, roles);
-      return fn({ tx, actor: ctx, request, params: p, requestId });
+      return fn({ tx, actor: ctx, request, params: p, requestId, after: (f) => { later.push(f); } });
     });
+    for (const f of later) await f().catch(() => {});   // best-effort side effects (e-mail) only after COMMIT
     return Response.json(reply.body, { status: reply.status ?? 200, headers: reply.headers });
   } catch (err) {
     return apiError(err, requestId);

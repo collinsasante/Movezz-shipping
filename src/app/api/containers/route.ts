@@ -1,6 +1,8 @@
 // GET  /api/containers  — list containers
 // POST /api/containers  — create container (admin only)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { containersApi, itemsApi } from "@/lib/airtable";
 import {
   requireAuth,
@@ -18,6 +20,7 @@ const CreateContainerSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.containersGet(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.containersPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;

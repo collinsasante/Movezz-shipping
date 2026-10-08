@@ -2,6 +2,8 @@
 // PATCH  /api/items/[id]  — update item fields
 // DELETE /api/items/[id]  — delete item
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { itemsApi, containersApi } from "@/lib/airtable";
 import {
   requireAuth,
@@ -42,6 +44,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.itemGet(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -82,6 +85,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.itemPatch(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -137,6 +141,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.itemDelete(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;

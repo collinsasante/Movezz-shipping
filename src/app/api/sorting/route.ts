@@ -1,12 +1,15 @@
 // GET  /api/sorting  — items in Sorting stage
 // PATCH /api/sorting/[action] — mark found or missing
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { itemsApi, BusinessError } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
 import { z } from "zod";
 
 // GET /api/sorting — get all items in Sorting status
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.sortingGet(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -47,6 +50,7 @@ const SortingActionSchema = z.object({
 
 // POST /api/sorting — mark item as found or missing
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.sortingPost(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

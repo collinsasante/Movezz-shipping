@@ -1,6 +1,8 @@
 // GET  /api/cartons?customerId=  — list cartons (optionally scoped to a customer)
 // POST /api/cartons              — repack items into a new carton
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { cartonsApi, BusinessError } from "@/lib/airtable";
 import {
   requireAuth,
@@ -11,6 +13,7 @@ import { z } from "zod";
 
 // GET /api/cartons
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.cartonsGet(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -39,6 +42,7 @@ const CreateCartonSchema = z.object({
 
 // POST /api/cartons
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.cartonsPost(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",

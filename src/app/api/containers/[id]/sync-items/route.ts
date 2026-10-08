@@ -2,6 +2,8 @@
 // Bulk-syncs all items in a container to the container's current mapped status.
 // Uses batch Airtable updates (10 records/call) — much faster than per-item calls.
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/operations";
 import { containersApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
@@ -9,6 +11,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.containerSyncPost(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
