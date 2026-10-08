@@ -42,10 +42,10 @@ export async function rehearse({ adminUrl, scale = 1, verified = "none", actorKe
   const key = actorKeyB64 ?? randomBytes(32).toString("base64");
   const name = `${REHEARSAL_PREFIX}${randomBytes(4).toString("hex")}`; const restored = `${name}_restored`;
   const m = { scale, verified, database: name, phases: {}, snapshot: {} };
-  const root = new pg.Pool({ connectionString: adminUrl, max: 2 });
+  const root = new pg.Pool({ connectionString: adminUrl, max: 2 }); root.on("error", () => {});   // an idle client killed by DROP DATABASE ... FORCE must not crash the process
   const dir = await mkdtemp(path.join(tmpdir(), "rehearsal-"));
   const phase = async (label, fn) => { const t0 = performance.now(); const r = await fn(); m.phases[label] = { ms: ms(t0), ...(r ?? {}) }; return r; };
-  let target, back;
+  let target, back, poolToClose;
   try {
     // ---- 1. source: generate the snapshot file ----
     const gen = await phase("generate snapshot", async () => { const { snapshot, meta } = buildRealisticSnapshot({ scale, verified }); const file = path.join(dir, "snapshot.json"); const text = JSON.stringify(snapshot); await writeFile(file, text); return { file, bytes: text.length, counts: meta.counts, quirks: meta.quirks }; });
@@ -60,7 +60,7 @@ export async function rehearse({ adminUrl, scale = 1, verified = "none", actorKe
       return { migrations: r.applied.length };
     });
     const cli = (mode, extra = [], over = {}) => run(process.execPath, [CLI, mode, "--snapshot", "snapshot.json", ...extra], { cwd: dir, env: { ...env, IMPORT_DATABASE_URL: target, ACTOR_CONTEXT_KEY: key, ...over } });
-    const pool = new pg.Pool({ connectionString: target, max: 2 });
+    const pool = new pg.Pool({ connectionString: target, max: 2 }); pool.on("error", () => {}); poolToClose = pool;
     const stats = async () => (await pool.query("SELECT xact_commit::bigint AS c, tup_inserted::bigint AS i, pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint AS wal FROM pg_stat_database WHERE datname = current_database()")).rows[0];
     // ---- 3. dry-run (read-only) ----
     const before = await pool.query("SELECT (SELECT count(*) FROM customers) AS c");
@@ -100,6 +100,7 @@ export async function rehearse({ adminUrl, scale = 1, verified = "none", actorKe
     await pool.end();
     return m;
   } finally {
+    await poolToClose?.end().catch(() => {});   // also on failure: no live connections may remain when the database is dropped
     if (!keep) { for (const d of [name, restored]) { if (!d.startsWith(REHEARSAL_PREFIX)) continue; await root.query(`DROP DATABASE IF EXISTS ${d} WITH (FORCE)`).catch(() => {}); } }
     await root.end(); await rm(dir, { recursive: true, force: true });
   }

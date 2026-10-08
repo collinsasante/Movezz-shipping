@@ -9,6 +9,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { resolveTarget } from "./target.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const MIGRATIONS_DIR = path.resolve(HERE, "../../db/migrations");
@@ -55,6 +56,13 @@ export async function migrate(url, { log = () => {}, dir } = {}) {
         throw new Error(`Migration ${row.name} was modified after it was applied. Never edit an applied migration; add a new one.`);
       }
     }
+    for (const row of rows) {
+      const local = migrations.find((m) => m.version === row.version);
+      if (local.name !== row.name) throw new Error(`Migration version ${row.version} was applied as ${row.name} but the repository calls it ${local.name}`);
+    }
+    const maxApplied = rows.length ? Math.max(...rows.map((r) => r.version)) : 0;
+    const gap = migrations.find((m) => !applied.has(m.version) && m.version < maxApplied);
+    if (gap) throw new Error(`Migration history is out of order: ${gap.name} is not applied but a later migration is. Refusing to apply it out of order.`);
     const ran = [];
     for (const m of migrations) {
       if (applied.has(m.version)) continue;
@@ -101,33 +109,34 @@ export async function status(url, { dir } = {}) {
  * @param {string} [confirmHost]
  */
 export function assertSafeTarget(url, confirmHost) {
-  const host = new URL(url).hostname;
-  const local = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(host);
+  const { host, local } = resolveTarget(url);
   if (!local && confirmHost !== host) {
     throw new Error(`Refusing to migrate remote host "${host}". Re-run with --confirm-host=${host} once you have checked the target.`);
   }
   return host;
 }
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const PROD_WORDS = /(^|[^a-z])(prod|production|live)([^a-z]|$)/i;
 /**
- * Stricter guard for operator CLIs that WRITE (migrate, grants, bootstrap admin, purge). Loopback targets pass unchanged. A remote
- * target must be confirmed three ways (host, exact database name, environment class = staging), must use TLS, and must not look
- * like production. Production is deliberately NOT reachable through this guard: the production cutover gets its own approved procedure.
+ * Stricter guard for operator CLIs that WRITE (migrate, grants, bootstrap admin). The URL is read exactly as `pg` will read it
+ * (scripts/lib/target.mjs). Loopback targets pass unless the database name looks like production (an SSH tunnel to production is loopback
+ * too). A remote target must be confirmed three ways (host, exact database name, environment class = staging), must use VERIFIED TLS
+ * (sslmode=verify-full, certificate checking not disabled) and must not look like production. Production is deliberately NOT reachable
+ * through this guard: the production cutover gets its own approved procedure. Nothing here consults the preflight; the preflight is advice.
  * @param {{ url: string, confirmHost?: string, confirmDatabase?: string, env?: NodeJS.ProcessEnv }} o
  * @returns {{ host: string, database: string, local: boolean }}
  */
 export function assertStagingTarget({ url, confirmHost, confirmDatabase, env = process.env }) {
-  const u = new URL(url);
-  const host = u.hostname.toLowerCase(); const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
-  if (LOOPBACK_HOSTS.has(host)) return { host, database, local: true };
+  let t;
+  try { t = resolveTarget(url, env); } catch (e) { throw new Error(`Refusing target: ${e.message}`); }
   const fail = [];
-  if (confirmHost !== host) fail.push(`--confirm-host=${host} is required`);
-  if (!database || confirmDatabase !== database) fail.push("--confirm-database must equal the exact database name");
-  if (env.MOVEZZ_IMPORT_ENVIRONMENT !== "staging") fail.push("MOVEZZ_IMPORT_ENVIRONMENT=staging is required for a remote target");
-  if (PROD_WORDS.test(host) || PROD_WORDS.test(database)) fail.push("the host or database name looks like production");
-  if (!["require", "verify-ca", "verify-full"].includes(u.searchParams.get("sslmode") ?? "")) fail.push("the URL must carry sslmode=require|verify-ca|verify-full (TLS)");
-  if (fail.length) throw new Error(`Refusing remote target "${host}": ${fail.join("; ")}`);
-  return { host, database, local: false };
+  if (PROD_WORDS.test(t.database) || (!t.local && PROD_WORDS.test(t.host))) fail.push("the host or database name looks like production");
+  if (!t.local) {
+    if (confirmHost !== t.host) fail.push(`--confirm-host=${t.host} is required`);
+    if (confirmDatabase !== t.database) fail.push("--confirm-database must equal the exact database name");
+    if (env.MOVEZZ_IMPORT_ENVIRONMENT !== "staging") fail.push("MOVEZZ_IMPORT_ENVIRONMENT=staging is required for a remote target");
+    if (!t.tlsVerified) fail.push("verified TLS is required: sslmode=verify-full in the URL and certificate checking not disabled (NODE_TLS_REJECT_UNAUTHORIZED must not be 0)");
+  }
+  if (fail.length) throw new Error(`Refusing ${t.local ? "local" : "remote"} target "${t.host}": ${fail.join("; ")}`);
+  return { host: t.host, database: t.database, local: t.local };
 }

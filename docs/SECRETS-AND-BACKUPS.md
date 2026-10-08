@@ -22,7 +22,8 @@ Status: **requirements verified in code and tests (VL); the production secret st
 * The import key is separate from the application key by procedure (`docs/MIGRATION-IMPORT.md` §12) and the importer refuses any live-integration variable in its environment.
 * First administrator: an explicit operator action on the owner connection (`scripts/db-bootstrap-admin.mjs`, host confirmation, no password created); the API cannot create a super_admin.
 
-## Backup and restore policy (to be implemented by the operator — BLOCKED until storage exists)
+## Backup and restore policy (tool implemented and tested locally; encrypted remote storage and a real custodian key are BLOCKED until they exist)
+Tool: `scripts/db-backup.mjs` (`backup | verify | restore`). It streams `pg_dump` through `age` (public recipient only, so the machine that backs up cannot decrypt), writes `0600`, never overwrites, refuses destinations inside the repository, excludes `movezz_sec.actor_keys` data and proves the exclusion in `verify`, and restores only into a brand-new `mvz_restore_*` database. Tested against a disposable local database with a throw-away key; never run against remote storage.
 1. `pg_dump -Fc --exclude-table-data=movezz_sec.actor_keys` from the owner connection; encrypt immediately (e.g. `age`/`gpg` with a key held by a different custodian than the database credentials); store in access-controlled storage; retention set by the owner.
 2. Restore only into a **new, empty database** on an explicitly named host; the application's `DATABASE_URL` is never changed by a restore. After restoring: run `db-migrate status`, provision a fresh actor key, run reconciliation, and only then (separate, approved step) point a *staging* application at it.
 3. Quarterly restore drill; keep the evidence in `docs/CUTOVER-EVIDENCE.md`.

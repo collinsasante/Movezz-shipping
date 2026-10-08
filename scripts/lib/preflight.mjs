@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { evaluateEnvironment } from "./import/env-guard.mjs";
 import { parseSnapshotText, snapshotFingerprint } from "./import/index.mjs";
 import { loadMigrations } from "./migrate.mjs";
+import { resolveTarget } from "./target.mjs";
 
 export const MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024;
 const toolOk = (cmd) => spawnSync(cmd, ["--version"], { encoding: "utf8" }).status === 0;
@@ -26,21 +27,27 @@ export async function runPreflight({ env = process.env, cwd = process.cwd(), own
   const airtable = Object.keys(env).filter((k) => /^AIRTABLE_/i.test(k) && env[k]);
   add("Airtable variables absent from this shell", airtable.length ? "FAIL" : "PASS", airtable.length ? `present (names only): ${airtable.join(", ")}` : "none");
 
-  // 2 TLS requirement in the URLs
-  const u = ownerUrl ? new URL(ownerUrl) : null;
-  const remote = u && !["localhost", "127.0.0.1", "::1", "[::1]"].includes(u.hostname.toLowerCase());
-  if (!u) add("staging database URL (IMPORT_DATABASE_URL)", "BLOCKED", "not provided: staging host and exact database name are needed");
-  else if (remote) add("URL requests TLS (sslmode=require|verify-ca|verify-full)", ["require", "verify-ca", "verify-full"].includes(u.searchParams.get("sslmode") ?? "") ? "PASS" : "FAIL", `sslmode=${u.searchParams.get("sslmode") ?? "(none)"}`);
-  else add("URL requests TLS", "NOT_RUN", "loopback target: TLS is only required for remote staging");
+  // 2 target reading + TLS (judged on what pg will really use, not on the URL text)
+  let t = null;
+  if (!ownerUrl) add("staging database URL (IMPORT_DATABASE_URL)", "BLOCKED", "not provided: staging host and exact database name are needed");
+  else {
+    try { t = resolveTarget(ownerUrl, env); add("URL is unambiguous (single host, no ?host= override, no socket/options)", "PASS", `host=${t.host}`); }
+    catch (e) { add("URL is unambiguous (single host, no ?host= override, no socket/options)", "FAIL", e.message); }
+    if (t) {
+      if (!t.local) add("remote URL requests VERIFIED TLS (sslmode=verify-full, certificate checks on)", t.tlsVerified ? "PASS" : "FAIL", `sslmode=${t.sslmode ?? "(none)"}${env.NODE_TLS_REJECT_UNAUTHORIZED === "0" ? "; NODE_TLS_REJECT_UNAUTHORIZED=0 is set" : ""}`);
+      else add("TLS", "NOT_RUN", "loopback target: verified TLS is only required for remote staging");
+    }
+  }
+  const remote = Boolean(t && !t.local);
 
   // 3 database state (read-only)
-  if (u && connect) {
+  if (t && connect) {
     let c;
     try {
       c = await connect(ownerUrl);
       const q = async (sql, p) => (await c.query(sql, p)).rows;
       const me = (await q("SELECT current_user AS u, current_database() AS d, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS su"))[0];
-      add("owner connection reaches the named database", me.d === decodeURIComponent(u.pathname.slice(1)) ? "PASS" : "FAIL", `database=${me.d}`);
+      add("owner connection reaches the named database", me.d === t.database ? "PASS" : "FAIL", `database=${me.d}`);
       add("owner role is not a superuser", me.su ? "FAIL" : "PASS", `role=${me.u}`);
       if (remote) { const ssl = (await q("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()"))[0]?.ssl; add("connection is actually encrypted", ssl === true ? "PASS" : "FAIL", `ssl=${ssl}`); }
       const app = (await q("SELECT rolsuper, rolcreaterole, rolcreatedb, rolbypassrls FROM pg_roles WHERE rolname = 'movezz_app'"))[0];
@@ -68,15 +75,25 @@ export async function runPreflight({ env = process.env, cwd = process.cwd(), own
       }
     } catch (e) { add("owner connection", "FAIL", String(e.message).replace(/postgres(ql)?:\/\/\S+/g, "[url]").slice(0, 200)); }
     finally { await c?.end?.().catch(() => {}); }
-  } else if (u) add("database state checks", "NOT_RUN", "no connection function supplied");
+  } else if (t) add("database state checks", "NOT_RUN", "no connection function supplied");
   if (runtimeUrl && connect) {
     let c;
     try {
+      const rt = resolveTarget(runtimeUrl, env);
+      add("runtime URL names the same host and database as the owner URL", t && rt.host === t.host && rt.database === t.database ? "PASS" : "FAIL", `host=${rt.host}`);
+      if (!rt.local) add("runtime URL requests VERIFIED TLS", rt.tlsVerified ? "PASS" : "FAIL", `sslmode=${rt.sslmode ?? "(none)"}`);
       c = await connect(runtimeUrl);
+      if (!rt.local) add("runtime connection is actually encrypted", (await c.query("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()")).rows[0]?.ssl === true ? "PASS" : "FAIL", "");
       const me = (await c.query("SELECT current_user AS u")).rows[0].u;
       add("runtime connection uses movezz_app", me === "movezz_app" ? "PASS" : "FAIL", `role=${me}`);
       const canCreate = (await c.query("SELECT has_schema_privilege(current_user, 'public', 'CREATE') AS ok")).rows[0].ok;
       add("runtime role cannot create objects", canCreate ? "FAIL" : "PASS", "public schema");
+      const x = (await c.query(`SELECT has_schema_privilege(current_user, 'movezz_sec', 'CREATE') AS sec_create, has_database_privilege(current_user, current_database(), 'CREATE') AS db_create,
+          (SELECT count(*)::int FROM pg_tables WHERE tableowner = current_user) AS owned,
+          (SELECT count(*)::int FROM pg_auth_members m JOIN pg_roles r ON r.oid = m.roleid WHERE m.member = (SELECT oid FROM pg_roles WHERE rolname = current_user) AND r.rolname NOT LIKE 'pg\_%') AS memberships,
+          has_table_privilege(current_user, 'movezz_sec.actor_keys', 'SELECT') AS keys_read, has_table_privilege(current_user, 'public.schema_migrations', 'INSERT') AS mig_write`)).rows[0];
+      add("runtime role: no CREATE on movezz_sec or the database, owns no tables, belongs to no other role", x.sec_create || x.db_create || x.owned > 0 || x.memberships > 0 ? "FAIL" : "PASS", `owned tables=${x.owned}, memberships=${x.memberships}`);
+      add("runtime role cannot read signing keys or write schema_migrations", x.keys_read || x.mig_write ? "FAIL" : "PASS", "");
     } catch (e) { add("runtime connection", "FAIL", String(e.message).replace(/postgres(ql)?:\/\/\S+/g, "[url]").slice(0, 200)); }
     finally { await c?.end?.().catch(() => {}); }
   } else add("runtime role connection (DATABASE_URL as movezz_app)", runtimeUrl ? "NOT_RUN" : "BLOCKED", runtimeUrl ? "no connection function" : "not provided");

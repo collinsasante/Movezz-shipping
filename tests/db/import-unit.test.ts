@@ -131,7 +131,8 @@ describe("environment guard fails closed", () => {
     const remote = { ...ok, MOVEZZ_IMPORT_ENVIRONMENT: "staging", MOVEZZ_IMPORT_ALLOWED_HOSTS: "db.staging.invalid" };
     expect(evaluateEnvironment({ env: remote, targetUrl: "postgres://x@db.staging.invalid/m", mode: "dry-run" }).ok).toBe(false);                                   // an allow-listed host alone does not pick a database
     expect(evaluateEnvironment({ env: { ...remote, MOVEZZ_IMPORT_CONFIRM_DATABASE: "other" }, targetUrl: "postgres://x@db.staging.invalid/m", mode: "dry-run" }).ok).toBe(false);
-    expect(evaluateEnvironment({ env: { ...remote, MOVEZZ_IMPORT_CONFIRM_DATABASE: "m" }, targetUrl: "postgres://x@db.staging.invalid/m", mode: "dry-run" }).ok).toBe(true);
+    expect(evaluateEnvironment({ env: { ...remote, MOVEZZ_IMPORT_CONFIRM_DATABASE: "m" }, targetUrl: "postgres://x@db.staging.invalid/m?sslmode=verify-full", mode: "dry-run" }).ok).toBe(true);
+    expect(evaluateEnvironment({ env: { ...remote, MOVEZZ_IMPORT_CONFIRM_DATABASE: "m" }, targetUrl: "postgres://x@db.staging.invalid/m", mode: "dry-run" }).ok).toBe(false);   // a remote target also needs verified TLS
   });
   it.each([
     ["no mode", ok, url, undefined],
@@ -159,7 +160,7 @@ describe("environment guard fails closed", () => {
     });
   it("accepts an export snapshot only in staging with explicit consent", () => {
     const e = { MOVEZZ_IMPORT_ENVIRONMENT: "staging", MOVEZZ_IMPORT_ALLOWED_HOSTS: "db.staging.invalid", MOVEZZ_IMPORT_CONFIRM_DATABASE: "m", NODE_ENV: "test" };
-    const t = "postgres://x@db.staging.invalid/m";
+    const t = "postgres://x@db.staging.invalid/m?sslmode=verify-full";
     expect(evaluateEnvironment({ env: e, targetUrl: t, mode: "import", snapshotKind: "export" }).ok).toBe(false);
     expect(evaluateEnvironment({ env: { ...e, MOVEZZ_IMPORT_ALLOW_EXPORT: "1" }, targetUrl: t, mode: "import", snapshotKind: "export" }).ok).toBe(true);
     expect(evaluateEnvironment({ env: { ...ok, MOVEZZ_IMPORT_ALLOW_EXPORT: "1" }, targetUrl: url, mode: "import", snapshotKind: "export" }).ok).toBe(false);

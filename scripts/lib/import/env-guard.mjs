@@ -3,6 +3,7 @@
 // requires an explicit environment class + mode, refuses any live-integration credential in the process environment, and
 // refuses database targets that are not loopback or explicitly allow-listed staging hosts.
 import { ImportRefusal } from "./errors.mjs";
+import { resolveTarget } from "../target.mjs";
 
 export const MODES = ["dry-run", "import", "reconcile"];
 export const APPROVED_CLASSES = ["test", "local", "staging"];
@@ -40,20 +41,21 @@ export function evaluateEnvironment({ env = process.env, targetUrl, mode, snapsh
   if (!targetUrl) add("target database is given", false, "no target URL");
   else {
     try {
-      const u = new URL(targetUrl);
-      host = u.hostname.toLowerCase(); dbName = decodeURIComponent(u.pathname.replace(/^\//, ""));
-      const loopback = LOOPBACK.has(host);
+      const t = resolveTarget(targetUrl, env);   // the host/database/TLS that `pg` will really use (a ?host= override or empty host is refused)
+      host = t.host; dbName = t.database;
+      const loopback = t.local;
       const allowed = (env.MOVEZZ_IMPORT_ALLOWED_HOSTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
       const hostOk = loopback || (cls === "staging" && allowed.includes(host));
       add("target host is loopback or an explicitly allow-listed staging host", hostOk, hostOk ? `host=${host}` : `host ${host} is neither loopback nor allow-listed for staging`);
       if (!loopback) {   // a remote (staging) target must be named explicitly: allow-listing a host alone is not enough to pick a database
         const confirmed = env.MOVEZZ_IMPORT_CONFIRM_DATABASE === dbName && dbName !== "";
         add("remote target database is explicitly confirmed", confirmed, confirmed ? `database=${dbName}` : "set MOVEZZ_IMPORT_CONFIRM_DATABASE to the exact database name");
+        add("remote target uses verified TLS", t.tlsVerified, t.tlsVerified ? "sslmode=verify-full" : "the URL needs sslmode=verify-full and certificate checking must stay on");
       }
       const looksProd = PRODUCTION_WORDS.test(host) || PRODUCTION_WORDS.test(dbName);
       add("target does not look like production", !looksProd, looksProd ? "host or database name contains prod/production/live" : "no production marker in host or database name");
-    } catch {
-      add("target database is given", false, "target URL is not a valid URL");
+    } catch (e) {
+      add("target database is given", false, e?.message ? `target URL refused: ${e.message}` : "target URL is not a valid URL");
     }
   }
 
