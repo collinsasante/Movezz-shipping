@@ -528,6 +528,14 @@ functions (lease tokens, back-off, dead-letter, reconciliation); the idempotency
 has per-actor authority; operational writes need a verified actor. Full description, transition tables, the exact state left
 by each failure, the idempotency matrix, security findings and remaining risks: **`docs/OPERATIONAL-RELIABILITY.md`**.
 
+## 13h. Import framework (Phase 7I, migration 0016)
+
+`import_batches`, `import_records` (source → target mapping, unique both ways) and `import_quarantine` are append-only bookkeeping tables
+owned by the migration role and not granted to the runtime role; at most one batch may be `running`. 0016 also lets the signed **import**
+actor cancel **non-native** invoices (historical cancellations). The importer, its source → target mapping, quarantine rules, financial rules,
+reconciliation, procedures and open questions: **`docs/MIGRATION-IMPORT.md`**. §14 below is the original mapping sketch; where they differ the
+Phase 7I document is authoritative (e.g. Users are deferred, orders need a verified financial snapshot).
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |

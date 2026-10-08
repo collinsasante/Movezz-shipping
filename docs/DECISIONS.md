@@ -332,3 +332,16 @@ sync state, or mark a failed sync successful. Automated background processing ma
 identity. Staff may *view* operational sync status where appropriate.
 
 No business-rule questions remain from Phase 7A.
+
+
+---
+
+## Addendum B — Phase 7I open questions (NOT decided; nothing here is a locked decision)
+
+Phase 7I built the import machinery without production data. It could not resolve, and did not guess, the following; each needs an
+explicit owner decision before a production import (details and the behaviour implemented meanwhile are in `docs/MIGRATION-IMPORT.md` §13):
+
+* **B1** — the source of verified historical invoice financials (subtotal, discount, frozen FX, GHS total) and payments; until then every Airtable order is quarantined.
+* **B2** — confirmation that historical logins are not imported (people re-activate through the registration flow).
+* **B3** — the legacy cancellation reason/time when the source records none; the tier shown on derived legacy cartons.
+* **B4** — how a quarantined record is resolved (corrected snapshot vs a separate repair tool).
