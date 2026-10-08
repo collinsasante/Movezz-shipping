@@ -3,6 +3,7 @@
 // 'sent' was recorded, the lease expires and the row is retried. The sender therefore receives the row id as an idempotency key
 // (Resend and most providers de-duplicate on it); a sender that cannot de-duplicate must accept an occasional repeat.
 import type { Pool } from "pg";
+import { describeError, logEvent } from "../log";
 import { withActorTransaction, type ActorAssertion } from "../actor";
 
 export interface OutboundMessage { id: string; eventType: string; channel: "email" | "whatsapp"; recipient: string; payload: Record<string, unknown>; attempt: number; idempotencyKey: string }
@@ -35,6 +36,9 @@ export async function runOutboxWorkerOnce(db: Pool, o: OutboxWorkerOptions): Pro
     return (await tx.query("SELECT id, event_type, channel, recipient, payload, attempts, lease_token FROM movezz_sec.outbox_claim($1, $2, $3)", [o.batch ?? 10, lease, o.owner])).rows;
   });
   res.claimed = rows.length;
+  const cid = actor(o, "pass").requestId;
+  if (res.reaped) logEvent("warn", "outbox.lease_expired", { count: res.reaped, owner: o.owner }, cid);
+  logEvent("info", "outbox.claimed", { count: rows.length, owner: o.owner }, cid);
   for (const r of rows) {
     let outcome: SendOutcome;
     try {
@@ -46,13 +50,15 @@ export async function runOutboxWorkerOnce(db: Pool, o: OutboxWorkerOptions): Pro
     }
     try {
       await withActorTransaction(db, actor(o, "record"), async (tx) => {
-        if (outcome.kind === "sent") { await tx.query("SELECT movezz_sec.outbox_complete($1, $2, $3)", [r.id, r.lease_token, outcome.providerRef ?? null]); res.sent++; }
+        if (outcome.kind === "sent") { await tx.query("SELECT movezz_sec.outbox_complete($1, $2, $3)", [r.id, r.lease_token, outcome.providerRef ?? null]); res.sent++; logEvent("info", "outbox.sent", { outboxId: r.id, attempt: r.attempts, eventType: r.event_type, channel: r.channel }, cid); }
         else {
           const st = (await tx.query<{ s: string }>("SELECT movezz_sec.outbox_fail($1, $2, $3, $4) AS s", [r.id, r.lease_token, outcome.reason, outcome.kind === "permanent"])).rows[0].s;
           if (st === "dead") res.dead++; else res.retried++;
+          logEvent(st === "dead" ? "error" : "warn", st === "dead" ? "outbox.dead_lettered" : "outbox.retry_scheduled", { outboxId: r.id, attempt: r.attempts, eventType: r.event_type, channel: r.channel, reason: outcome.reason }, cid);
         }
       });
-    } catch {
+    } catch (e) {
+      logEvent("error", "outbox.record_failed", { outboxId: r.id, attempt: r.attempts, ...describeError(e) }, cid);
       res.unrecorded++;                                   // stays 'sending'; the reaper retries it when the lease expires
     }
   }

@@ -10,6 +10,7 @@
 // (retried with back-off, bounded by max_attempts).
 import type { Pool } from "pg";
 import { withActorTransaction, type ActorAssertion } from "../actor";
+import { describeError, logEvent } from "../log";
 import type { KeepupCreateOutcome, KeepupGateway, KeepupSaleRequest } from "../../integrations/keepup-gateway";
 
 export interface KeepupWorkerOptions {
@@ -44,6 +45,9 @@ export async function runKeepupWorkerOnce(db: Pool, o: KeepupWorkerOptions): Pro
     return (await tx.query<Claimed>("SELECT id, invoice_id, lease_token, attempt_count, idempotency_key FROM movezz_sec.keepup_claim($1, $2, $3)", [o.batch ?? 5, lease, o.owner])).rows;
   });
   res.claimed = claimed.length;
+  const cid = actor(o, "pass").requestId;
+  if (res.reaped) logEvent("warn", "keepup.lease_expired", { count: res.reaped, owner: o.owner }, cid);
+  logEvent("info", "keepup.claimed", { count: claimed.length, owner: o.owner }, cid);
 
   for (const row of claimed) {
     // build the request (read-only). A failure here means NO request was sent: a definite, retryable failure.
@@ -52,6 +56,7 @@ export async function runKeepupWorkerOnce(db: Pool, o: KeepupWorkerOptions): Pro
       req = await withActorTransaction(db, actor(o, "build"), (tx) => (o.buildRequest ?? buildRequest)(tx, row));
     } catch (e) {
       await record(db, o, "SELECT movezz_sec.keepup_fail($1, $2, $3)", [row.id, row.lease_token, `could not build the request: ${(e as Error).message}`]);
+      logEvent("warn", "keepup.sync_failed", { syncId: row.id, attempt: row.attempt_count, stage: "build", ...describeError(e) }, cid);
       res.failed++;
       continue;
     }
@@ -68,14 +73,18 @@ export async function runKeepupWorkerOnce(db: Pool, o: KeepupWorkerOptions): Pro
         const r = await record(db, o, "SELECT movezz_sec.keepup_complete($1, $2, $3, $4, $5, $6::jsonb) AS s",
           [row.id, row.lease_token, outcome.saleId, outcome.externalStatus ?? null, outcome.link ?? null, JSON.stringify(outcome.link ? { share_link: outcome.link } : {})]);
         if (r === "synced") res.synced++; else res.needsReconciliation++;
+        logEvent(r === "synced" ? "info" : "warn", r === "synced" ? "keepup.synced" : "keepup.needs_reconciliation", { syncId: row.id, attempt: row.attempt_count, reason: r === "synced" ? undefined : "sale created after cancellation or duplicate sale id" }, cid);
       } else if (outcome.kind === "rejected") {
         await record(db, o, "SELECT movezz_sec.keepup_fail($1, $2, $3)", [row.id, row.lease_token, outcome.reason]);
         res.failed++;
+        logEvent("warn", "keepup.sync_failed", { syncId: row.id, attempt: row.attempt_count, stage: "rejected", reason: outcome.reason }, cid);
       } else {
         await record(db, o, "SELECT movezz_sec.keepup_ambiguous($1, $2, $3)", [row.id, row.lease_token, outcome.reason]);
         res.ambiguous++;
+        logEvent("warn", "keepup.outcome_unknown", { syncId: row.id, attempt: row.attempt_count, reason: outcome.reason }, cid);
       }
-    } catch {
+    } catch (e) {
+      logEvent("error", "keepup.record_failed", { syncId: row.id, attempt: row.attempt_count, ...describeError(e) }, cid);
       // The outcome could not be recorded (database unavailable, lease lost). The row stays 'creating'; the reaper will move it to
       // 'needs_reconciliation' when the lease expires. Nothing is retried and nothing is reported as success.
       res.needsReconciliation++;

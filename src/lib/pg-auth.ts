@@ -9,6 +9,7 @@ import { isCrossSiteCookieRequest } from "@/lib/csrf";
 import { getPool } from "@/lib/db/client";
 import { DomainError } from "@/lib/db/errors";
 import { user, type ActorAssertion } from "@/lib/db/actor";
+import { describeError, logEvent } from "@/lib/db/log";
 
 function tokenOf(request: NextRequest): string | null {
   const h = request.headers.get("authorization");
@@ -28,8 +29,9 @@ export async function pgActorFromRequest(request: NextRequest): Promise<ActorAss
 }
 
 /** Maps a service error to an HTTP response without leaking SQL, stack traces or internal detail. */
-export function errorResponse(err: unknown): Response {
+export function errorResponse(err: unknown, requestId?: string): Response {
   const code = err instanceof DomainError ? err.code : undefined;
+  if (!code || !(code in { ACTOR_INVALID: 1, NOT_AUTHORIZED: 1 })) logEvent(code ? "warn" : "error", code ? "route.rejected" : "route.failed", describeError(err), requestId); // (auth failures are already logged by the actor transaction)
   const map: Record<string, [number, string]> = {
     ACTOR_INVALID: [401, "Authentication required"],
     NOT_AUTHORIZED: [403, "Forbidden"],

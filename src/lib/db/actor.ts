@@ -11,6 +11,7 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { toDomainError, DomainError } from "./errors";
+import { describeError, logEvent } from "./log";
 
 export type ActorType = "user" | "system" | "integration" | "import";
 
@@ -79,7 +80,12 @@ export async function withActorTransaction<T>(
     return result;
   } catch (err) {
     await tx.query("ROLLBACK").catch(() => {});
-    throw toDomainError(err);
+    const mapped = toDomainError(err);
+    // actor-context failures, authorization failures and database constraint failures are the signals operations needs; no row values are logged
+    const code = mapped instanceof DomainError ? mapped.code : undefined;
+    logEvent(mapped instanceof DomainError ? "warn" : "error", code === "ACTOR_INVALID" ? "actor.rejected" : code === "NOT_AUTHORIZED" ? "authorization.denied" : mapped instanceof DomainError ? "operation.rejected" : "db.transaction_failed",
+      { actorType: actor.type, ...describeError(err), mappedCode: code }, actor.requestId ?? null);
+    throw mapped;
   } finally {
     tx.release();
   }
