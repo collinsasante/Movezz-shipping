@@ -11,10 +11,11 @@ export async function POST(
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
+  const { user } = authResult;
 
   try {
     const { id } = await params;
-    const { updated, targetStatus } = await containersApi.syncItemStatusesBatch(id);
+    const { updated, targetStatus } = await containersApi.syncItemStatusesBatch(id, user.email, user.role);
 
     if (!targetStatus) {
       return Response.json({

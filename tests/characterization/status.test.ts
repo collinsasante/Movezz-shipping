@@ -1,7 +1,7 @@
 // Item status pipeline, container-driven status cascade, sorting (found/missing) and status history.
 import { describe, it, expect, vi } from "vitest";
 import { standardWorld, freshWorld } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 const history = (w: Awaited<ReturnType<typeof freshWorld>>) => w.db.all("StatusHistory").map((r) => r.fields);
 
@@ -218,22 +218,51 @@ describe("container-driven status changes", () => {
     expect(res.status).toBe(403);
   });
 
-  it(KNOWN_BUG("the container cascade is blind to each item's current status and leaves no trace"), async () => {
-    // Future behavior (Phase 3 R-12): one status_events row per item and customer notifications.
-    // This test documents current behavior only.
+  it(FIXED("the container cascade only ADVANCES items: Completed / later-stage / missing items are left alone"), async () => {
     const { w, admin } = await loaded();
-    w.db.update("Items", "recI2", { Status: "Completed", IsMissing: true });
+    w.db.update("Items", "recI2", { Status: "Completed" });
     await w.call("containers/[id]/status", "PATCH", { token: admin, params: { id: "recC1" }, body: { status: "Shipped to Ghana" } });
-    expect(w.db.get("Items", "recI2")?.fields["Status"]).toBe("Shipped to Ghana"); // a Completed item is pulled BACK
-    expect(w.db.get("Items", "recI2")?.fields["IsMissing"]).toBe(true); // flag not cleared
-    expect(history(w)).toHaveLength(0); // no StatusHistory rows for any cascaded item
-    expect(w.email.sendItemStatusEmail).not.toHaveBeenCalled(); // no customer notification
+    expect(w.db.get("Items", "recI1")?.fields["Status"]).toBe("Shipped to Ghana"); // advanced
+    expect(w.db.get("Items", "recI2")?.fields["Status"]).toBe("Completed"); // NOT pulled back
   });
 
-  it(KNOWN_BUG("container status changes themselves are not recorded in StatusHistory"), async () => {
+  it(FIXED("items at or beyond the target stay where they are; missing items keep status and flag"), async () => {
+    const { w, admin } = await loaded();
+    w.db.update("Items", "recI1", { Status: "Sorting" });
+    w.db.update("Items", "recI2", { IsMissing: true });
+    await w.call("containers/[id]/status", "PATCH", { token: admin, params: { id: "recC1" }, body: { status: "Arrived in Ghana" } });
+    expect(w.db.get("Items", "recI1")?.fields["Status"]).toBe("Sorting");
+    expect(w.db.get("Items", "recI2")?.fields["Status"]).toBe("Arrived at Transit Warehouse");
+    expect(w.db.get("Items", "recI2")?.fields["IsMissing"]).toBe(true);
+  });
+
+  it(FIXED("every cascaded item gets a StatusHistory row; skipped items get none"), async () => {
+    const { w, admin } = await loaded();
+    w.db.update("Items", "recI2", { Status: "Completed" });
+    await w.call("containers/[id]/status", "PATCH", { token: admin, params: { id: "recC1" }, body: { status: "Shipped to Ghana" } });
+    const rows = history(w).filter((h) => h["RecordType"] === "Item");
+    expect(rows.map((h) => h["RecordID"])).toEqual(["recI1"]);
+    expect(rows[0]).toMatchObject({ PreviousStatus: "Arrived at Transit Warehouse", NewStatus: "Shipped to Ghana" });
+  });
+
+  it(KNOWN_BUG("the cascade sends no customer notification (bulk moves are silent by design until the notification phase)"), async () => {
     const { w, admin } = await loaded();
     await w.call("containers/[id]/status", "PATCH", { token: admin, params: { id: "recC1" }, body: { status: "Shipped to Ghana" } });
-    expect(history(w)).toHaveLength(0);
+    expect(w.email.sendItemStatusEmail).not.toHaveBeenCalled();
+  });
+
+  it(FIXED("container status changes are recorded in StatusHistory"), async () => {
+    const { w, admin } = await loaded();
+    await w.call("containers/[id]/status", "PATCH", { token: admin, params: { id: "recC1" }, body: { status: "Shipped to Ghana" } });
+    expect(history(w).filter((h) => h["RecordType"] === "Container")).toHaveLength(1);
+  });
+
+  it(FIXED("sync-items is advance-only too"), async () => {
+    const { w, admin } = await loaded();
+    w.db.update("Containers", "recC1", { Status: "Shipped to Ghana" });
+    w.db.update("Items", "recI2", { Status: "Ready for Pickup" });
+    await w.call("containers/[id]/sync-items", "POST", { token: admin, params: { id: "recC1" } });
+    expect(w.db.get("Items", "recI2")?.fields["Status"]).toBe("Ready for Pickup");
   });
 
   it(PRESERVE("sync-items re-applies the container's mapped status to every member and reports the count"), async () => {

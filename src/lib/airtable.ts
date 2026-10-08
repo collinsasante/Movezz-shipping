@@ -40,6 +40,7 @@ import {
   generateCartonRef,
   toISOString,
   buildWhatsAppMessage,
+  ITEM_STATUS_STEPS,
 } from "./utils";
 import { groupItemsForBilling, computeCbm } from "./cbm";
 
@@ -1247,6 +1248,55 @@ export const ordersApi = {
   },
 };
 
+
+const CONTAINER_TO_ITEM_STATUS: Partial<Record<ContainerStatus, ItemStatus>> = {
+  "Shipped to Ghana": "Shipped to Ghana",
+  "Arrived in Ghana": "Awaiting Customs Clearance & Duty Process",
+  // "Loading" has no corresponding item status - no cascade
+};
+
+/**
+ * Applies a container's status to its items, ADVANCE-ONLY: an item is only moved forward along the pipeline.
+ * Items already at or beyond the target (Sorting, Ready for Pickup, Completed...) and items flagged missing
+ * are left exactly as they are. Every change is recorded in StatusHistory. (It used to overwrite any status,
+ * including Completed, with no trace.) Customer notifications for bulk moves are intentionally not sent.
+ */
+async function cascadeContainerStatus(
+  containerRef: string,
+  itemIds: string[],
+  target: ItemStatus,
+  changedByEmail: string,
+  changedByRole: UserRole
+): Promise<{ updated: number; skipped: number }> {
+  const targetIdx = ITEM_STATUS_STEPS.indexOf(target);
+  const records = await Promise.all(itemIds.map((id) => getRecord(TABLES.ITEMS, id).catch(() => null)));
+  const toMove = records.filter((r): r is AirtableRecord<FieldSet> => {
+    if (!r) return false;
+    if (r.fields["IsMissing"] === true) return false;
+    const idx = ITEM_STATUS_STEPS.indexOf(r.fields["Status"] as ItemStatus);
+    return idx !== -1 && idx < targetIdx;
+  });
+  if (toMove.length > 0) {
+    await batchUpdateRecords(TABLES.ITEMS, toMove.map((r) => ({ id: r.id, fields: { Status: target } })));
+    await Promise.all(
+      toMove.map((r) =>
+        statusHistoryApi.log({
+          recordType: "Item",
+          recordId: r.id,
+          recordRef: (r.fields["ItemRef"] as string) ?? "",
+          previousStatus: r.fields["Status"] as string,
+          newStatus: target,
+          changedBy: changedByEmail,
+          changedByRole,
+          changedAt: toISOString(),
+          notes: `Container ${containerRef} status changed`,
+        })
+      )
+    );
+  }
+  return { updated: toMove.length, skipped: itemIds.length - toMove.length };
+}
+
 // ============================================================
 // CONTAINERS API
 // ============================================================
@@ -1362,21 +1412,22 @@ export const containersApi = {
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
 
     await updateRecord(TABLES.CONTAINERS, id, { Status: newStatus });
+    await statusHistoryApi.log({
+      recordType: "Container",
+      recordId: id,
+      recordRef: containerId,
+      previousStatus,
+      newStatus,
+      changedBy: changedByEmail,
+      changedByRole,
+      changedAt: toISOString(),
+      notes: notes ?? "",
+    });
 
-    // ---- CASCADE STATUS TO ALL ITEMS ----
-    const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
-      "Shipped to Ghana": "Shipped to Ghana",
-      "Arrived in Ghana": "Awaiting Customs Clearance & Duty Process",
-      // "Loading" has no corresponding item status — no cascade
-    };
-
-    const targetItemStatus = containerToItemStatus[newStatus];
-
+    // ---- CASCADE STATUS TO ITEMS (advance-only, see cascadeContainerStatus) ----
+    const targetItemStatus = CONTAINER_TO_ITEM_STATUS[newStatus];
     if (targetItemStatus && itemIds.length > 0) {
-      await batchUpdateRecords(
-        TABLES.ITEMS,
-        itemIds.map((itemId) => ({ id: itemId, fields: { Status: targetItemStatus } }))
-      );
+      await cascadeContainerStatus(containerId, itemIds, targetItemStatus, changedByEmail, changedByRole);
     }
 
     const updated = await getRecord(TABLES.CONTAINERS, id);
@@ -1385,27 +1436,28 @@ export const containersApi = {
 
   // Efficiently syncs all items in a container to the container's mapped status.
   // Uses batch Airtable updates (10 records/call) instead of per-item API calls.
-  async syncItemStatusesBatch(id: string): Promise<{ updated: number; targetStatus: string | null }> {
+  async syncItemStatusesBatch(
+    id: string,
+    changedByEmail = "",
+    changedByRole: UserRole = "super_admin"
+  ): Promise<{ updated: number; targetStatus: string | null }> {
     const existing = await getRecord(TABLES.CONTAINERS, id);
     const containerStatus = existing.fields["Status"] as ContainerStatus;
     const itemIds = (existing.fields["Items"] as string[]) ?? [];
 
-    const containerToItemStatus: Partial<Record<ContainerStatus, ItemStatus>> = {
-      "Shipped to Ghana": "Shipped to Ghana",
-      "Arrived in Ghana": "Awaiting Customs Clearance & Duty Process",
-    };
-
-    const targetStatus = containerToItemStatus[containerStatus] ?? null;
+    const targetStatus = CONTAINER_TO_ITEM_STATUS[containerStatus] ?? null;
     if (!targetStatus || itemIds.length === 0) {
       return { updated: 0, targetStatus };
     }
 
-    await batchUpdateRecords(
-      TABLES.ITEMS,
-      itemIds.map((itemId) => ({ id: itemId, fields: { Status: targetStatus } }))
+    const { updated } = await cascadeContainerStatus(
+      (existing.fields["ContainerID"] as string) ?? id,
+      itemIds,
+      targetStatus,
+      changedByEmail,
+      changedByRole
     );
-
-    return { updated: itemIds.length, targetStatus };
+    return { updated, targetStatus };
   },
 
   async addItem(
