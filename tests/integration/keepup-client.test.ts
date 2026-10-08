@@ -77,9 +77,9 @@ describe("createKeepupSale: request format", () => {
   });
 });
 
-describe(KNOWN_BUG("createKeepupSale failure handling and idempotency"), () => {
-  // Future behavior (Phase 3 R-22): stored idempotency key, sync state, bounded retries, reconciliation.
-  // These tests document OUR client's current behavior only.
+describe("createKeepupSale failure handling and idempotency", () => {
+  // Duplicate prevention is our own one-sale-per-order rule (create-invoice is idempotent); Keepup documents no idempotency key.
+  // Phase 10/PostgreSQL: stored idempotency state + reconciliation against Keepup.
   const items = [{ item_name: "x", quantity: 1, price: 1, item_type: "product" }];
 
   it(FIXED("a 5xx response is NOT retried (the sale may exist; a retry could duplicate it)"), async () => {
