@@ -21,7 +21,7 @@ Labels: VL verified locally (real route handlers + PostgreSQL, Firebase/e-mail m
 3. No first-login e-mail claiming of a customer record; unknown identities get 404 `NOT_REGISTERED`. An inactive customer/user is 401 on data routes (403 `ACCOUNT_INACTIVE` on sign-in).
 4. Orders: client `invoiceAmount` is ignored (server prices); `PATCH` cannot change amount/discount/items/date of an issued invoice (409); `DELETE` = cancellation (reason from body, else a fixed sentence); items in a carton must be invoiced with their whole carton.
 5. `create-invoice` reports the Keepup synchronisation state (202 while queued) instead of calling Keepup; `keepup-sync` has nothing to pull (PostgreSQL is the ledger); clearing links is refused. Real Keepup stays a controlled cutover activity.
-6. A per-customer `exchangeRate` is refused (central FX only); `shippingRatePerCbm` is no longer stored (prices come from package rates); a package rate of 0 means "no rate" and pricing then refuses.
+6. The shipping mark is a protected identity field (7F): admins cannot edit it (Airtable allowed it). A per-customer `exchangeRate` is refused (central FX only); `shippingRatePerCbm` is no longer stored (prices come from package rates); a package rate of 0 means "no rate" and pricing then refuses.
 7. Ids are UUIDs and references (`ITM-`, `ORD-`, `CTN-`, `PMX-CON-`) come from database counters. WhatsApp welcome messages are not sent (deferred to the outbox worker); e-mails are sent after commit, best effort, as before.
 
 ## Still not done (honest list)

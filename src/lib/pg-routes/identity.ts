@@ -210,8 +210,9 @@ export const customerPatch = (request: NextRequest, { params }: { params: Params
     await updateCustomerSelf(tx, patch);
   } else {
     const d = parseInput(UpdateCustomer, body);
+    if (d.shippingMark !== undefined) throw new DomainError("INVALID_INPUT", "The shipping mark is a protected identity field and cannot be edited");
     if (d.exchangeRate != null) throw new DomainError("INVALID_INPUT", "A per-customer exchange rate is not supported; exchange rates are managed centrally");
-    const { exchangeRate, package: pkg, ...rest } = d; void exchangeRate;
+    const { exchangeRate, shippingMark, package: pkg, ...rest } = d; void exchangeRate; void shippingMark;
     await updateCustomerAdmin(tx, p.id, { ...rest, ...(pkg ? { packageTier: pkg } : {}) });
   }
   const c = (await tx.query(`SELECT ${CUSTOMER_COLS} FROM customers WHERE id = $1`, [p.id])).rows[0];
