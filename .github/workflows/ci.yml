@@ -1,0 +1,40 @@
+name: CI
+
+# Safety net only: type-check, tests and build. No secrets, no deployment.
+# (deploy.yml is unchanged and still deploys on push to main.)
+# Lint is intentionally absent: `npm run lint` is broken today (Next 16 removed `next lint`
+# and there is no ESLint config). See docs/CHARACTERIZATION-BASELINE.md.
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
