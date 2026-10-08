@@ -67,18 +67,19 @@ describe("customers: listing and search", () => {
 });
 
 describe("suppliers", () => {
-  it(PRESERVE("create assigns SUP-nnnn; rating must be 1-5; name required; staff may create (the route comment says admin-only)"), async () => {
-    const { w, staff } = await standardWorld();
-    const ok = await w.call("suppliers", "POST", { token: staff, body: { name: "Acme", category: "Electronics", rating: 4 } });
+  it(FIXED("create assigns SUP-nnnn; rating must be 1-5; name required; supplier administration is super_admin only (Phase 7F)"), async () => {
+    const { w, admin, staff } = await standardWorld();
+    expect((await w.call("suppliers", "POST", { token: staff, body: { name: "Acme" } })).status).toBe(403);
+    const ok = await w.call("suppliers", "POST", { token: admin, body: { name: "Acme", category: "Electronics", rating: 4 } });
     expect(ok.status).toBe(201);
     expect(ok.json?.data).toMatchObject({ supplierId: "SUP-0001", name: "Acme", rating: 4 });
-    expect((await w.call("suppliers", "POST", { token: staff, body: { name: "" } })).status).toBe(400);
-    expect((await w.call("suppliers", "POST", { token: staff, body: { name: "X", rating: 6 } })).status).toBe(400);
+    expect((await w.call("suppliers", "POST", { token: admin, body: { name: "" } })).status).toBe(400);
+    expect((await w.call("suppliers", "POST", { token: admin, body: { name: "X", rating: 6 } })).status).toBe(400);
   });
   it(PRESERVE("search covers name, category and platform; only an admin can delete"), async () => {
     const { w, admin, staff } = await standardWorld();
-    await w.call("suppliers", "POST", { token: staff, body: { name: "Acme", platform: "Alibaba" } });
-    await w.call("suppliers", "POST", { token: staff, body: { name: "Zeta", category: "Fashion" } });
+    await w.call("suppliers", "POST", { token: admin, body: { name: "Acme", platform: "Alibaba" } });
+    await w.call("suppliers", "POST", { token: admin, body: { name: "Zeta", category: "Fashion" } });
     const find = async (search: string) => ((await w.call("suppliers", "GET", { token: staff, query: { search } })).json?.data as { name: string }[]).map((s) => s.name);
     expect(await find("alibaba")).toEqual(["Acme"]);
     expect(await find("fash")).toEqual(["Zeta"]);
@@ -91,8 +92,9 @@ describe("suppliers", () => {
 describe("warehouses", () => {
   it(PRESERVE("create requires name and address and trims input; update and toggle work; only an admin can delete"), async () => {
     const { w, admin, staff } = await standardWorld();
-    expect((await w.call("warehouses", "POST", { token: staff, body: { name: " ", address: "x" } })).status).toBe(400);
-    const created = await w.call("warehouses", "POST", { token: staff, body: { name: " Depot ", address: " 1 Main St ", phone: " 0244 " } });
+    expect((await w.call("warehouses", "POST", { token: staff, body: { name: "Depot", address: "x" } })).status).toBe(403);   // warehouse configuration: super_admin only (Phase 7F)
+    expect((await w.call("warehouses", "POST", { token: admin, body: { name: " ", address: "x" } })).status).toBe(400);
+    const created = await w.call("warehouses", "POST", { token: admin, body: { name: " Depot ", address: " 1 Main St ", phone: " 0244 " } });
     expect(created.json?.data).toMatchObject({ name: "Depot", address: "1 Main St", phone: "0244", isActive: true });
     const id = created.json?.data.id as string;
     expect((await w.call("warehouses/[id]", "DELETE", { token: staff, params: { id } })).status).toBe(403);

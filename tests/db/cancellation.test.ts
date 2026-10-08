@@ -50,7 +50,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       const member = await item(db.admin, c, { carton_id: ct });
       const { invoice } = await make(c, { itemIds: [loose], cartonIds: [ct], discountUsd: "25.00", discountReason: "Approved loyalty discount" });
       await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "10.00", actor: user(admin), idempotencyKey: key() }).then(async (p) => {
-        await voidPayment(db.app, { paymentId: p.payment.id, reason: "entered in error", actor: user(staff) });
+        await voidPayment(db.app, { paymentId: p.payment.id, reason: "entered in error", actor: user(admin) });
       });
       const snap = async () => ({
         inv: (await q("SELECT invoice_ref, status, subtotal_usd, discount_usd, discount_reason, total_usd, fx_rate, fx_rate_id, total_ghs, amount_paid_ghs, balance_ghs, provenance FROM invoices WHERE id=$1", [invoice.id]))[0],
@@ -73,7 +73,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       expect(after.carton).toEqual(before.carton);                           // price, rate, tier, basis, dims, CBM survive
       expect(after.payments).toEqual(before.payments);
       expect(after.payments).toHaveLength(1);
-      expect(after.payments[0]).toMatchObject({ status: "voided", void_reason: "entered in error", voided_by: staff, created_by: admin });
+      expect(after.payments[0]).toMatchObject({ status: "voided", void_reason: "entered in error", voided_by: admin, created_by: admin });
       // released: no live link, carton open again, members stay in the carton
       expect(await q("SELECT id FROM items WHERE invoice_id=$1", [invoice.id])).toEqual([]);
       expect((await q("SELECT status, invoice_id, dissolved_at FROM cartons WHERE id=$1", [ct]))[0]).toEqual({ status: "open", invoice_id: null, dissolved_at: null });
@@ -86,15 +86,15 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       const c = await customer(db.admin);
       const a = await pricedItem(db.admin, c, "40.00"); const ct = await carton(db.admin, c, { price_usd: "175.00" }); const m = await item(db.admin, c, { carton_id: ct });
       const { invoice } = await make(c, { itemIds: [a], cartonIds: [ct] });
-      const r = await cancel(invoice.id, { reason: "duplicate order", request: { ip: "203.0.113.9", userAgent: "vitest" } }, staff);
+      const r = await cancel(invoice.id, { reason: "duplicate order", request: { ip: "203.0.113.9", userAgent: "vitest" } }, admin);
       const ev = await q("SELECT entity_type, entity_id, old_status, new_status, reason, actor_user_id, metadata FROM status_events WHERE (metadata->>'previous_invoice_id' = $1::text OR (entity_type='invoice' AND entity_id=$1::uuid AND new_status='Cancelled')) ORDER BY id", [invoice.id]);
-      expect(ev.filter((e) => e.entity_type === "invoice")).toEqual([{ entity_type: "invoice", entity_id: invoice.id, old_status: "Pending", new_status: "Cancelled", reason: "duplicate order", actor_user_id: staff, metadata: null }]);
-      expect(ev.filter((e) => e.entity_type === "carton")).toMatchObject([{ entity_id: ct, old_status: "invoiced", new_status: "open", actor_user_id: staff, metadata: { event: "invoice_released", previous_invoice_id: invoice.id } }]);
+      expect(ev.filter((e) => e.entity_type === "invoice")).toEqual([{ entity_type: "invoice", entity_id: invoice.id, old_status: "Pending", new_status: "Cancelled", reason: "duplicate order", actor_user_id: admin, metadata: null }]);
+      expect(ev.filter((e) => e.entity_type === "carton")).toMatchObject([{ entity_id: ct, old_status: "invoiced", new_status: "open", actor_user_id: admin, metadata: { event: "invoice_released", previous_invoice_id: invoice.id } }]);
       expect(ev.filter((e) => e.entity_type === "item").map((e) => e.entity_id).sort()).toEqual([a, m].sort());
       expect(ev.filter((e) => e.entity_type === "item").every((e) => e.old_status === e.new_status && e.metadata.previous_invoice_ref === invoice.invoice_ref)).toBe(true);   // no invented item status
       const au = await q("SELECT actor_user_id, actor_type, before_data, after_data, host(ip_address) AS ip, created_at IS NOT NULL AS ts FROM audit_logs WHERE entity_id=$1 AND action='invoice.cancel'", [invoice.id]);
       expect(au).toHaveLength(1);
-      expect(au[0]).toMatchObject({ actor_user_id: staff, actor_type: "user", ip: "203.0.113.9", ts: true, before_data: { status: "Pending" },
+      expect(au[0]).toMatchObject({ actor_user_id: admin, actor_type: "user", ip: "203.0.113.9", ts: true, before_data: { status: "Pending" },
         after_data: { status: "Cancelled", reason: "duplicate order", released_carton_ids: [ct] } });
       expect(au[0].after_data.released_item_ids.sort()).toEqual(r.releasedItemIds.sort());
       expect(JSON.stringify(au[0])).not.toMatch(/password|token|secret|signature/i);
@@ -136,21 +136,23 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
     });
   });
 
-  describe("authorization boundary (minimum for 7E; the matrix is 7F)", () => {
-    it("customers and service actors cannot cancel; staff and super_admin can; the actor comes from the verified context only", async () => {
+  describe("authorization boundary (final Phase 7F matrix: cancellation is super_admin only)", () => {
+    it("customers, warehouse staff and service actors cannot cancel; only a super_admin can; the actor comes from the verified context only", async () => {
       const c = await customer(db.admin);
       const mk = async () => (await make(c, { itemIds: [await pricedItem(db.admin, c, "40.00")] })).invoice;
       const inv = await mk();
       expect(await code(cancel(inv.id, {}, custLogin))).toBe("NOT_AUTHORIZED");
+      expect(await code(cancel(inv.id, {}, staff))).toBe("NOT_AUTHORIZED");
       expect(await code(cancelInvoice(db.app, { invoiceId: inv.id, reason: "x", actor: { type: "system" } }))).toBe("NOT_AUTHORIZED");
       expect(await code(cancelInvoice(db.app, { invoiceId: inv.id, reason: "x", actor: { type: "import" } }))).toBe("NOT_AUTHORIZED");
-      expect(await code(cancelInvoice(db.app, { invoiceId: inv.id, reason: "x", actor: user(staff), actorUserId: admin } as never))).toBe("OK");   // an unknown field is not an actor
-      expect((await q("SELECT cancelled_by FROM invoices WHERE id=$1", [inv.id]))[0].cancelled_by).toBe(staff);
-      const inv2 = await mk();
-      expect(await code(cancel(inv2.id, {}, admin))).toBe("OK");
-      // SQL path: the invoice trigger refuses a customer or a service actor too
+      expect((await q("SELECT status FROM invoices WHERE id=$1", [inv.id]))[0].status).toBe("Pending");
+      expect(await code(cancelInvoice(db.app, { invoiceId: inv.id, reason: "x", actor: user(admin), actorUserId: staff } as never))).toBe("OK");   // an unknown field is not an actor
+      expect((await q("SELECT cancelled_by FROM invoices WHERE id=$1", [inv.id]))[0].cancelled_by).toBe(admin);
+      // SQL path: the invoice trigger refuses staff, customers and service actors too
       const inv3 = await mk();
-      for (const who of [user(custLogin), { type: "system" as const }]) {
+      // a customer actor cannot even see the row (row-level security): the UPDATE matches nothing
+      expect(await code(withActorTransaction(db.app, user(custLogin), (tx) => tx.query("UPDATE invoices SET status='Cancelled', cancelled_at=now(), cancel_reason='x' WHERE id=$1", [inv3.id])))).toBe("OK");
+      for (const who of [user(staff), { type: "system" as const }]) {
         expect(await code(withActorTransaction(db.app, who, (tx) => tx.query("UPDATE invoices SET status='Cancelled', cancelled_at=now(), cancel_reason='x' WHERE id=$1", [inv3.id])))).toBe("NOT_AUTHORIZED");
       }
       expect((await q("SELECT status FROM invoices WHERE id=$1", [inv3.id]))[0].status).toBe("Pending");
@@ -161,7 +163,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
     it("an invoice with a completed payment cannot be cancelled and nothing changes; after an explicit void it can", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
       const { invoice } = await make(c, { itemIds: [i] });
-      const p = await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "50.00", method: "cash", source: "manual", externalReference: "EXT-1", actor: user(staff), idempotencyKey: key() });
+      const p = await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "50.00", method: "cash", source: "manual", externalReference: "EXT-1", actor: user(admin), idempotencyKey: key() });
       const events = (await q("SELECT count(*)::int AS n FROM status_events"))[0].n, audits = (await q("SELECT count(*)::int AS n FROM audit_logs"))[0].n;
       expect(await code(cancel(invoice.id))).toBe("ACTIVE_PAYMENT_EXISTS");
       expect((await q("SELECT status, amount_paid_ghs FROM invoices WHERE id=$1", [invoice.id]))[0]).toEqual({ status: "Partial", amount_paid_ghs: "50.00" });
@@ -169,7 +171,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       expect([(await q("SELECT count(*)::int AS n FROM status_events"))[0].n, (await q("SELECT count(*)::int AS n FROM audit_logs"))[0].n]).toEqual([events, audits]);
       expect((await q("SELECT status FROM payments WHERE id=$1", [p.payment.id]))[0].status).toBe("completed");   // not silently voided
       // fully paid: also refused
-      await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "1200.00", actor: user(staff), idempotencyKey: key() });
+      await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "1200.00", actor: user(admin), idempotencyKey: key() });
       expect(await code(cancel(invoice.id))).toBe("ACTIVE_PAYMENT_EXISTS");
       for (const pid of (await q("SELECT id FROM payments WHERE invoice_id=$1", [invoice.id])).map((r) => r.id)) await voidPayment(db.app, { paymentId: pid, reason: "refunded", actor: user(admin) });
       expect((await cancel(invoice.id)).invoice.status).toBe("Cancelled");
@@ -177,17 +179,17 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
     it("payments are never deleted or rewritten; voided payments stay as history; a cancelled invoice accepts no payment; overpayment protection is intact", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
       const { invoice } = await make(c, { itemIds: [i] });
-      const p = await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "300.00", method: "momo", externalReference: "MOMO-77", actor: user(staff), idempotencyKey: key() });
-      expect(await code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "1000.00", actor: user(staff), idempotencyKey: key() }))).toBe("OVERPAYMENT");
+      const p = await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "300.00", method: "momo", externalReference: "MOMO-77", actor: user(admin), idempotencyKey: key() });
+      expect(await code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "1000.00", actor: user(admin), idempotencyKey: key() }))).toBe("OVERPAYMENT");
       await voidPayment(db.app, { paymentId: p.payment.id, reason: "wrong invoice", actor: user(admin) });
       expect(await code(voidPayment(db.app, { paymentId: p.payment.id, reason: "again", actor: user(admin) }))).toBe("INVALID_STATE");
       await cancel(invoice.id);
-      expect(await code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "1.00", actor: user(staff), idempotencyKey: key() }))).toBe("INVALID_STATE");
+      expect(await code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "1.00", actor: user(admin), idempotencyKey: key() }))).toBe("INVALID_STATE");
       expect(await sqlstate(db.admin.query("DELETE FROM payments WHERE id=$1", [p.payment.id]))).toBe("MV004");
       expect(await sqlstate(db.app.query("DELETE FROM payments WHERE id=$1", [p.payment.id]))).toBe("42501");
       expect(await sqlstate(actorQuery(db.admin, user(admin)).query("UPDATE payments SET status='completed', voided_at=NULL, void_reason=NULL WHERE id=$1", [p.payment.id]))).toBe("MV005");   // a voided payment is not reusable
       expect((await q("SELECT amount_ghs, status, method, external_reference, void_reason, voided_by, created_by FROM payments WHERE id=$1", [p.payment.id]))[0])
-        .toEqual({ amount_ghs: "300.00", status: "voided", method: "momo", external_reference: "MOMO-77", void_reason: "wrong invoice", voided_by: admin, created_by: staff });
+        .toEqual({ amount_ghs: "300.00", status: "voided", method: "momo", external_reference: "MOMO-77", void_reason: "wrong invoice", voided_by: admin, created_by: admin });
       expect((await q("SELECT action FROM audit_logs WHERE entity_id=$1 ORDER BY id", [p.payment.id])).map((r) => r.action)).toEqual(["payment.create", "payment.void"]);
       expect((await q("SELECT old_status, new_status FROM status_events WHERE entity_type='payment' AND entity_id=$1", [p.payment.id]))).toEqual([{ old_status: "completed", new_status: "voided" }]);
     });
@@ -278,10 +280,10 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
       const a = (await make(c, { itemIds: [i], discountUsd: "50.00", discountReason: "First deal" })).invoice;
       await cancel(a.id);
-      const b = (await make(c, { itemIds: [i] }, staff)).invoice;
+      const b = (await make(c, { itemIds: [i] }, admin)).invoice;
       expect((await q("SELECT discount_usd, discount_reason FROM invoices WHERE id=$1", [b.id]))[0]).toEqual({ discount_usd: "0.00", discount_reason: null });
       await cancel(b.id);
-      expect(await code(make(c, { itemIds: [i], discountUsd: "50.00", discountReason: "First deal" }, staff))).toBe("DISCOUNT_NOT_AUTHORIZED");
+      expect(await code(make(c, { itemIds: [i], discountUsd: "50.00", discountReason: "First deal" }, staff))).toBe("NOT_AUTHORIZED");
       expect(await code(make(c, { itemIds: [i], discountUsd: "50.00" }, admin))).toBe("DISCOUNT_INVALID");
       const d = (await make(c, { itemIds: [i], discountUsd: "20.00", discountReason: "Second deal" }, admin)).invoice;
       expect((await q("SELECT discount_usd, discount_reason FROM invoices WHERE id=$1", [d.id]))[0]).toEqual({ discount_usd: "20.00", discount_reason: "Second deal" });
@@ -328,7 +330,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       expect(await sqlstate(actorQuery(db.admin, user(admin)).query(sql, [invoice.id]))).toBe("MV005");
       expect((await q("SELECT status FROM invoices WHERE id=$1", [invoice.id]))[0].status).toBe("Pending");
       // through the runtime role as well
-      expect(await code(withActorTransaction(db.app, user(staff), (tx) => tx.query(sql, [invoice.id])))).toBe("INVALID_STATE");
+      expect(await code(withActorTransaction(db.app, user(admin), (tx) => tx.query(sql, [invoice.id])))).toBe("INVALID_STATE");
       expect((await q("SELECT status FROM invoices WHERE id=$1", [invoice.id]))[0].status).toBe("Pending");
     });
     it("nothing can be attached to a cancelled invoice, double-cancellation edits are blocked, and a cancelled invoice cannot take a payment", async () => {
@@ -372,7 +374,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
         await holder.query("BEGIN");
         const { beginActor } = await import("../../src/lib/db/actor");
         const { TEST_ACTOR_KEY } = await import("./helpers");
-        await beginActor(holder, user(staff), TEST_ACTOR_KEY);
+        await beginActor(holder, user(admin), TEST_ACTOR_KEY);
         await holder.query("INSERT INTO payments (invoice_id, amount_ghs) VALUES ($1, 100)", [invoice.id]);   // holds the invoice lock, uncommitted
         const c1 = code(cancel(invoice.id));
         await sleep(300);
@@ -389,7 +391,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       try {
         const cx = code(cancel(invoice.id));
         await sleep(300);                                   // the cancellation now holds the invoice lock
-        const pay = code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "10.00", actor: user(staff), idempotencyKey: key() }));
+        const pay = code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "10.00", actor: user(admin), idempotencyKey: key() }));
         expect(await cx).toBe("OK");
         expect(await pay).toBe("INVALID_STATE");
       } finally { await normal(); }
@@ -401,7 +403,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       const outcomes: string[] = [];
       for (let n = 0; n < 20; n++) {
         const { invoice } = await make(c, { itemIds: [await pricedItem(db.admin, c, "8.00")] });
-        const [x, y] = await Promise.all([code(cancel(invoice.id)), code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "10.00", actor: user(staff), idempotencyKey: key() }))]);
+        const [x, y] = await Promise.all([code(cancel(invoice.id)), code(recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "10.00", actor: user(admin), idempotencyKey: key() }))]);
         const st = (await q("SELECT status FROM invoices WHERE id=$1", [invoice.id]))[0].status;
         const pays = (await q("SELECT count(*)::int AS n FROM payments WHERE invoice_id=$1 AND status='completed'", [invoice.id]))[0].n;
         expect(st === "Cancelled" && pays > 0, `${x}/${y}`).toBe(false);

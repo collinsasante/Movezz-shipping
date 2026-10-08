@@ -1,5 +1,5 @@
-// CURRENT role guards, transcribed from the requireAuth(...) call of every route handler.
-// This is the baseline the Phase 3 authorization matrix will be diffed against.
+// FINAL role guards (Phase 7F), transcribed from the requireAuth(...) call of every route handler and checked against
+// docs/DECISIONS.md D6/D7/A4. `[]` = no role is accepted (the route is disabled).
 // "public" = no requireAuth (the handler does its own checks or is open).
 import type { HttpMethod, Role } from "../helpers/world";
 
@@ -18,9 +18,9 @@ const r = (route: string, method: HttpMethod, guard: Guard): Entry => ({ route, 
 
 export const MATRIX: Entry[] = [
   r("activity-logs", "GET", [A]),
-  r("admin/registrations", "GET", [A, S]),
-  r("admin/registrations/[id]", "PATCH", [A, S]),
-  r("admin/registrations/[id]", "DELETE", [A, S]),
+  r("admin/registrations", "GET", [A]),
+  r("admin/registrations/[id]", "PATCH", [A]),
+  r("admin/registrations/[id]", "DELETE", [A]),
   r("auth/reset-password", "POST", "public"),
   r("auth/signup", "POST", "public"),
   r("auth/verify", "POST", "public"),
@@ -44,7 +44,7 @@ export const MATRIX: Entry[] = [
   r("customers/[id]", "GET", [A, S, C]),
   r("customers/[id]", "PATCH", [A, C]),
   r("customers/[id]", "DELETE", [A]),
-  r("customers/me/warehouse", "PATCH", [C]),
+  r("customers/me/warehouse", "PATCH", []),
   r("dashboard/admin", "GET", [A, S]),
   r("dashboard/customer", "GET", [C, A]),
   r("health", "GET", "public"),
@@ -63,29 +63,29 @@ export const MATRIX: Entry[] = [
   r("orders/[id]", "DELETE", [A]),
   r("orders/[id]/create-invoice", "POST", [A]),
   r("orders/[id]/create-invoice", "DELETE", [A]),
-  r("orders/keepup-sync", "POST", [A, S]),
+  r("orders/keepup-sync", "POST", [A]),
   r("package-rates", "GET", [A, S, C]),
   r("package-rates", "PUT", [A]),
-  r("reports", "GET", [A, S]),
+  r("reports", "GET", [A]),
   r("settings", "GET", [A, S]),
   r("settings", "PUT", [A]),
   r("sorting", "GET", [A, S]),
   r("sorting", "POST", [A, S]),
-  r("special-rates", "GET", [A, S, C]),
+  r("special-rates", "GET", [A, S]),
   r("special-rates", "POST", [A]),
   r("special-rates/[id]", "PATCH", [A]),
   r("special-rates/[id]", "DELETE", [A]),
   r("suppliers", "GET", [A, S]),
-  r("suppliers", "POST", [A, S]),
+  r("suppliers", "POST", [A]),
   r("suppliers/[id]", "GET", [A, S]),
-  r("suppliers/[id]", "PATCH", [A, S]),
+  r("suppliers/[id]", "PATCH", [A]),
   r("suppliers/[id]", "DELETE", [A]),
   r("upload/sign", "POST", [A, S]),
   r("users", "GET", [A]),
   r("users", "POST", [A]),
   r("users/[id]", "DELETE", [A]),
   r("warehouses", "GET", [A, S, C]),
-  r("warehouses", "POST", [A, S]),
-  r("warehouses/[id]", "PATCH", [A, S]),
+  r("warehouses", "POST", [A]),
+  r("warehouses/[id]", "PATCH", [A]),
   r("warehouses/[id]", "DELETE", [A]),
 ];

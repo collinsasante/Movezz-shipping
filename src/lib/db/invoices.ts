@@ -7,6 +7,7 @@ import { recordAudit, recordStatusEvent } from "./audit";
 import { DomainError } from "./errors";
 import { allocateReference } from "./references";
 import { assertNoClientFinancials } from "./pricing";
+import { authorize } from "./authz";
 import { beginIdempotent, completeIdempotent, fingerprint } from "./idempotency";
 
 export interface CreateInvoiceInput {
@@ -54,6 +55,7 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
   const requestHash = fingerprint({ c: input.customerId, i: itemIds, k: cartonIds, d: discount, r: input.discountReason ?? null, date: input.invoiceDate ?? null, n: input.notes ?? null });
 
   return withActorTransaction(db, input.actor, async (tx) => {
+    await authorize(tx, "invoice.create");
     const actorId = await currentActorId(tx);
     const idem = await beginIdempotent(tx, { scope: "invoice.create", actorUserId: actorId, key: input.idempotencyKey, requestHash });
     if (idem.state === "replay") {
@@ -216,6 +218,7 @@ export async function recordPayment(db: Pool, input: RecordPaymentInput) {
   }
   const requestHash = fingerprint({ i: input.invoiceId, a: input.amountGhs, m: input.method ?? null, s: input.source ?? null, e: input.externalReference ?? null, k: input.keepupReference ?? null });
   return withActorTransaction(db, input.actor, async (tx) => {
+    await authorize(tx, "payment.create");
     const actorId = await currentActorId(tx);
     const idem = await beginIdempotent(tx, { scope: "payment.create", actorUserId: actorId, key: input.idempotencyKey, requestHash });
     if (idem.state === "replay") {
@@ -244,6 +247,7 @@ export async function recordPayment(db: Pool, input: RecordPaymentInput) {
 export async function voidPayment(db: Pool, input: { paymentId: string; reason: string; actor: ActorAssertion }) {
   if (!input.reason.trim()) throw new DomainError("INVALID_INPUT", "A void reason is required");
   return withActorTransaction(db, input.actor, async (tx) => {
+    await authorize(tx, "payment.void");
     const p = (await tx.query(
       `UPDATE payments SET status = 'voided', voided_at = now(), void_reason = $2 WHERE id = $1 AND status = 'completed' RETURNING *`, // voided_by is stamped by the database
       [input.paymentId, input.reason]
@@ -269,7 +273,7 @@ export interface CancelInvoiceResult { invoice: InvoiceRow; releasedItemIds: str
 /**
  * Cancels an invoice and releases its items and cartons for re-invoicing, in ONE transaction.
  *
- *  - Internal staff only (role read from the database for the verified actor; the full matrix is Phase 7F).
+ *  - super_admin only (Phase 7F matrix; the role is read from the database for the verified actor).
  *  - An invoice with a completed payment is refused (ACTIVE_PAYMENT_EXISTS): the payment must first be voided explicitly. Nothing is
  *    deleted and no payment is voided implicitly.
  *  - Lock order, everywhere: invoice -> cartons (by id) -> items (by id). createInvoice uses the same order (cartons -> items).
@@ -283,8 +287,7 @@ export async function cancelInvoice(db: Pool, input: CancelInvoiceInput): Promis
   if (!/\S/.test(input.reason ?? "")) throw new DomainError("INVALID_INPUT", "A cancellation reason is required");
   const requestHash = fingerprint({ i: input.invoiceId, r: input.reason });
   return withActorTransaction(db, input.actor, async (tx) => {
-    const role = (await tx.query<{ r: string | null }>("SELECT movezz_sec.actor_role() AS r")).rows[0].r;
-    if (role !== "super_admin" && role !== "warehouse_staff") throw new DomainError("NOT_AUTHORIZED", "Only Movezz staff may cancel an invoice");
+    await authorize(tx, "invoice.cancel");
 
     let idemId: string | null = null;
     if (input.idempotencyKey) {

@@ -231,17 +231,17 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
       expect(a[0].after_data).toMatchObject({ discount_usd: "25.00", discount_reason: "Loyalty discount approved by management", subtotal_usd: "100.00" });
       expect(JSON.stringify(a[0])).not.toMatch(/password|token|secret|signature/i);
     });
-    it("[24] warehouse staff cannot grant a discount; nothing is persisted", async () => {
+    it("[24] warehouse staff cannot create invoices (and so cannot grant a discount); nothing is persisted", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
       const k = key();
-      expect(await code(invoice(c, [i], { discountUsd: "100.00", discountReason: "I am staff", idempotencyKey: k }, staff))).toBe("DISCOUNT_NOT_AUTHORIZED");
+      expect(await code(invoice(c, [i], { discountUsd: "100.00", discountReason: "I am staff", idempotencyKey: k }, staff))).toBe("NOT_AUTHORIZED");
       expect((await row(i)).invoice_id).toBeNull();
       expect((await db.admin.query("SELECT count(*)::int AS n FROM idempotency_keys WHERE key=$1", [k])).rows[0].n).toBe(0);
-      expect((await invoice(c, [i], {}, staff)).invoice.discount_usd).toBe("0.00");     // staff can invoice without a discount
+      expect(await code(invoice(c, [i], {}, staff))).toBe("NOT_AUTHORIZED");     // invoicing is a financial operation (Phase 7F matrix)
     });
-    it("[25] a customer login cannot grant a discount", async () => {
+    it("[25] a customer login cannot create an invoice or grant a discount", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
-      expect(await code(invoice(c, [i], { discountUsd: "10.00", discountReason: "please" }, custLogin))).toBe("DISCOUNT_NOT_AUTHORIZED");
+      expect(await code(invoice(c, [i], { discountUsd: "10.00", discountReason: "please" }, custLogin))).toBe("NOT_AUTHORIZED");
     });
     it("[26] a forged client role is rejected, and SQL cannot promote a user: the runtime role cannot write users.role", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
@@ -251,19 +251,20 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
         `INSERT INTO users (auth_uid,email,role) VALUES ('evil','evil@example.invalid','super_admin')`, `DELETE FROM users WHERE id='${admin}'`]) {
         expect(await sqlstate(db.app.query(sql)), sql).toBe("42501");
       }
-      expect(await sqlstate(db.app.query(`UPDATE users SET full_name='Harmless Rename' WHERE id='${staff}'`))).toBe("OK");   // profile columns stay writable
+      expect(await sqlstate(db.app.query(`UPDATE users SET full_name='Rename' WHERE id='${staff}'`))).toBe("42501");   // no user column is writable except last_login_at
+      expect(await sqlstate(db.app.query(`UPDATE users SET last_login_at=now() WHERE id='${staff}'`))).toBe("OK");
       // session-variable role forgery has no effect
       expect(await code(withActorTransaction(db.app, user(staff), async (tx) => {
         await tx.query("SELECT set_config('app.role','super_admin',true), set_config('movezz.role','super_admin',true), set_config('request.jwt.claim.role','super_admin',true)");
         return createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(staff), idempotencyKey: key(), discountUsd: "1.00", discountReason: "x" });
-      }))).toBe("DISCOUNT_NOT_AUTHORIZED");
+      }))).toBe("NOT_AUTHORIZED");
     });
     it("the role is read from the database for every transaction: demoting or deactivating a super_admin takes effect at once", async () => {
       const boss = await staffUser(db.admin, "super_admin");
       const c = await customer(db.admin);
       expect((await invoice(c, [await pricedItem(db.admin, c, "100.00")], { discountUsd: "1.00", discountReason: "ok" }, boss)).invoice.discount_usd).toBe("1.00");
       await db.admin.query("UPDATE users SET role='warehouse_staff' WHERE id=$1", [boss]);
-      expect(await code(invoice(c, [await pricedItem(db.admin, c, "100.00")], { discountUsd: "1.00", discountReason: "ok" }, boss))).toBe("DISCOUNT_NOT_AUTHORIZED");
+      expect(await code(invoice(c, [await pricedItem(db.admin, c, "100.00")], { discountUsd: "1.00", discountReason: "ok" }, boss))).toBe("NOT_AUTHORIZED");
       await db.admin.query("UPDATE users SET role='super_admin' WHERE id=$1", [boss]);
       await db.admin.query("UPDATE users SET is_active=false, deactivated_at=now() WHERE id=$1", [boss]);
       expect(await code(invoice(c, [await pricedItem(db.admin, c, "100.00")], {}, boss))).toBe("ACTOR_INVALID");
@@ -343,7 +344,7 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
     });
     it("a staff member cannot produce a zero-value invoice", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
-      expect(await code(invoice(c, [i], { discountUsd: "100.00", discountReason: "free" }, staff))).toBe("DISCOUNT_NOT_AUTHORIZED");
+      expect(await code(invoice(c, [i], { discountUsd: "100.00", discountReason: "free" }, staff))).toBe("NOT_AUTHORIZED");
     });
     it("[38] a normal invoice cannot receive not_required; subtotal 0 with discount 0 is not a billable invoice", async () => {
       const c = await customer(db.admin);
@@ -489,12 +490,12 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
         await db.admin.query("UPDATE package_rates SET rate_usd = 8 WHERE tier='basic' AND freight_type='air'");
       }
     });
-    it("concurrent discount attempts by staff and super_admin: exactly the super_admin ones succeed", async () => {
+    it("concurrent invoice+discount attempts by staff and super_admin: exactly the super_admin ones succeed", async () => {
       const c = await customer(db.admin);
       const ids = await Promise.all(Array.from({ length: 8 }, () => pricedItem(db.admin, c, "100.00")));
       const res = await Promise.all(ids.map((id, n) => code(invoice(c, [id], { discountUsd: "10.00", discountReason: "concurrent" }, n % 2 ? staff : admin))));
       expect(res.filter((r) => r === "OK")).toHaveLength(4);
-      expect(res.filter((r) => r === "DISCOUNT_NOT_AUTHORIZED")).toHaveLength(4);
+      expect(res.filter((r) => r === "NOT_AUTHORIZED")).toHaveLength(4);
       expect((await db.admin.query("SELECT DISTINCT actor_user_id FROM audit_logs WHERE action='invoice.discount' AND entity_id IN (SELECT id::text FROM invoices WHERE customer_id=$1)", [c])).rows).toEqual([{ actor_user_id: admin }]);
     });
   });
@@ -507,7 +508,7 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
     });
     it("users: the runtime role can read but not create or re-role users (column privileges)", async () => {
       const cols = (await db.admin.query(`SELECT column_name FROM information_schema.column_privileges WHERE grantee='movezz_app' AND table_name='users' AND privilege_type='UPDATE' ORDER BY 1`)).rows.map((r) => r.column_name);
-      expect(cols).toEqual(["full_name", "last_login_at"]);
+      expect(cols).toEqual(["last_login_at"]);
       expect((await db.admin.query(`SELECT has_table_privilege('movezz_app','users','INSERT') AS i, has_table_privilege('movezz_app','users','DELETE') AS d, has_table_privilege('movezz_app','users','SELECT') AS s`)).rows[0]).toEqual({ i: false, d: false, s: true });
     });
   });

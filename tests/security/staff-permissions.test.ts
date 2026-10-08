@@ -48,7 +48,7 @@ describe(FIXED("staff cannot change anything that sets a price or an amount owed
 });
 
 describe(PRESERVE("staff can do the approved operational work"), () => {
-  it("receive and edit items, move items forward, repack cartons, run sorting, manage suppliers", async () => {
+  it("receive and edit items, move items forward, repack cartons, run sorting, read suppliers", async () => {
     const { w, staff } = await standardWorld();
     const item = await w.call("items", "POST", { token: staff, body: { customerId: "recCustA", description: "Box", dateReceived: "2026-03-01" } });
     expect(item.status).toBe(201);
@@ -56,7 +56,7 @@ describe(PRESERVE("staff can do the approved operational work"), () => {
     expect((await w.call("items/[id]", "PATCH", { token: staff, params: { id }, body: { description: "Box 2" } })).status).toBe(200);
     expect((await w.call("items/[id]/status", "PATCH", { token: staff, params: { id }, body: { status: "Sorting" } })).status).toBe(200);
     expect((await w.call("sorting", "GET", { token: staff })).status).toBe(200);
-    expect((await w.call("suppliers", "POST", { token: staff, body: { name: "Acme" } })).status).toBe(201);
+    expect((await w.call("suppliers", "GET", { token: staff })).status).toBe(200);          // staff may READ suppliers (item receiving); administering them is super_admin only
     expect((await w.call("cartons", "GET", { token: staff })).status).toBe(200);
   });
 });
@@ -69,22 +69,31 @@ describe(PRESERVE("staff do not bypass customer ownership rules (they act on rec
   });
 });
 
-describe(KNOWN_BUG("PENDING-Q9: staff powers the owner has not decided yet"), () => {
-  // These are NOT asserted as correct. They record today's behavior so the decision is visible.
-  it("documents that staff can still create and edit warehouses", async () => {
-    const { w, staff } = await standardWorld();
-    const created = await w.call("warehouses", "POST", { token: staff, body: { name: "Depot", address: "1 Main St" } });
-    expect(created.status).toBe(201);
-    expect((await w.call("warehouses/[id]", "PATCH", { token: staff, params: { id: created.json?.data.id }, body: { address: "2 Main St" } })).status).toBe(200);
+describe(FIXED("staff powers decided (D6 / A4): no warehouse or supplier administration, no revenue, no Keepup sync, no customer ownership change"), () => {
+  it("warehouses and suppliers can only be created, edited by a super_admin", async () => {
+    const { w, staff, admin } = await standardWorld();
+    expect((await w.call("warehouses", "POST", { token: staff, body: { name: "Depot", address: "1 Main St" } })).status).toBe(403);
+    const created = await w.call("warehouses", "POST", { token: admin, body: { name: "Depot", address: "1 Main St" } });
+    expect((await w.call("warehouses/[id]", "PATCH", { token: staff, params: { id: created.json?.data.id }, body: { address: "2 Main St" } })).status).toBe(403);
+    expect((await w.call("suppliers", "POST", { token: staff, body: { name: "Acme" } })).status).toBe(403);
+    const sup = await w.call("suppliers", "POST", { token: admin, body: { name: "Acme" } });
+    expect((await w.call("suppliers/[id]", "PATCH", { token: staff, params: { id: sup.json?.data.id }, body: { name: "Evil" } })).status).toBe(403);
+    expect(w.db.get("Warehouses", created.json?.data.id)?.fields["Address"]).toBe("1 Main St");
   });
-  it("documents that staff can read revenue reports, the dashboard totals and the exchange rate", async () => {
+  it("revenue reports and the dashboard's revenue figures are not available to staff; the exchange-rate setting stays readable", async () => {
     const { w, staff } = await standardWorld();
-    expect((await w.call("reports", "GET", { token: staff })).status).toBe(200);
-    expect((await w.call("dashboard/admin", "GET", { token: staff })).status).toBe(200);
+    expect((await w.call("reports", "GET", { token: staff })).status).toBe(403);
+    const d = await w.call("dashboard/admin", "GET", { token: staff });
+    expect(d.status).toBe(200);
+    expect(d.json?.data).toMatchObject({ totalRevenue: 0, pendingRevenue: 0, pendingOrders: [], recentOrders: [] });
     expect((await w.call("settings", "GET", { token: staff })).status).toBe(200);
   });
-  it("documents that staff can trigger the Keepup payment-status sync (it only reads Keepup and sets order status)", async () => {
+  it("staff cannot trigger the Keepup payment-status sync (A4), cannot administer registrations, and cannot move an item to another customer", async () => {
     const { w, staff } = await standardWorld();
-    expect((await w.call("orders/keepup-sync", "POST", { token: staff })).status).toBe(200);
+    expect((await w.call("orders/keepup-sync", "POST", { token: staff })).status).toBe(403);
+    expect((await w.call("admin/registrations", "GET", { token: staff })).status).toBe(403);
+    expect((await w.call("admin/registrations/[id]", "DELETE", { token: staff, params: { id: "recR" } })).status).toBe(403);
+    w.seed.item("recIX", "recCustA");
+    expect((await w.call("items/[id]", "PATCH", { token: staff, params: { id: "recIX" }, body: { customerId: "recCustB" } })).status).toBe(403);
   });
 });

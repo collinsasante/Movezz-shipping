@@ -68,25 +68,40 @@ describe("token handling (requireAuth / getAuthUser)", () => {
   });
 });
 
-describe(KNOWN_BUG("per-process auth cache keeps stale roles and deleted users alive for 5 minutes"), () => {
-  // Future behavior (Phase 3 ADR-5/8): role and is_active read from PostgreSQL on every request. Documents current behavior only.
-  it("documents that a demoted admin keeps admin access until the cache entry expires", async () => {
+describe(FIXED("auth cache: 5-second TTL and explicit invalidation (was 5 minutes); the PostgreSQL layer has no cache"), () => {
+  // The live Airtable-backed app still caches one verdict per token to collapse the burst of calls a page load makes. The window
+  // is now seconds, not minutes, and a delete / customer change on the same instance flushes it at once.
+  it("a demoted admin loses admin access once the (5 s) cache entry expires - not 5 minutes later", async () => {
     const { w, admin } = await standardWorld();
     expect((await w.call("users", "GET", { token: admin })).status).toBe(200);
     const row = w.db.all("Users").find((r) => r.fields["Role"] === "super_admin")!;
     w.db.update("Users", row.id, { Role: "customer" });
-    expect((await w.call("users", "GET", { token: admin })).status).toBe(200); // still cached
-    vi.setSystemTime(new Date("2026-03-15T10:06:00.000Z"));
-    expect((await w.call("users", "GET", { token: admin })).status).toBe(403); // TTL (5 min) elapsed
+    expect((await w.call("users", "GET", { token: admin })).status).toBe(200); // inside the 5 s window
+    vi.setSystemTime(new Date("2026-03-15T10:00:06.000Z"));
+    expect((await w.call("users", "GET", { token: admin })).status).toBe(403); // role change reflected
   });
-  it("documents that a deleted user keeps access until the cache entry expires", async () => {
+  it("a deleted user is refused after the window", async () => {
     const { w, admin } = await standardWorld();
     await w.call("users", "GET", { token: admin });
     const row = w.db.all("Users").find((r) => r.fields["Role"] === "super_admin")!;
     w.db.destroy("Users", row.id);
-    expect((await w.call("users", "GET", { token: admin })).status).toBe(200);
-    vi.setSystemTime(new Date("2026-03-15T10:06:00.000Z"));
+    vi.setSystemTime(new Date("2026-03-15T10:00:06.000Z"));
     expect((await w.call("users", "GET", { token: admin })).status).toBe(401);
+  });
+  it("deleting a user through the API flushes the cache: their very next request is refused (no window at all)", async () => {
+    const { w, admin, staff } = await standardWorld();
+    expect((await w.call("items", "GET", { token: staff })).status).toBe(200);                   // staff verdict is now cached
+    const row = w.db.all("Users").find((r) => r.fields["Role"] === "warehouse_staff")!;
+    expect((await w.call("users/[id]", "DELETE", { token: admin, params: { id: row.id }, body: {} })).status).toBe(200);
+    expect((await w.call("items", "GET", { token: staff })).status).toBe(401);
+  });
+  it("deactivating a customer through the API flushes the cache: the customer's next request is refused at once", async () => {
+    const { w, admin, custA } = await standardWorld();
+    expect((await w.call("items", "GET", { token: custA })).status).toBe(200);
+    expect((await w.call("customers/[id]", "PATCH", { token: admin, params: { id: "recCustA" }, body: { status: "inactive" } })).status).toBe(200);
+    const res = await w.call("items", "GET", { token: custA });
+    expect(res.status).toBe(403);
+    expect(res.json?.code).toBe("ACCOUNT_INACTIVE");
   });
   it("verifies a token with Firebase only once per cache window", async () => {
     const { w, admin } = await standardWorld();

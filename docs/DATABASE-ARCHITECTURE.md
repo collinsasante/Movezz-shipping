@@ -428,6 +428,48 @@ Existing guards still apply: cancelled invoices are immutable, accept no payment
 **Limitations.** Cancellation permission is only "internal staff" until 7F. Cartons are re-invoiced at their stored price (no
 carton pricing service yet). Cancelling does not touch Keepup payment-sync rows or notify the customer.
 
+## 13e. Authorization, RBAC, ownership and account state (Phase 7F, migration 0013)
+
+**Boundary:** Firebase identity -> server-verified identity -> Movezz `users` row -> `begin_actor` (active user, active customer, role and
+customer link read from the database *for this transaction*; no cache) -> operation policy (`src/lib/db/authz.ts`) -> service ->
+ownership-scoped repository (`src/lib/db/ownership.ts`) -> PostgreSQL guards. A client-supplied role, user id, customer id, `created_by` or
+authorization flag is never read; services reject unknown financial/role fields (`assertNoClientFinancials`).
+
+**Final role matrix (PostgreSQL layer).** `super_admin`: everything below + users, customers, rates, FX, warehouses, suppliers, invoices
+(create, discount, cancel), payments (create, void), Keepup manual sync, financial reports, financial reads. `warehouse_staff`: operational
+only - price items (select a special card), read items/cartons/customers for their work; **no** invoices, discounts, cancellation, payments,
+rates, FX, users, customer identity, warehouses, suppliers, financial reads, Keepup sync. `customer`: read their own items, cartons,
+invoices, payments, item history; change only `shipping_address` and `notes` of their own record. Service identities: `integration` may change
+Keepup sync state; `system`/`import` have no user operations. An operation not in `POLICY` is denied.
+*Change from 7E:* cancellation is now `super_admin` only (7E had allowed warehouse staff) - financial administration is not an operational
+power (D6) and the live app already restricts invoice deletion/creation to `super_admin`.
+
+**Ownership.** Every customer-facing read is `... WHERE id = $1 AND customer_id = <actor's customer>` in SQL (never fetch-then-check).
+Not owned, non-existent and malformed ids all return `null` (route -> 404); staff-supplied `customerId` filters are ignored for customers.
+A customer login without a valid, active customer fails closed (`users_customer_link_chk`, `begin_actor`, policy). *Defence in depth:* row-level
+security (binds the runtime role; owner/superuser bypass) restricts a **customer actor** to its own rows on items, cartons, invoices, lines,
+payments, photos, status events, its own customer and user rows, and hides audit, Keepup, outbox, idempotency, containers, suppliers, special
+rates, FX and registrations entirely. Staff/admin/service sessions are unaffected by RLS.
+
+**Database enforcement (runtime role).** `users`: only `last_login_at` is writable; user administration is three SECURITY DEFINER functions
+(`admin_create_user`, `admin_set_user_role`, `admin_set_user_active`) requiring a verified super_admin, never granting or touching a
+super_admin, never acting on oneself, auditing each change; a trigger makes `auth_uid` immutable and protects the last active super_admin even
+from the owner. Rates, FX, warehouses, suppliers: `admin_only_guard` (super_admin actor). Customers: `customers_authority` (identity/config =
+super_admin; a customer may update only notes/address of their own row). Native invoices, payments: super_admin; Keepup sync: super_admin or
+integration/system. Customers cannot write operational tables (`no_customer_writes`). "Operator" paths (table owner / superuser: migrations,
+imports) are intentionally exempt - the guards bind the runtime role. `is_operator` receives the caller's role explicitly because
+`current_user` inside a SECURITY DEFINER function is the owner.
+
+**Live (Airtable-backed) app.** The same decisions were applied to the running routes: customer self-edit is address + notes only (strict);
+other customers' records answer 404; `PATCH /customers/me/warehouse` is disabled (D7); reports and registrations are super_admin only;
+dashboard revenue/invoice figures are stripped server-side for staff; special-rate cards are not served to customers; supplier and warehouse
+create/update are super_admin only; Keepup manual sync is super_admin only (A4); only a super_admin can change an item's owner. The in-memory auth
+cache is now 5 seconds (was 5 minutes) and is flushed when a user or customer is deleted/changed on that instance.
+
+**Remaining limits.** Signing-key holders (the app server) can still sign for any active user (7C). The live app's cache can still lag by up to its
+5 s TTL across instances. Registration approval/activation is Phase 7G. Container create/edit/delete is stricter in the live app (super_admin)
+than D6's "staff manage containers"; left unchanged (not widened). Staff can still *read* the exchange-rate setting and supplier list.
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |

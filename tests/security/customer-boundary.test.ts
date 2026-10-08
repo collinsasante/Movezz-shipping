@@ -18,9 +18,8 @@ interface Probe {
 }
 
 const PROBES: Probe[] = [
-  { route: "customers/[id]", method: "GET", own: { params: { id: "recCustA" } }, other: { params: { id: "recCustB" } }, denied: [403, 404] },
-  { route: "customers/[id]", method: "PATCH", own: { params: { id: "recCustA" }, body: { notes: "mine" } }, other: { params: { id: "recCustB" }, body: { notes: "pwned" } }, denied: [403, 404] },
-  { route: "customers/me/warehouse", method: "PATCH", own: { body: { warehouseId: "recWhOpen" } } },
+  { route: "customers/[id]", method: "GET", own: { params: { id: "recCustA" } }, other: { params: { id: "recCustB" } }, denied: [404] },
+  { route: "customers/[id]", method: "PATCH", own: { params: { id: "recCustA" }, body: { notes: "mine" } }, other: { params: { id: "recCustB" }, body: { notes: "pwned" } }, denied: [404] },
   { route: "dashboard/customer", method: "GET", own: {} },
   { route: "items", method: "GET", own: {} },
   { route: "items/[id]", method: "GET", own: { params: { id: "recIA" } }, other: { params: { id: "recIB" } }, denied: [404] },
@@ -28,7 +27,6 @@ const PROBES: Probe[] = [
   { route: "orders", method: "GET", own: {} },
   { route: "orders/[id]", method: "GET", own: { params: { id: "recOA" } }, other: { params: { id: "recOB" } }, denied: [404] },
   { route: "package-rates", method: "GET", own: {} },
-  { route: "special-rates", method: "GET", own: {} },
   { route: "warehouses", method: "GET", own: {} },
 ];
 
@@ -109,6 +107,7 @@ describe("routes customers must never reach (cartons, containers, payments, repo
     ["cartons", "GET"], ["cartons", "POST"], ["containers", "GET"], ["containers/[id]", "GET"], ["orders/[id]", "PATCH"], ["orders/[id]/create-invoice", "POST"],
     ["orders/keepup-sync", "POST"], ["reports", "GET"], ["dashboard/admin", "GET"], ["activity-logs", "GET"], ["upload/sign", "POST"], ["users", "GET"],
     ["sorting", "GET"], ["settings", "GET"], ["admin/registrations", "GET"], ["suppliers", "GET"],
+    ["special-rates", "GET"], ["customers/me/warehouse", "PATCH"],     // Phase 7F: other customers' special-rate cards are not for customers; warehouse assignment is administrative (D7)
   ];
   it("all answer 403 to a customer", async () => {
     const s = await world();

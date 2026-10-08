@@ -9,9 +9,18 @@ export async function GET(request: NextRequest) {
     "warehouse_staff",
   ]);
   if (authResult instanceof Response) return authResult;
+  const { user } = authResult;
 
   try {
     const stats = await dashboardApi.getAdminStats();
+    // D6: warehouse staff get the operational counts only. Revenue, outstanding amounts and invoice lists are removed
+    // server-side (hiding them in the UI is not authorization).
+    if (user.role !== "super_admin") {
+      return Response.json({
+        success: true,
+        data: { ...stats, totalRevenue: 0, pendingRevenue: 0, pendingOrders: [], recentOrders: [], ordersThisMonth: 0 },
+      });
+    }
     return Response.json({ success: true, data: stats });
   } catch {
     return serverErrorResponse("Failed to fetch dashboard stats");

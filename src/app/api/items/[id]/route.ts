@@ -8,6 +8,7 @@ import {
   serverErrorResponse,
   notFoundResponse,
   badRequestResponse,
+  forbiddenResponse,
 } from "@/lib/auth";
 import { z } from "zod";
 import { PhotoUrlSchema } from "@/lib/schemas";
@@ -92,6 +93,10 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const parsed = UpdateItemSchema.safeParse(body);
+    // Re-assigning an item to another customer changes ownership: super_admin only (staff work on items, they do not move them).
+    if (parsed.success && parsed.data.customerId !== undefined && user.role !== "super_admin") {
+      return forbiddenResponse("Only a super admin can change which customer owns an item");
+    }
 
     if (!parsed.success) {
       return badRequestResponse(

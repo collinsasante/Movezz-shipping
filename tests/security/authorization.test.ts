@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { standardWorld, listRouteMethods, type Role } from "../helpers/world";
 import { MATRIX } from "./authz-matrix";
-import { KNOWN_BUG, FIXED } from "../helpers/known";
+import { FIXED } from "../helpers/known";
 
 const ROLES: Role[] = ["super_admin", "warehouse_staff", "customer"];
 
@@ -51,10 +51,9 @@ describe("authorization matrix: current behavior", () => {
   }
 });
 
-describe(KNOWN_BUG("current permissions that differ from the Phase 3 default recommendation"), () => {
-  // The Phase 3 authorization matrix (section F) recommends narrower rights. Decisions Q9 (staff powers) and
-  // Q10 (customer self-edit) are still PENDING, so these tests record what is allowed TODAY. They must be
-  // replaced when the authorization phase implements the approved matrix.
+describe(FIXED("permissions aligned with the approved role matrix (Phase 7F: D6, D7, D10)"), () => {
+  // These were recorded as "documents what is allowed today" while decisions Q9/Q10 were open. They are now decided
+  // (docs/DECISIONS.md D6/D7) and the tests assert the approved behavior.
   it(FIXED("warehouse staff can NOT write package rates or special rates (they decide every price)"), async () => {
     const { w, staff, admin } = await standardWorld();
     const rates = { basic: { sea: 1, air: 1 }, business: { sea: 1, air: 1 }, enterprise: { sea: 1, air: 1 }, special: { sea: 1, air: 1 } };
@@ -67,31 +66,32 @@ describe(KNOWN_BUG("current permissions that differ from the Phase 3 default rec
     expect(w.db.get("SpecialRates", id)?.fields).toMatchObject({ Sea: 100, Air: 5 });
     expect(w.db.all("PackageRates")).toHaveLength(0);
   });
-  it("documents that warehouse staff can create and edit warehouses", async () => {
-    const { w, staff } = await standardWorld();
-    const created = await w.call("warehouses", "POST", { token: staff, body: { name: "Depot", address: "1 Main St" } });
+  it(FIXED("warehouse staff can NOT create or edit warehouses (warehouse configuration is super_admin only, D6)"), async () => {
+    const { w, staff, admin } = await standardWorld();
+    expect((await w.call("warehouses", "POST", { token: staff, body: { name: "Depot", address: "1 Main St" } })).status).toBe(403);
+    const created = await w.call("warehouses", "POST", { token: admin, body: { name: "Depot", address: "1 Main St" } });
     expect(created.status).toBe(201);
-    const patched = await w.call("warehouses/[id]", "PATCH", { token: staff, params: { id: created.json?.data.id }, body: { address: "2 Main St" } });
-    expect(patched.status).toBe(200);
+    expect((await w.call("warehouses/[id]", "PATCH", { token: staff, params: { id: created.json?.data.id }, body: { address: "2 Main St" } })).status).toBe(403);
+    expect(w.db.get("Warehouses", created.json?.data.id)?.fields["Address"]).toBe("1 Main St");
   });
-  it("documents that warehouse staff can read revenue reports and the exchange rate", async () => {
-    const { w, staff } = await standardWorld();
-    expect((await w.call("reports", "GET", { token: staff })).status).toBe(200);
+  it(FIXED("warehouse staff can NOT read revenue reports (D6); the exchange-rate setting remains readable for operational display"), async () => {
+    const { w, staff, admin } = await standardWorld();
+    expect((await w.call("reports", "GET", { token: staff })).status).toBe(403);
+    expect((await w.call("reports", "GET", { token: admin })).status).toBe(200);
     expect((await w.call("settings", "GET", { token: staff })).status).toBe(200);
   });
-  it("documents that customers can read ALL special rates and ALL package tiers", async () => {
+  it(FIXED("customers can NOT read special-rate cards (other customers' names and prices); package tiers stay readable"), async () => {
     const { w, custA } = await standardWorld();
     w.seed.specialRate("recSR1", "VIP Confidential", 1, 1);
-    const sr = await w.call("special-rates", "GET", { token: custA });
-    expect(sr.json?.data.map((x: { name: string }) => x.name)).toEqual(["VIP Confidential"]);
+    expect((await w.call("special-rates", "GET", { token: custA })).status).toBe(403);
     const pr = await w.call("package-rates", "GET", { token: custA });
     expect(Object.keys(pr.json?.data).sort()).toEqual(["basic", "business", "enterprise", "special"]);
   });
-  it("documents that a customer can change their own name and phone, which regenerates their shipping mark", async () => {
+  it(FIXED("a customer can NOT change their own name or phone (D7: address and notes only); the shipping mark is untouched"), async () => {
     const { w, custA } = await standardWorld();
     const res = await w.call("customers/[id]", "PATCH", { token: custA, params: { id: "recCustA" }, body: { name: "Zed Zulu", phone: "0200009876" } });
-    expect(res.status).toBe(200);
-    expect(res.json?.data.name).toBe("Zed Zulu");
-    expect(res.json?.data.shippingMark).not.toBe("MOVEZZ-AM1111"); // the mark printed on their goods changed
+    expect(res.status).toBe(400);
+    expect(w.db.get("Customers", "recCustA")?.fields["Name"]).not.toBe("Zed Zulu");
+    expect(w.db.get("Customers", "recCustA")?.fields["ShippingMark"]).toBe("MOVEZZ-AM1111");
   });
 });

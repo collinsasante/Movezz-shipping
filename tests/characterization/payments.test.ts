@@ -238,12 +238,13 @@ describe("POST /api/orders/keepup-sync", () => {
     s.w.seed.order("recT", "recCustA", { Status: "Paid", KeepupSaleId: "KU-T" }); // already paid
     return s;
   }
-  it(PRESERVE("marks Paid when Keepup balance <= 0 and Partial when something was paid; ignores unsynced and Paid orders"), async () => {
+  it(PRESERVE("marks Paid when Keepup balance <= 0 and Partial when something was paid; ignores unsynced and Paid orders (super_admin only since Phase 7F / A4)"), async () => {
     const s = await syncWorld();
     vi.mocked(s.w.keepup.getKeepupSale).mockImplementation(async (id: string) =>
       id === "KU-P" ? { totalAmount: 1250, amountPaid: 1250, balanceDue: 0 } : id === "KU-Q" ? { totalAmount: 1250, amountPaid: 500, balanceDue: 750 } : { totalAmount: 1250, amountPaid: 500, balanceDue: 750 }
     );
-    const res = await s.w.call("orders/keepup-sync", "POST", { token: s.staff });
+    expect((await s.w.call("orders/keepup-sync", "POST", { token: s.staff })).status).toBe(403);   // A4: staff must not force a Keepup sync
+    const res = await s.w.call("orders/keepup-sync", "POST", { token: s.admin });
     expect(res.json).toMatchObject({ success: true, synced: 3, updated: 2, errors: 0 });
     expect(s.w.db.get("Orders", "recP")?.fields["Status"]).toBe("Paid");
     expect(s.w.db.get("Orders", "recQ")?.fields["Status"]).toBe("Partial");

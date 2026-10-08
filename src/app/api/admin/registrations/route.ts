@@ -4,7 +4,7 @@ import { pendingRegistrationsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 
   try {

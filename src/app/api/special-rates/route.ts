@@ -6,7 +6,7 @@ import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth
 import { SpecialRateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
+  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
 
   try {

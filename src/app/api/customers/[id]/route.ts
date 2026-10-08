@@ -6,6 +6,7 @@ import { customersApi, itemsApi, ordersApi, usersApi, BusinessError } from "@/li
 import { deleteFirebaseUser, getFirebaseUserByEmail } from "@/lib/firebase-admin";
 import {
   requireAuth,
+  invalidateAuthCache,
   serverErrorResponse,
   notFoundResponse,
   badRequestResponse,
@@ -42,11 +43,9 @@ export async function GET(
     const { id } = await params;
 
     // Customers can only access their own data
+    // Someone else's customer record and a non-existent one are indistinguishable (404, D24).
     if (user.role === "customer" && user.customerId !== id) {
-      return Response.json(
-        { success: false, error: "Access denied" },
-        { status: 403 }
-      );
+      return notFoundResponse("Customer not found");
     }
 
     const [customer, items, orders] = await Promise.all([
@@ -70,14 +69,13 @@ export async function GET(
   }
 }
 
-// Fields a customer is allowed to update on their own profile - an allow-list.
+// Fields a customer is allowed to update on their own profile - an allow-list (D7: address and notes ONLY;
+// name and phone are administrative operations, so they are rejected like every other protected field).
 // STRICT: any other key (package tier, status, e-mail, shipping mark/type, exchange rate, role, ...)
 // is rejected with 400 instead of being silently dropped, so a client can never believe a protected
 // field was accepted. Administrators use UpdateCustomerSchema above.
 const CustomerSelfUpdateSchema = z
   .object({
-    name: z.string().min(2).max(200).optional(),
-    phone: z.string().min(7).max(30).optional(),
     notes: z.string().max(2000).optional(),
     shippingAddress: z.string().max(500).optional(),
   })
@@ -97,7 +95,7 @@ export async function PATCH(
 
     // Customers can only update their own record; admins can update any
     if (user.role === "customer" && user.customerId !== id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return notFoundResponse("Customer not found");
     }
 
     const body = await request.json();
@@ -113,6 +111,7 @@ export async function PATCH(
     }
 
     const customer = await customersApi.update(id, parsed.data, user.email);
+    invalidateAuthCache();   // a status change must apply to the next request
 
     return Response.json({
       success: true,
@@ -156,6 +155,7 @@ export async function DELETE(
 
     // Delete customer from Airtable
     await customersApi.delete(id);
+    invalidateAuthCache();
 
     return Response.json({
       success: true,

@@ -5,7 +5,7 @@ import { warehousesApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { id } = await params;
 

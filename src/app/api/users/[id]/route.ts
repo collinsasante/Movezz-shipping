@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { usersApi } from "@/lib/airtable";
 import { deleteFirebaseUser } from "@/lib/firebase-admin";
-import { requireAuth, serverErrorResponse, notFoundResponse, badRequestResponse } from "@/lib/auth";
+import { requireAuth, serverErrorResponse, notFoundResponse, badRequestResponse, invalidateAuthCache } from "@/lib/auth";
 
 // DELETE /api/users/[id]
 export async function DELETE(
@@ -30,6 +30,7 @@ export async function DELETE(
     }
 
     await usersApi.delete(id);
+    invalidateAuthCache();   // the deleted user must lose access immediately
 
     return Response.json({ success: true, message: "Account deleted" });
   } catch {

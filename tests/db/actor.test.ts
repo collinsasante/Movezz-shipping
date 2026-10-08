@@ -257,7 +257,8 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
           FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
          WHERE p.prosecdef AND n.nspname IN ('public','movezz_sec') ORDER BY 2,3`)).rows;
       expect(fns.length).toBeGreaterThanOrEqual(12);
-      const allow = new Set(["begin_actor", "current_actor_id", "current_actor_type", "require_actor", "append_audit", "append_status_event", "actor_role"]);
+      const allow = new Set(["begin_actor", "current_actor_id", "current_actor_type", "require_actor", "append_audit", "append_status_event", "actor_role",
+        "actor_customer_id", "actor_context", "is_operator", "actor_owns_entity", "admin_create_user", "admin_set_user_role", "admin_set_user_active"]);
       const refAlloc = new Set(["allocate_reference", "allocate_container_reference"]); // intentionally runtime-callable (reference numbers; no actor, no data read)
       for (const f of fns) {
         const label = `${f.schema}.${f.name}`;
@@ -303,10 +304,10 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
       const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(alice), idempotencyKey: key() });
       const { payment } = await recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "10.00", actor: user(bob), idempotencyKey: key() });
       expect((await db.admin.query("SELECT created_by FROM payments WHERE id=$1", [payment.id])).rows[0].created_by).toBe(bob);
-      await voidPayment(db.app, { paymentId: payment.id, reason: "entered twice", actor: user(warehouse) });
-      expect((await db.admin.query("SELECT voided_by FROM payments WHERE id=$1", [payment.id])).rows[0].voided_by).toBe(warehouse);
+      await voidPayment(db.app, { paymentId: payment.id, reason: "entered twice", actor: user(alice) });
+      expect((await db.admin.query("SELECT voided_by FROM payments WHERE id=$1", [payment.id])).rows[0].voided_by).toBe(alice);
       const ev = (await db.admin.query("SELECT action, actor_user_id FROM audit_logs WHERE entity_id = ANY($1) ORDER BY id", [[payment.id, invoice.id]])).rows;
-      expect(ev).toEqual(expect.arrayContaining([{ action: "payment.create", actor_user_id: bob }, { action: "payment.void", actor_user_id: warehouse }]));
+      expect(ev).toEqual(expect.arrayContaining([{ action: "payment.create", actor_user_id: bob }, { action: "payment.void", actor_user_id: alice }]));
       const j = await item(db.admin, c);
       const other = (await createInvoice(db.app, { customerId: c, itemIds: [j], actor: user(alice), idempotencyKey: key() })).invoice;
       await cancelInvoice(db.app, { invoiceId: other.id, reason: "customer asked", actor: user(bob) });

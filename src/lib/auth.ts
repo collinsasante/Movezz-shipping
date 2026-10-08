@@ -8,11 +8,11 @@ import { usersApi, customersApi } from "./airtable";
 import type { AppUser, UserRole } from "@/types";
 
 // ── In-memory auth cache ──────────────────────────────────────────────────────
-// Caches the AppUser per token for 5 minutes to avoid an Airtable round-trip
-// on every polling request. The cache is cleared automatically when entries expire.
-// (Known limitation, tracked in docs/SECURITY-BASELINE.md: role/status changes take up to
-// 5 minutes to apply. The PostgreSQL phase replaces this with a per-request users.is_active check.)
-const AUTH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+// Caches the AppUser per token only long enough to collapse the burst of calls one page load makes (Phase 7F: 5 SECONDS, was
+// 5 minutes) and is flushed explicitly whenever a user or customer is deleted or changed on this instance, so a deactivation,
+// deletion or role change takes effect on the very next request here. Across separate instances the worst case is the TTL.
+// The PostgreSQL layer has no cache at all: movezz_sec.begin_actor re-reads users/customers in every transaction.
+const AUTH_CACHE_TTL = 5 * 1000; // 5 seconds
 
 /**
  * State of the customer profile behind a customer login.
@@ -38,6 +38,11 @@ export async function resolveCustomerLink(user: AppUser): Promise<CustomerLinkSt
     throw err; // network / rate limit: do not guess
   }
   return customer.status === "inactive" ? "inactive" : "ok";
+}
+
+/** Drops every cached authentication verdict. Call after any change to users or customers (delete, deactivate, role, link). */
+export function invalidateAuthCache(): void {
+  authCache.clear();
 }
 
 try {

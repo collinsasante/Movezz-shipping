@@ -1,6 +1,7 @@
 import type { Queryable } from "./client";
 import { DomainError } from "./errors";
 import { recordAudit } from "./audit";
+import { authorize } from "./authz";
 
 export interface PricedItem {
   itemId: string;
@@ -55,6 +56,7 @@ export async function authoritativePrice(db: Queryable, itemId: string, specialR
  */
 export async function priceItem(db: Queryable, itemId: string, opts: { specialRateId?: string | null } = {}): Promise<PricedItem> {
   assertNoClientFinancials(opts, "priceItem");
+  await authorize(db, "item.price");
   const locked = (await db.query("SELECT id FROM items WHERE id = $1 FOR UPDATE", [itemId])).rows[0];
   if (!locked) throw new DomainError("NOT_FOUND", "Item not found");
   const p = await authoritativePrice(db, itemId, opts.specialRateId);

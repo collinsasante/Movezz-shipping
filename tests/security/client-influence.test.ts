@@ -44,10 +44,13 @@ describe(KNOWN_BUG("item prices are accepted from the client exactly as sent"), 
     expect(w.db.get("Items", "recI2")?.fields["IsSpecialItem"]).toBeUndefined();
     expect(w.db.get("Items", "recI2")?.fields["specialRateName"]).toBeUndefined();
   });
-  it("documents that staff can re-assign an invoiced item to a different customer, and to a container id that does not exist", async () => {
-    const { w, staff } = await standardWorld();
+  it("staff can no longer re-assign an item to a different customer (ownership change is super_admin only); a super_admin still can (known gap: no container/invoice checks)", async () => {
+    const { w, staff, admin } = await standardWorld();
     w.seed.item("recI1", "recCustA", { Order: ["recO1"] });
-    const res = await w.call("items/[id]", "PATCH", { token: staff, params: { id: "recI1" }, body: { customerId: "recCustB", containerId: "recNoSuchContainer" } });
+    const denied = await w.call("items/[id]", "PATCH", { token: staff, params: { id: "recI1" }, body: { customerId: "recCustB" } });
+    expect(denied.status).toBe(403);
+    expect(w.db.get("Items", "recI1")?.fields).toMatchObject({ Customer: ["recCustA"] });
+    const res = await w.call("items/[id]", "PATCH", { token: admin, params: { id: "recI1" }, body: { customerId: "recCustB", containerId: "recNoSuchContainer" } });
     expect(res.status).toBe(200);
     expect(w.db.get("Items", "recI1")?.fields).toMatchObject({ Customer: ["recCustB"], Container: ["recNoSuchContainer"], Order: ["recO1"] });
   });

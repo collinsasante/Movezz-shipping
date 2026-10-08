@@ -14,29 +14,32 @@ async function seeded() {
 const ids = (res: { json?: Record<string, any> }) => (res.json?.data as { id: string }[]).map((x) => x.id); // eslint-disable-line @typescript-eslint/no-explicit-any
 
 describe("customer A -> customer data", () => {
-  it(PRESERVE("customer A -> customer A: allowed; customer A -> customer B: denied (403); admin and staff: allowed"), async () => {
+  it(FIXED("customer A -> customer A: allowed; customer A -> customer B: 404 (D24, no existence leak); admin and staff: allowed"), async () => {
     const s = await seeded();
     expect((await s.w.call("customers/[id]", "GET", { token: s.custA, params: { id: "recCustA" } })).status).toBe(200);
     const denied = await s.w.call("customers/[id]", "GET", { token: s.custA, params: { id: "recCustB" } });
-    expect(denied.status).toBe(403);
-    expect(denied.json?.error).toBe("Access denied");
+    expect(denied.status).toBe(404);
+    expect(denied.json?.error).toBe("Customer not found");
     expect((await s.w.call("customers/[id]", "GET", { token: s.admin, params: { id: "recCustB" } })).status).toBe(200);
     expect((await s.w.call("customers/[id]", "GET", { token: s.staff, params: { id: "recCustB" } })).status).toBe(200);
   });
-  it(PRESERVE("customer lookups do not reveal whether an id exists (403 for both B and a non-existent id)"), async () => {
+  it(FIXED("customer lookups do not reveal whether an id exists (404 for both B and a non-existent id)"), async () => {
     const s = await seeded();
-    expect((await s.w.call("customers/[id]", "GET", { token: s.custA, params: { id: "recNope" } })).status).toBe(403);
+    const other = await s.w.call("customers/[id]", "GET", { token: s.custA, params: { id: "recCustB" } });
+    const none = await s.w.call("customers/[id]", "GET", { token: s.custA, params: { id: "recNope" } });
+    expect(none.status).toBe(404);
+    expect(JSON.stringify(other.json)).toBe(JSON.stringify(none.json));
   });
-  it(PRESERVE("customer A cannot modify customer B (403)"), async () => {
+  it(FIXED("customer A cannot modify customer B (404, same as a missing id)"), async () => {
     const s = await seeded();
-    expect((await s.w.call("customers/[id]", "PATCH", { token: s.custA, params: { id: "recCustB" }, body: { notes: "pwned" } })).status).toBe(403);
+    expect((await s.w.call("customers/[id]", "PATCH", { token: s.custA, params: { id: "recCustB" }, body: { notes: "pwned" } })).status).toBe(404);
     expect(s.w.db.get("Customers", "recCustB")?.fields["Notes"]).toBeUndefined();
   });
   it(FIXED("a customer's self-update with ANY protected field is rejected (400) and changes nothing"), async () => {
     const s = await seeded();
     const before = JSON.stringify(s.w.db.get("Customers", "recCustA")?.fields);
     const attempts: Record<string, unknown>[] = [
-      { package: "special" }, { status: "inactive" }, { email: "evil@example.invalid" }, { shippingMark: "HACK-1" }, { shippingType: "air" },
+      { name: "Zed Zulu" }, { phone: "0200009876" }, { package: "special" }, { status: "inactive" }, { email: "evil@example.invalid" }, { shippingMark: "HACK-1" }, { shippingType: "air" },
       { exchangeRate: 0.0001 }, { role: "super_admin" }, { firebaseUid: "x" }, { customerId: "recCustB" }, { id: "recCustB" }, { preferredWarehouseId: "x" },
       { createdAt: "2000-01-01" }, { notes: "ok", package: "special" }, // a legitimate field cannot smuggle a protected one
     ];
@@ -46,23 +49,20 @@ describe("customer A -> customer data", () => {
     }
     expect(JSON.stringify(s.w.db.get("Customers", "recCustA")?.fields)).toBe(before);
   });
-  it(PRESERVE("a customer can still update their own name, phone, notes and address"), async () => {
+  it(PRESERVE("a customer can still update their own notes and address (D7: nothing else)"), async () => {
     const s = await seeded();
     const res = await s.w.call("customers/[id]", "PATCH", { token: s.custA, params: { id: "recCustA" }, body: { notes: "hello", shippingAddress: "East Legon" } });
     expect(res.status).toBe(200);
     expect(s.w.db.get("Customers", "recCustA")?.fields).toMatchObject({ Notes: "hello", ShippingAddress: "East Legon", Status: "active", CustomerPackage: "basic" });
   });
-  it(FIXED("a customer can only choose an existing, ACTIVE warehouse"), async () => {
+  it(FIXED("a customer can NOT choose or change their warehouse at all (D7): the endpoint accepts no role"), async () => {
     const s = await seeded();
     s.w.db.insert("Warehouses", { Name: "Open", Address: "1 St", IsActive: true }, "recWhOpen");
-    s.w.db.insert("Warehouses", { Name: "Closed", Address: "2 St", IsActive: false }, "recWhClosed");
-    const call = (warehouseId: unknown) => s.w.call("customers/me/warehouse", "PATCH", { token: s.custA, body: { warehouseId } });
-    expect((await call("recDoesNotExist")).status).toBe(400);
-    expect((await call("recWhClosed")).status).toBe(400);
-    expect((await call(12345)).status).toBe(400);
+    for (const token of [s.custA, s.admin, s.staff]) {
+      expect((await s.w.call("customers/me/warehouse", "PATCH", { token, body: { warehouseId: "recWhOpen" } })).status).toBe(403);
+    }
+    expect((await s.w.call("customers/me/warehouse", "PATCH", { body: { warehouseId: "recWhOpen" } })).status).toBe(401);
     expect(s.w.db.get("Customers", "recCustA")?.fields["PreferredWarehouse"]).toBeUndefined();
-    expect((await call("recWhOpen")).status).toBe(200);
-    expect(s.w.db.get("Customers", "recCustA")?.fields["PreferredWarehouse"]).toBe("recWhOpen");
   });
 });
 

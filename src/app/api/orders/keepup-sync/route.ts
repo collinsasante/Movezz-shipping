@@ -6,7 +6,7 @@ import { limitUser } from "@/lib/rate-limit";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const limited = limitUser(authResult.user.id, "keepup-sync", 6);
   if (limited) return limited;

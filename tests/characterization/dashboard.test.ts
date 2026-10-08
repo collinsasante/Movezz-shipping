@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { standardWorld } from "../helpers/world";
 import { computeCbm } from "@/lib/cbm";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 async function populated() {
   const s = await standardWorld();
@@ -67,9 +67,14 @@ describe("admin dashboard (dashboardApi.getAdminStats)", () => {
     expect(d.totalCbm).toBeCloseTo(1 + 0.016387064, 9);
   });
 
-  it(PRESERVE("is available to warehouse staff (revenue figures included) and denied to customers"), async () => {
+  it(FIXED("is available to warehouse staff WITHOUT revenue/invoice figures (stripped server-side), full for super_admin, denied to customers"), async () => {
     const s = await populated();
-    expect((await s.w.call("dashboard/admin", "GET", { token: s.staff })).status).toBe(200);
+    const staffRes = await s.w.call("dashboard/admin", "GET", { token: s.staff });
+    expect(staffRes.status).toBe(200);
+    expect(staffRes.json?.data).toMatchObject({ totalRevenue: 0, pendingRevenue: 0, pendingOrders: [], recentOrders: [] });
+    expect(JSON.stringify(staffRes.json)).not.toMatch(/invoiceAmount/);
+    const adminRes = await s.w.call("dashboard/admin", "GET", { token: s.admin });
+    expect(adminRes.json?.data.totalRevenue).toBeGreaterThan(0);
     expect((await s.w.call("dashboard/admin", "GET", { token: s.custA })).status).toBe(403);
   });
 
@@ -144,9 +149,10 @@ describe("GET /api/reports", () => {
     const d = await report(await populated());
     expect(d.topCustomers.map((c: { id: string; revenue: number }) => [c.id, c.revenue])).toEqual([["recCustB", 300], ["recCustA", 100]]);
   });
-  it(PRESERVE("is available to warehouse staff and denied to customers"), async () => {
+  it(FIXED("is super_admin only: denied to warehouse staff and customers (D6: no revenue reports for staff)"), async () => {
     const s = await populated();
-    expect((await s.w.call("reports", "GET", { token: s.staff })).status).toBe(200);
+    expect((await s.w.call("reports", "GET", { token: s.admin })).status).toBe(200);
+    expect((await s.w.call("reports", "GET", { token: s.staff })).status).toBe(403);
     expect((await s.w.call("reports", "GET", { token: s.custA })).status).toBe(403);
   });
 });

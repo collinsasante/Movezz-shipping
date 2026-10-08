@@ -1,26 +1,11 @@
-// PATCH /api/customers/me/warehouse — save preferred warehouse for the logged-in customer
+// PATCH /api/customers/me/warehouse — DISABLED for every role (Phase 7F, decision D7).
+// A customer may edit only their address and notes; warehouse assignment is an administrative operation and no live
+// administrative endpoint for it exists yet (in the PostgreSQL layer it is customers.preferred_warehouse_id, writable only by a
+// super_admin through updateCustomerAdmin). The route stays so existing clients get a clear 403 instead of a 404.
 import { NextRequest } from "next/server";
-import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
-import { customersApi, warehousesApi } from "@/lib/airtable";
+import { requireAuth } from "@/lib/auth";
 
 export async function PATCH(request: NextRequest) {
-  const authResult = await requireAuth(request, ["customer"]);
-  if (authResult instanceof Response) return authResult;
-
-  try {
-    const body = await request.json();
-    const { warehouseId } = body;
-    if (!warehouseId || typeof warehouseId !== "string") return badRequestResponse("warehouseId is required");
-    // Only an existing, ACTIVE warehouse can be chosen (deactivated ones remain for history/admin use).
-    const active = await warehousesApi.listActive();
-    if (!active.some((w) => w.id === warehouseId)) return badRequestResponse("Choose one of the available warehouses");
-
-    const customerId = authResult.user.customerId;
-    if (!customerId) return badRequestResponse("No customer record linked to this account");
-
-    await customersApi.setPreferredWarehouse(customerId, warehouseId);
-    return Response.json({ success: true });
-  } catch {
-    return serverErrorResponse("Failed to save warehouse preference");
-  }
+  const authResult = await requireAuth(request, []);   // no role is accepted: 401 when anonymous, 403 for everyone else
+  return authResult instanceof Response ? authResult : Response.json({ success: false, error: "Forbidden" }, { status: 403 });
 }
