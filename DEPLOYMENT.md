@@ -60,21 +60,27 @@ npm install
 
 ---
 
-## Step 4: Create Admin User
+## Step 4: Create the first Admin User
 
-Run this one-time setup to create the first super admin:
+There is no default account and the application never promotes anyone automatically. The first
+`super_admin` is created by an operator, deliberately, with the bootstrap script:
 
 ```bash
-# After setting up .env.local
-npm run setup-admin
+# After setting up .env.local (NEXT_PUBLIC_FIREBASE_API_KEY, AIRTABLE_API_KEY, AIRTABLE_BASE_ID)
+npm run admin:bootstrap -- --email admin@yourdomain.com
 ```
 
-Or manually:
-1. Create user in Firebase Console → Authentication → Add user
-2. Add record to Airtable Users table with:
-   - FirebaseUID: (from Firebase)
-   - Email: admin@yourdomain.com
-   - Role: super_admin
+- You retype the e-mail to confirm, then type the password at a hidden prompt (you choose it; it is never
+  generated, stored, logged or accepted on the command line). Use `--password-stdin` with `--confirm <email>`
+  for non-interactive runs, and `--dry-run` to preview.
+- It refuses to run if a `super_admin` already exists, and it writes a `BOOTSTRAP_SUPER_ADMIN` row to the
+  `ActivityLogs` table.
+
+Manual alternative: create the user in Firebase Console -> Authentication, then add a record to the Airtable
+`Users` table (FirebaseUID, Email, Role = `super_admin`).
+
+> If you ever used the old `scripts/create-superadmin.mjs`, its built-in password is in Git history and must be
+> treated as compromised: change that account's password immediately. See `docs/SECURITY-BASELINE.md`.
 
 ---
 
