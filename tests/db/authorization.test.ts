@@ -272,7 +272,7 @@ dbDescribe("authorization, ownership and account state (PostgreSQL)", () => {
       expect(await code(cancelInvoice(db.app, { invoiceId: inv.id, reason: "ok", actor: user(admin) }))).toBe("OK");
     });
     it("Keepup sync state: only super_admin or the integration/system service identity may change it; staff, customers and anonymous sessions cannot", async () => {
-      const sql = "UPDATE keepup_sync SET sync_state='failed', last_error='x' WHERE invoice_id=$1";
+      const sql = "UPDATE keepup_sync SET last_error='x' WHERE invoice_id=$1";   // (7H: state transitions are covered in operational-reliability.test.ts)
       const before = (await q("SELECT sync_state FROM keepup_sync WHERE invoice_id=$1", [invA]))[0].sync_state;
       expect(await code(as(staff, (tx) => tx.query(sql, [invA])))).toBe("NOT_AUTHORIZED");
       await as(loginA, (tx) => tx.query(sql, [invA]));                          // a customer actor cannot even see the row (RLS): nothing changes

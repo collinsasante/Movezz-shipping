@@ -1,7 +1,7 @@
 // Concurrency: every test fires real parallel requests on separate connections against one PostgreSQL database.
 // No sleeps and no retries: correctness comes from row locks, unique indexes and transactions.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, pricedItem, type TestDb } from "./helpers";
+import { dbDescribe, createTestDb, customer, item, carton, actorQuery, staffUser, fxRate, packageRates, pricedItem, type TestDb } from "./helpers";
 import { createInvoice, recordPayment } from "../../src/lib/db/invoices";
 import { user } from "../../src/lib/db/actor";
 import { allocateReference, allocateContainerReference } from "../../src/lib/db/references";
@@ -134,7 +134,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   it("carton mutation race: invoicing and dissolving the same open carton at the same time never leave it both invoiced and dissolved", async () => {
     for (let round = 0; round < 6; round++) {
       const c = await customer(db.admin); const ct = await carton(db.admin, c);
-      const dissolve = db.app.query("UPDATE cartons SET status='dissolved', dissolved_at=now() WHERE id=$1 AND status='open'", [ct]).then((x) => x.rowCount);
+      const dissolve = actorQuery(db.app, user(actor)).query("UPDATE cartons SET status='dissolved', dissolved_at=now() WHERE id=$1 AND status='open'", [ct]).then((x) => x.rowCount);
       const inv = settle([createInvoice(db.app, { customerId: c, cartonIds: [ct], actor: user(actor), idempotencyKey: key() })]);
       const [dissolved, invoiced] = await Promise.all([dissolve, inv]);
       const row = (await db.admin.query("SELECT status, invoice_id FROM cartons WHERE id=$1", [ct])).rows[0];
@@ -147,8 +147,8 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   it("two requests re-dimensioning the same open carton serialise cleanly (CBM always matches the stored dimensions)", async () => {
     const c = await customer(db.admin); const ct = await carton(db.admin, c);
     await Promise.all([
-      db.app.query("UPDATE cartons SET length=200, width=100, height=100 WHERE id=$1", [ct]),
-      db.app.query("UPDATE cartons SET length=50, width=50, height=50 WHERE id=$1", [ct]),
+      actorQuery(db.app, user(actor)).query("UPDATE cartons SET length=200, width=100, height=100 WHERE id=$1", [ct]),
+      actorQuery(db.app, user(actor)).query("UPDATE cartons SET length=50, width=50, height=50 WHERE id=$1", [ct]),
     ]);
     const r = (await db.admin.query("SELECT length, width, height, cbm FROM cartons WHERE id=$1", [ct])).rows[0];
     expect(Number(r.cbm)).toBeCloseTo((Number(r.length) * Number(r.width) * Number(r.height)) / 1_000_000, 9);

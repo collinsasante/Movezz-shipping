@@ -27,18 +27,23 @@ dbDescribe("history, integrations and ownership (PostgreSQL)", () => {
   describe("Keepup sync state", () => {
     it("persists attempts, errors and retry scheduling, and supports a due-work query", async () => {
       const { invoice } = await newInvoice();
-      await worker(`UPDATE keepup_sync SET sync_state='creating', attempt_count = attempt_count + 1, last_attempt_at = now() WHERE invoice_id=$1`, [invoice.id]);
-      await worker(`UPDATE keepup_sync SET sync_state='failed', last_error=$2, next_retry_at = now() - interval '1 minute' WHERE invoice_id=$1`, [invoice.id, "HTTP 503 from Keepup"]);
+      const [claim] = (await worker(`SELECT * FROM movezz_sec.keepup_claim(50, 60, 'integrity-test')`)).rows.filter((r) => r.invoice_id === invoice.id);
+      expect(claim).toMatchObject({ attempt_count: 1 });
+      await worker(`SELECT movezz_sec.keepup_fail($1, $2, $3)`, [claim.id, claim.lease_token, "HTTP 503 from Keepup"]);
+      await db.admin.query(`UPDATE keepup_sync SET next_retry_at = now() - interval '1 minute' WHERE invoice_id=$1`, [invoice.id]);
       const due = await db.app.query(`SELECT invoice_id, attempt_count, last_error FROM keepup_sync WHERE sync_state IN ('pending','failed') AND next_retry_at <= now()`);
       expect(due.rows).toContainEqual({ invoice_id: invoice.id, attempt_count: 1, last_error: "HTTP 503 from Keepup" });
     });
-    it("an unknown outcome is representable (needs_reconciliation) and a later success records the external sale", async () => {
+    it("an unknown outcome is representable (needs_reconciliation) and a later verified resolution records the external sale", async () => {
       const { invoice } = await newInvoice();
       await worker(`UPDATE keepup_sync SET sync_state='needs_reconciliation', last_error='timeout after request sent' WHERE invoice_id=$1`, [invoice.id]);
       expect((await db.app.query(`SELECT count(*)::int AS n FROM keepup_sync WHERE sync_state='needs_reconciliation' AND invoice_id=$1`, [invoice.id])).rows[0].n).toBe(1);
-      await worker(`UPDATE keepup_sync SET sync_state='synced', keepup_sale_id='KU-1001', external_status='unpaid', last_success_at=now(), last_error=NULL, response_meta='{"share_link":"https://keepup.example.invalid/s/1001"}' WHERE invoice_id=$1`, [invoice.id]);
-      await db.app.query(`UPDATE invoices SET keepup_sale_id='KU-1001', keepup_link='https://keepup.example.invalid/s/1001' WHERE id=$1`, [invoice.id]);
+      // only a super_admin resolves an unknown outcome, with the verified Keepup sale id and a reason (the worker cannot declare success here)
+      const id = (await db.admin.query(`SELECT id FROM keepup_sync WHERE invoice_id=$1`, [invoice.id])).rows[0].id;
+      await expect(worker(`SELECT movezz_sec.keepup_resolve($1, 'created', 'KU-1001', 'seen in the Keepup dashboard')`, [id])).rejects.toMatchObject({ code: "NOT_AUTHORIZED" });
+      await withActorTransaction(db.app, user(actor), (tx) => tx.query(`SELECT movezz_sec.keepup_resolve($1, 'created', 'KU-1001', 'seen in the Keepup dashboard')`, [id]));
       expect((await db.admin.query(`SELECT sync_state, keepup_sale_id FROM keepup_sync WHERE invoice_id=$1`, [invoice.id])).rows[0]).toEqual({ sync_state: "synced", keepup_sale_id: "KU-1001" });
+      expect((await db.admin.query(`SELECT keepup_sale_id FROM invoices WHERE id=$1`, [invoice.id])).rows[0].keepup_sale_id).toBe("KU-1001");
     });
     it("one Keepup sale per invoice and one external sale id per sale (duplicates are impossible)", async () => {
       const a = await newInvoice(); const b = await newInvoice();

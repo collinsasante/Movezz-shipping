@@ -259,7 +259,10 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
       expect(fns.length).toBeGreaterThanOrEqual(12);
       const allow = new Set(["begin_actor", "current_actor_id", "current_actor_type", "require_actor", "append_audit", "append_status_event", "actor_role",
         "actor_customer_id", "actor_context", "is_operator", "actor_owns_entity", "admin_create_user", "admin_set_user_role", "admin_set_user_active",
-        "submit_registration", "approve_registration", "reject_registration", "activate_registration"]);
+        "submit_registration", "approve_registration", "reject_registration", "activate_registration",
+        // Phase 7H operational functions: each checks the verified actor itself (service identity or super_admin)
+        "keepup_claim", "keepup_complete", "keepup_fail", "keepup_ambiguous", "keepup_reap_expired", "keepup_resolve", "keepup_manual_retry",
+        "outbox_claim", "outbox_complete", "outbox_fail", "outbox_reap_expired", "outbox_requeue_dead"]);
       const refAlloc = new Set(["allocate_reference", "allocate_container_reference"]); // intentionally runtime-callable (reference numbers; no actor, no data read)
       for (const f of fns) {
         const label = `${f.schema}.${f.name}`;
@@ -353,8 +356,10 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
       const i = await item(db.admin, c);
       for (const t of ["system", "import", "integration"] as const) {
         await withActorTransaction(db.app, { type: t }, async (tx) => {
-          await recordAudit(tx, { action: `svc.${t}`, entityType: "item", entityId: i });
-          await recordStatusEvent(tx, { entityType: "item", entityId: i, from: null, to: `via ${t}` });
+          // the integration identity may only record keepup/notification history (Phase 7H); system/import may record any
+          const entityType = t === "integration" ? "keepup_sync" : "item";
+          await recordAudit(tx, { action: t === "integration" ? "keepup.heartbeat" : `svc.${t}`, entityType, entityId: i });
+          await recordStatusEvent(tx, { entityType, entityId: i, from: null, to: `via ${t}` });
           expect(await currentActorId(tx)).toBeNull();
         });
       }

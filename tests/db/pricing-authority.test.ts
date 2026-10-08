@@ -157,14 +157,14 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
       expect(await row(i)).toMatchObject({ tier_price_usd: null });
       // forged straight into the table through the runtime role: basis special, no card, price USD 1
       const f = await unpriced(c, { tier_price_usd: 350, tier_rate_usd: 350, package_tier: "basic" });
-      await db.app.query("UPDATE items SET billing_basis='special', special_rate_name='Forged', special_price_usd=1.00, special_rate_usd=0.01 WHERE id=$1", [f]);
+      await actorQuery(db.app, user(admin)).query("UPDATE items SET billing_basis='special', special_rate_name='Forged', special_price_usd=1.00, special_rate_usd=0.01 WHERE id=$1", [f]);
       const { invoice: inv } = await invoice(c, [f]);
       expect(inv.subtotal_usd).toBe("350.00");
       expect((await db.admin.query("SELECT billing_basis, unit_price_usd, special_rate_name FROM invoice_lines WHERE invoice_id=$1", [inv.id])).rows).toEqual([{ billing_basis: "tier", unit_price_usd: "350.00", special_rate_name: null }]);
       // forged price under a REAL card id: still recomputed from the card
       const card = await specialRate(db.admin, { sea_rate_usd: 300 });
       const g = await unpriced(c); await price(g, card);
-      await db.app.query("UPDATE items SET special_price_usd=1.00 WHERE id=$1", [g]);
+      await actorQuery(db.app, user(admin)).query("UPDATE items SET special_price_usd=1.00 WHERE id=$1", [g]);
       expect((await invoice(c, [g])).invoice.subtotal_usd).toBe("300.00");
     });
   });
@@ -186,7 +186,7 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
     });
     it("the invoice is priced from the database, whatever the stored snapshot says: a stale/forged item price is recomputed and audited", async () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
-      await db.app.query("UPDATE items SET tier_price_usd = 1.00, tier_rate_usd = 0.01 WHERE id=$1", [i]);   // not invoiced yet: the table allows it ...
+      await actorQuery(db.app, user(admin)).query("UPDATE items SET tier_price_usd = 1.00, tier_rate_usd = 0.01 WHERE id=$1", [i]);   // not invoiced yet: the table allows it ...
       const { invoice: inv } = await invoice(c, [i]);                                                         // ... the invoice does not believe it
       expect(inv.subtotal_usd).toBe("100.00");
       expect((await db.admin.query("SELECT action, before_data->>'tier_price_usd' AS b, after_data->>'tier_price_usd' AS a FROM audit_logs WHERE entity_id=$1 AND action='item.reprice'", [i])).rows)
@@ -407,7 +407,7 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
       expect(await snap()).toEqual(before);
       // frozen item snapshots cannot be edited while the invoice is live, even to the "new" prices
       expect(await sqlstate(db.admin.query("UPDATE items SET tier_price_usd = 700 WHERE id=$1", [plain]))).toBe("MV004");
-      expect(await sqlstate(db.app.query("UPDATE items SET special_price_usd = 999 WHERE id=$1", [special]))).toBe("MV004");
+      expect(await sqlstate(actorQuery(db.app, user(admin)).query("UPDATE items SET special_price_usd = 999 WHERE id=$1", [special]))).toBe("MV004");
       // a NEW invoice uses the new values (700 at double rate; FX 99)
       const n = await invoice(c, [await unpriced(c)] as string[]).catch((e) => e);
       expect(n).toBeInstanceOf(DomainError);                              // still unpriced: pricing is a separate, explicit step

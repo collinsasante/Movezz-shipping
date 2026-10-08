@@ -339,7 +339,7 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       await cancel(invoice.id);
       const loose = await pricedItem(db.admin, c, "40.00");
       expect(await sqlstate(db.admin.query("UPDATE items SET invoice_id=$2 WHERE id=$1", [loose, invoice.id]))).toBe("MV005");
-      expect(await sqlstate(db.app.query("UPDATE items SET invoice_id=$2 WHERE id=$1", [i, invoice.id]))).toBe("MV005");
+      expect(await sqlstate(actorQuery(db.app, user(admin)).query("UPDATE items SET invoice_id=$2 WHERE id=$1", [i, invoice.id]))).toBe("MV005");
       expect(await sqlstate(db.admin.query("UPDATE cartons SET status='invoiced', invoice_id=$2 WHERE id=$1", [ct, invoice.id]))).toBe("MV005");
       expect(await sqlstate(actorQuery(db.admin, user(admin)).query("UPDATE invoices SET cancel_reason='rewritten' WHERE id=$1", [invoice.id]))).toBe("MV004");
       expect(await sqlstate(actorQuery(db.admin, user(admin)).query("UPDATE invoices SET status='Pending', cancelled_at=NULL WHERE id=$1", [invoice.id]))).toBe("MV004");
@@ -464,8 +464,8 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       try {
         const cx = code(cancel(invoice.id));
         await sleep(300);
-        const edit = sqlstate(db.app.query("UPDATE cartons SET length = 120 WHERE id=$1", [ct]));                       // frozen while invoiced; legal once released
-        const dissolve = sqlstate(db.app.query("UPDATE cartons SET status='dissolved', dissolved_at=now() WHERE id=$1", [ct]));
+        const edit = sqlstate(actorQuery(db.app, user(admin)).query("UPDATE cartons SET length = 120 WHERE id=$1", [ct]));                       // frozen while invoiced; legal once released
+        const dissolve = sqlstate(actorQuery(db.app, user(admin)).query("UPDATE cartons SET status='dissolved', dissolved_at=now() WHERE id=$1", [ct]));
         expect(await cx).toBe("OK");
         const [e, d] = [await edit, await dissolve];
         expect(e).toBe("OK");
