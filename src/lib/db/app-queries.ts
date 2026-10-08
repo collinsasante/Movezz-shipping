@@ -29,7 +29,7 @@ export async function selectItems(tx: Queryable, where: string, values: unknown[
   return rows.map(itemOut);
 }
 
-const ORDER_SELECT = `SELECT v.*, (SELECT u.email FROM users u WHERE u.id = v.created_by) AS created_by_email, c.name AS customer_name, c.phone AS customer_phone,
+const ORDER_SELECT = `SELECT v.*, (SELECT u.email FROM users u WHERE u.id = v.created_by) AS created_by_email, (SELECT k.sync_state FROM keepup_sync k WHERE k.invoice_id = v.id AND k.kind = 'invoice' ORDER BY k.created_at DESC LIMIT 1) AS keepup_sync_state, c.name AS customer_name, c.phone AS customer_phone,
     COALESCE((SELECT array_agg(i.id ORDER BY i.item_ref) FROM items i WHERE i.invoice_id = v.id), '{}') AS item_ids
   FROM invoices v JOIN customers c ON c.id = v.customer_id`;
 export async function selectOrders(tx: Queryable, where: string, values: unknown[], tail = "ORDER BY v.created_at DESC, v.id") {

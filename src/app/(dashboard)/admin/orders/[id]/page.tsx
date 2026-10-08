@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 interface OrderDetail extends Order {
   items?: Item[];
   keepupTotalAmount?: number | null;
+  keepupSyncState?: string;
   /** Net invoice (after discount) in GHS at the current rate; null when no rate is configured */
   invoiceTotalGhs?: number | null;
   keepupAmountPaid?: number | null;
@@ -181,8 +182,10 @@ export default function AdminOrderDetailPage() {
     try {
       // The server derives prices, the exchange rate and the line split. A first invoice is created once;
       // clicking again on an order that already has one must say so explicitly to replace it.
-      await axios.post(`/api/orders/${id}/create-invoice`, { regenerate: !!order.keepupSaleId });
-      success("Invoice created in Keepup");
+      const res = await axios.post(`/api/orders/${id}/create-invoice`, { regenerate: !!order.keepupSaleId });
+      // 202 = accepted for synchronisation, NOT created yet: never claim "created in Keepup" until the worker has a sale id
+      if (res.status === 202) success("Queued for Keepup", res.data?.message);
+      else success("Invoice created in Keepup");
       load();
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error ?? "Failed to create invoice" : "Failed to create invoice";
@@ -535,6 +538,13 @@ export default function AdminOrderDetailPage() {
               </div>
             </div>
 
+            {!order.keepupSaleId && order.keepupSyncState && (
+              <div className="bg-white rounded-2xl border border-gray-100 p-5" data-testid="keepup-state">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Keepup</h3>
+                <p className="text-xs text-gray-600">Synchronisation: <span className="font-semibold">{{ pending: "waiting to be sent", creating: "being sent", failed: "failed — an administrator can retry", needs_reconciliation: "needs reconciliation by an administrator", not_required: "not required", cancelled: "cancelled" }[order.keepupSyncState!] ?? order.keepupSyncState}</span></p>
+                <p className="text-xs text-gray-400 mt-1">No Keepup sale exists yet.</p>
+              </div>
+            )}
             {order.keepupSaleId && (
               <div className="bg-white rounded-2xl border border-gray-100 p-5">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Keepup</h3>

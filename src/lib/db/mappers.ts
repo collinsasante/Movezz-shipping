@@ -54,7 +54,7 @@ export function orderOut(r: Row) {
   return {
     id: r.id, orderRef: r.invoice_ref, customerId: r.customer_id, customerName: opt(r.customer_name), customerPhone: opt(r.customer_phone),
     itemIds: (r.item_ids ?? []) as string[], invoiceAmount: num(r.subtotal_usd) ?? 0, discount: num(r.discount_usd) || undefined, /* absent (not 0) without a discount: the UI renders a bare `0` otherwise */ status: r.status,
-    invoiceDate: day(r.invoice_date), notes: opt(r.notes), createdAt: iso(r.created_at), keepupSaleId: opt(r.keepup_sale_id), keepupLink: opt(r.keepup_link),
+    invoiceDate: day(r.invoice_date), notes: opt(r.notes), createdAt: iso(r.created_at), keepupSaleId: opt(r.keepup_sale_id), keepupLink: opt(r.keepup_link), keepupSyncState: opt(r.keepup_sync_state),
     createdBy: opt(r.created_by_email), amountPaid: num(r.amount_paid_ghs), balanceDue: num(r.balance_ghs),
     // the locked financial model, exposed explicitly (GHS payments, frozen FX); never recomputed from today's rate
     totalUsd: num(r.total_usd), totalGhs: num(r.total_ghs), fxRate: num(r.fx_rate), fxEstimated: !!r.fx_estimated, currency: "GHS", provenance: r.provenance,
