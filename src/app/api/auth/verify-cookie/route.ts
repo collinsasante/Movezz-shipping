@@ -1,9 +1,12 @@
 // GET /api/auth/verify-cookie — lightweight cookie validation for middleware
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/identity";
 import { verifyIdToken } from "@/lib/firebase-admin";
 import { usersApi } from "@/lib/airtable";
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.verifyCookie(request);
   try {
     const token = request.cookies.get("auth-token")?.value;
     if (!token) {

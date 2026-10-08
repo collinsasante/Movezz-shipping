@@ -1,6 +1,8 @@
 // GET  /api/users  — list all users (super_admin only)
 // POST /api/users  — create user account (super_admin only)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/identity";
 import { generateUnusedInitialPassword } from "@/lib/initial-password";
 import { usersApi } from "@/lib/airtable";
 import { createFirebaseUser, deleteFirebaseUser, setCustomClaims, generatePasswordResetLink } from "@/lib/firebase-admin";
@@ -21,6 +23,7 @@ const CreateUserSchema = z.object({
 
 // GET /api/users
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.usersGet(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 
@@ -34,6 +37,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/users
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.usersPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 

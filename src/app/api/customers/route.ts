@@ -1,6 +1,8 @@
 // GET  /api/customers  — list customers (admin/staff only)
 // POST /api/customers  — create customer (admin only)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/identity";
 import { generateUnusedInitialPassword } from "@/lib/initial-password";
 import { customersApi, usersApi, whatsAppApi } from "@/lib/airtable";
 import { createFirebaseUser, setCustomClaims, generatePasswordResetLink } from "@/lib/firebase-admin";
@@ -24,6 +26,7 @@ const CreateCustomerSchema = z.object({
 
 // GET /api/customers
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.customersGet(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -55,6 +58,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/customers
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.customersPost(request);
   // Rate limit: max 20 customer creations per IP per hour (prevents Firebase account spam)
   const ip = getClientIp(request);
   if (!checkRateLimit(`create-customer:${ip}`, 20, 60 * 60_000)) {

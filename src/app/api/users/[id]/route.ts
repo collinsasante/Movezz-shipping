@@ -1,5 +1,7 @@
 // DELETE /api/users/[id]  — delete staff account (super_admin only)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/identity";
 import { usersApi } from "@/lib/airtable";
 import { deleteFirebaseUser } from "@/lib/firebase-admin";
 import { requireAuth, serverErrorResponse, notFoundResponse, badRequestResponse, invalidateAuthCache } from "@/lib/auth";
@@ -9,6 +11,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.usersDelete(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 

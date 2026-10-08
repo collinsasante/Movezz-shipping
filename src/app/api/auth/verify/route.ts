@@ -1,6 +1,8 @@
 // POST /api/auth/verify — verify Firebase ID token and return app user
 // DELETE /api/auth/verify — sign out (clear cookie)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/identity";
 import { verifyIdToken } from "@/lib/firebase-admin";
 import { usersApi, customersApi } from "@/lib/airtable";
 import { badRequestResponse, customerAccessDenied, resolveCustomerLink } from "@/lib/auth";
@@ -9,6 +11,7 @@ import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from 
 const IS_DEV = process.env.NODE_ENV === "development";
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.verifyPost(request);
   // Body size guard — Firebase ID tokens are ~1KB; reject anything over 16KB
   const sizeErr = checkBodySize(request, 16_384);
   if (sizeErr) return sizeErr;
@@ -129,6 +132,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE() {
+  if (isPostgresBackend()) return pg.verifyDelete();
   return Response.json(
     { success: true, message: "Signed out" },
     {

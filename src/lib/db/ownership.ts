@@ -56,6 +56,7 @@ export async function updateCustomerAdmin(tx: Queryable, id: string, patch: Reco
   const cols: Record<string, string> = {
     name: "name", phone: "phone", email: "email", shippingAddress: "shipping_address", notes: "notes",
     packageTier: "package_tier", preferredWarehouseId: "preferred_warehouse_id", status: "status",
+    shippingType: "shipping_type", shippingMark: "shipping_mark",
   };
   const keys = Object.keys(patch);
   const bad = keys.filter((k) => !Object.hasOwn(cols, k));

@@ -2,6 +2,8 @@
 // PATCH  /api/customers/[id]  — update customer
 // DELETE /api/customers/[id]  — deactivate customer
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/identity";
 import { customersApi, itemsApi, ordersApi, usersApi, BusinessError } from "@/lib/airtable";
 import { deleteFirebaseUser, getFirebaseUserByEmail } from "@/lib/firebase-admin";
 import {
@@ -31,6 +33,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.customerGet(request, { params });
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -86,6 +89,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.customerPatch(request, { params });
   const authResult = await requireAuth(request, ["super_admin", "customer"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
@@ -129,6 +133,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.customerDelete(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 
