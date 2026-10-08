@@ -1,3 +1,4 @@
+import { isPostgresBackend } from "./backend";
 import Airtable, { FieldSet, Record as AirtableRecord } from "airtable";
 import type {
   Customer,
@@ -68,6 +69,8 @@ const baseId = process.env.AIRTABLE_BASE_ID!;
 let _base: ReturnType<Airtable["base"]> | null = null;
 
 function getBase() {
+  // One authoritative backend per deployment: with MOVEZZ_DATA_BACKEND=postgres any Airtable access is a bug, so it fails loudly (no mixed sources).
+  if (isPostgresBackend()) throw new Error("Airtable is disabled: MOVEZZ_DATA_BACKEND=postgres");
   if (!_base) {
     if (!apiKey || !baseId) {
       throw new Error(

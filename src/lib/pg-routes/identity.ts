@@ -14,6 +14,7 @@ import { appUserOut, customerOut, APP_USER_SQL } from "@/lib/db/mappers";
 import { isUuid, ownerScope, selectItems, selectOrders } from "@/lib/db/app-queries";
 import { updateCustomerSelf, updateCustomerAdmin } from "@/lib/db/ownership";
 import { isAllowed } from "@/lib/db/authz";
+import type { AppUser } from "@/types";
 import { pgRoute, ok, parseInput, readJson, apiError } from "@/lib/pg-api";
 
 type Params = Promise<{ id: string }>;
@@ -27,6 +28,19 @@ async function loadUserByUid(uid: string) {
 const denied = (code: "ACCOUNT_INACTIVE" | "CUSTOMER_NOT_LINKED") => Response.json(
   code === "ACCOUNT_INACTIVE" ? { success: false, error: "This account has been deactivated. Contact support.", code } : { success: false, error: "Your login is not linked to a customer profile. Contact support.", code },
   { status: 403 });
+
+/** AppUser + customer-link state for code that still uses requireAuth() (upload signing etc.). Inactive users and customers are refused. */
+export async function pgAuthContext(request: NextRequest): Promise<{ user: AppUser; link: "ok" | "unlinked" | "inactive" } | null> {
+  try {
+    const h = request.headers.get("authorization");
+    const token = h?.startsWith("Bearer ") ? h.slice(7) : request.cookies.get("auth-token")?.value;
+    if (!token) return null;
+    const row = await loadUserByUid((await verifyIdToken(token)).uid);
+    if (!row || !row.is_active) return null;
+    const link = row.role !== "customer" ? "ok" : !row.customer_id ? "unlinked" : row.customer_status !== "active" ? "inactive" : "ok";
+    return { user: appUserOut(row) as unknown as AppUser, link };
+  } catch { return null; }
+}
 
 export async function verifyPost(request: NextRequest): Promise<Response> {
   const sizeErr = checkBodySize(request, 16_384); if (sizeErr) return sizeErr;

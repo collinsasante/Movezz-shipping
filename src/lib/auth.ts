@@ -5,6 +5,8 @@ import { isCrossSiteCookieRequest } from "./csrf";
 import { NextRequest } from "next/server";
 import { verifyIdToken } from "./firebase-admin";
 import { usersApi, customersApi } from "./airtable";
+import { isPostgresBackend } from "./backend";
+import { pgAuthContext } from "./pg-routes/identity";
 import type { AppUser, UserRole } from "@/types";
 
 // ── In-memory auth cache ──────────────────────────────────────────────────────
@@ -60,6 +62,7 @@ try {
 export async function getAuthContext(
   request: NextRequest
 ): Promise<{ user: AppUser; link: CustomerLinkState } | null> {
+  if (isPostgresBackend()) return pgAuthContext(request);   // same contract, PostgreSQL identity (users row, active flags, customer link)
   try {
     const authHeader = request.headers.get("authorization");
     const cookieToken = request.cookies.get("auth-token")?.value;

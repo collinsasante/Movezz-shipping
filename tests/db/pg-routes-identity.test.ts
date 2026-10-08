@@ -55,6 +55,16 @@ dbDescribe("Group A on PostgreSQL: auth, users, customers (real routes)", () => 
     } finally { process.env.MOVEZZ_DATA_BACKEND = v; }
   });
 
+  it("no mixed sources: with the PostgreSQL backend, shared auth helpers use PostgreSQL and any Airtable access fails loudly", async () => {
+    const { requireAuth } = await import("../../src/lib/auth");
+    const { usersApi } = await import("../../src/lib/airtable");
+    const okAuth = await requireAuth(req("/api/upload/sign", "POST", { token: staff }), ["super_admin", "warehouse_staff"]);
+    expect(okAuth instanceof Response).toBe(false); expect((okAuth as { user: { role: string } }).user.role).toBe("warehouse_staff");
+    expect(((await requireAuth(req("/x", "POST", { token: ca }), ["super_admin", "warehouse_staff"])) as Response).status).toBe(403);
+    expect(((await requireAuth(req("/x", "POST", { token: "bogus" }), ["super_admin"])) as Response).status).toBe(401);
+    await expect(usersApi.getByFirebaseUid("anything")).rejects.toThrow(/Airtable is disabled/);
+  });
+
   describe("sign-in", () => {
     it("known users get their profile and a cookie; unknown identities are NOT_REGISTERED (no e-mail claiming, no first-user admin)", async () => {
       const r = await json(await verify(req("/api/auth/verify", "POST", { body: { idToken: ca } })));
