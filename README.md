@@ -23,5 +23,7 @@ npm run type-check
   **Tests must never contact production.**
 - How the harness works and how to add tests: [tests/README.md](tests/README.md).
 
-> `npm run lint` is currently broken (Next 16 removed `next lint` and the repo has no ESLint config). It is scheduled for the
-> dependency/security baseline phase; see the baseline document.
+`npm run lint` runs ESLint 9 with a flat config (errors fail CI; existing warnings are listed in
+[docs/SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md)). To create the first administrator use
+`npm run admin:bootstrap` (see DEPLOYMENT.md); there is no built-in account. Security status and open items:
+[docs/SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md). Secret scan: `gitleaks git --log-opts="--all" --redact=100`.

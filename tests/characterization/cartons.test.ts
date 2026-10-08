@@ -252,6 +252,21 @@ describe(FIXED("carton operations no longer lose prices, half-apply edits or tou
     expect(priceOf(w, "recI1") ?? null).toBeNull();
   });
 
+  it("a base WITHOUT the optional PreCartonPkgEstShipping field still creates, edits and dissolves cartons (the snapshot is best effort)", async () => {
+    const w = await freshWorld();
+    w.seed.customer("recCustA");
+    w.seed.item("recI1", "recCustA", { PkgEstShipping: 12.34 });
+    w.db.beforeWrite = ({ table, op, fields }) => {
+      if (table === "Items" && op === "update" && fields && "PreCartonPkgEstShipping" in fields) throw new Error("UNKNOWN_FIELD_NAME: PreCartonPkgEstShipping");
+    };
+    const res = await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1"], ...dims() });
+    expect(res.cartonNumber).toBe("CTN-0001");
+    expect(priceOf(w, "recI1")).toBe(21);
+    await w.airtable.cartonsApi.dissolve("CTN-0001"); // no snapshot to restore: price cleared, exactly like before the fix
+    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"]).toBeUndefined();
+    expect(priceOf(w, "recI1") ?? null).toBeNull();
+  });
+
   it("a mid-way write failure rolls back to the items' PREVIOUS state, prices included", async () => {
     const w = await freshWorld();
     w.seed.customer("recCustA");

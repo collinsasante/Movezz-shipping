@@ -9,7 +9,7 @@ tests/
     fakeAirtable.ts     in-memory stand-in for the `airtable` package (strict formula subset)
     world.ts            freshWorld() / standardWorld(): a new app instance, seeders, auth tokens, call()
     sourceFn.ts         runs a function straight from an application source file
-    known.ts            KNOWN_BUG(...) / PRESERVE(...) title helpers
+    known.ts            KNOWN_BUG(...) / PRESERVE(...) / FIXED(...) title helpers
     state.ts            state shared across module resets (tokens, sent emails)
   unit/                 pure functions + the fake itself
   characterization/     routes + real data layer: what the app does today
@@ -32,6 +32,6 @@ it("lets staff move an item forward", async () => {
 
 - `w.db` is the fake Airtable (`w.db.get("Items", id)`, `w.db.all("Orders")`, `w.db.calls`, `w.db.beforeWrite` for failure injection).
 - `w.keepup`, `w.email`, `w.firebase` are the mocked modules (`vi.mocked(w.keepup.createKeepupSale)`).
-- Use `KNOWN_BUG("...")` for a describe/it that records **wrong** current behavior, and say which phase should fix it.
+- Use `KNOWN_BUG("...")` for a describe/it that records **wrong** current behavior, and say which phase should fix it. Use `FIXED("...")` for a regression test of a defect that has been corrected.
 - Never read `process.env` secrets or call `fetch` for real; the setup blocks it.
 - The fake does **not** sync inverse linked records (real Airtable does) - seed both sides when a test needs them.

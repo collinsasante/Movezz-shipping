@@ -18,7 +18,8 @@ npm run test:coverage  # run once with a v8 coverage summary
 - Safe to run anywhere: **tests can never contact production** (see "Safety" below).
 - Test order does not matter (verified with shuffled orders).
 
-Current size: **502 tests = 500 passing + 2 `it.todo`** (the Q16 future expectations).
+Current size: **670 tests, all passing** (Phase 4 shipped 502 = 500 + 2 `it.todo`; Phase 5 retired the two todos,
+converted the fixed bugs into regression tests and added the security suites). See "Status after Phase 5" below.
 
 | Folder | Tests | What it covers |
 |---|---:|---|
@@ -55,7 +56,37 @@ Current size: **502 tests = 500 passing + 2 `it.todo`** (the Q16 future expectat
 
 When a fix lands, change the test in the same commit as the fix and say which `KNOWN BUG` it retires.
 
+## Status after Phase 5 (security remediation)
+
+Tests titled `FIXED - ...` are regression tests for a Phase 4 `KNOWN BUG` that Phase 5 corrected; they assert the
+**corrected** behavior. Details, evidence and what remains: [`SECURITY-BASELINE.md`](SECURITY-BASELINE.md).
+
+| Theme (table below) | After Phase 5 |
+|---|---|
+| 1 special-rate billing | **Fixed** (`lib/pricing.ts`, validated claims, immutable invoiced prices) |
+| 2, 3, 4 currency, Mark Paid, double conversion | **Fixed** (GHS-only comparisons) |
+| 5 no FX snapshot | **Open** - needs the PostgreSQL schema |
+| 6 payment races / overpayment / swallowed Keepup failure / emails | **Fixed** except cross-instance atomicity (open) |
+| 7 double Keepup sale | **Fixed** (single idempotent creation) |
+| 8, 9 totals and prices from the client | **Partially fixed**: invoice total must match stored prices, items must belong to the customer and be uninvoiced; tier prices still client-entered (Phase 7) |
+| 10, 11, 26 CBM / revenue / N+1 | Open (not security) |
+| 12 duplicate references | Open (needs sequences) |
+| 13 shipping marks | **Fixed** (unique, final name+phone) |
+| 14 cartons | **Fixed** (no price loss, invoiced cartons immutable, validate-before-write); numbering open |
+| 15 container cascade | **Fixed** (advance-only, history); notifications open |
+| 16, 17 first-user bootstrap, generated passwords | **Fixed** |
+| 18 auth cache, spoofable rate-limit key, registration enumeration | Open / partially mitigated |
+| 19, 20 customer without profile, existence leaks | **Fixed** |
+| 21 staff powers | **Partially fixed** (rate writes); rest waits for Q9/Q10 |
+| 22 package-rate validation, exchange-rate bounds | **Fixed** |
+| 23 user deletion, upload folder, photo hosts | **Fixed** (last admin protected, UID from the row, folder/host allow-lists); upload type/size open |
+| 24 Keepup client retries, timeout, zero totals | **Fixed** except the missing idempotency key |
+| 25 USD in e-mails | **Fixed** (currency parameter, GHS used for invoices/payments) |
+| 27 inactive warehouses, comments | **Fixed**; dangling references on delete open |
+
 ## Known bugs captured, and the phase that must correct each
+
+(Table as recorded in Phase 4. Check the status table above before treating a row as still open.)
 
 127 tests in 69 groups carry the `KNOWN BUG` label. They fall into these themes (phase numbers: Phase 3 roadmap, section J).
 
@@ -114,7 +145,7 @@ These are `PRESERVE` tests. They must keep passing (or change only with an appro
 | Real email/WhatsApp delivery | Mocked; WhatsApp is skipped without credentials | Staging dry-runs (phase 11/18) |
 | UI rendering, mobile layouts, accessibility, browser-only logic | No browser tests in this phase. Formulas inside React hooks (`items/new`) are pinned by source anchors only | E2E and accessibility checks in phases 15-17 |
 | Concurrency on real Airtable, rate limits across Cloudflare isolates, runtime differences on Workers | The fake is single-process | Re-test on PostgreSQL with real transactions (phases 4-9) |
-| Lint | No ESLint config exists and `next lint` was removed in Next 16, so `npm run lint` fails before any code runs. A standard Next config would report ~7 errors (escaped-entity JSX, one unused variable) and ~8 warnings in existing source | Dependency/security baseline phase (2) |
+| Lint | **Resolved in Phase 5**: ESLint 9 flat config; `npm run lint` runs a real check (0 errors, warnings tracked in SECURITY-BASELINE.md) | - |
 
 ## Maintenance rules
 

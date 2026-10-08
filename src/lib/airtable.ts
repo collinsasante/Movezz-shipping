@@ -933,28 +933,31 @@ const CLEARED_CARTON_FIELDS = {
 /**
  * Takes an item out of its carton. The item's own price is restored from the snapshot taken when it joined
  * (PreCartonPkgEstShipping); it is only cleared when no snapshot exists - it used to be erased always.
- * NOTE: the snapshot needs a Number field "PreCartonPkgEstShipping" on the Items table. Without it the
- * snapshot is never stored and a removed item has no price (the previous behavior). Verify in production.
+ * The snapshot field is OPTIONAL schema: it needs a Number field "PreCartonPkgEstShipping" on the Items table.
+ * It is always read/written in a separate best-effort update, so a base without the field behaves exactly as
+ * before (no snapshot, price cleared) and never fails a carton operation.
  */
-function releaseFromCarton(item: Item): FieldSet {
-  return {
+async function releaseFromCarton(item: Item): Promise<void> {
+  await updateRecord(TABLES.ITEMS, item.id, {
     ...CLEARED_CARTON_FIELDS,
     PkgEstShipping: item.preCartonPkgEstShipping ?? null,
-    PreCartonPkgEstShipping: null,
-  } as unknown as FieldSet;
+  } as unknown as FieldSet);
+  if (item.preCartonPkgEstShipping !== undefined) {
+    await updateRecord(TABLES.ITEMS, item.id, { PreCartonPkgEstShipping: null } as unknown as FieldSet).catch(() => {});
+  }
 }
 
 /** The exact carton state an item had before a failed operation, so a rollback restores rather than erases. */
-function previousCartonState(item: Item): FieldSet {
-  return {
+async function restorePreviousCartonState(item: Item): Promise<void> {
+  await updateRecord(TABLES.ITEMS, item.id, {
     CartonNumber: item.cartonNumber ?? "",
     CartonLength: item.cartonLength ?? null,
     CartonWidth: item.cartonWidth ?? null,
     CartonHeight: item.cartonHeight ?? null,
     CartonWeight: item.cartonWeight ?? null,
     PkgEstShipping: item.pkgEstShipping ?? null,
-    PreCartonPkgEstShipping: item.preCartonPkgEstShipping ?? null,
-  } as unknown as FieldSet;
+  } as unknown as FieldSet);
+  await updateRecord(TABLES.ITEMS, item.id, { PreCartonPkgEstShipping: item.preCartonPkgEstShipping ?? null } as unknown as FieldSet).catch(() => {});
 }
 
 async function assertCartonNotInvoiced(members: Item[]): Promise<void> {
@@ -986,17 +989,18 @@ async function writeCartonMembers(
         CartonNumber: cartonNumber,
         PkgEstShipping: perItemPrice[i],
       };
-      if (joining.has(items[i].id) && items[i].pkgEstShipping !== undefined) {
-        (fields as Record<string, unknown>)["PreCartonPkgEstShipping"] = items[i].pkgEstShipping;
-      }
       const record = await updateRecord(TABLES.ITEMS, items[i].id, fields);
       succeeded.push(items[i]);
+      if (joining.has(items[i].id) && items[i].pkgEstShipping !== undefined) {
+        // best effort: a base without this optional field must not break carton creation
+        await updateRecord(TABLES.ITEMS, items[i].id, { PreCartonPkgEstShipping: items[i].pkgEstShipping } as unknown as FieldSet).catch(() => {});
+      }
       updated.push(mapItem(record));
     }
     return updated;
   } catch (err) {
     await Promise.all(
-      succeeded.map((item) => updateRecord(TABLES.ITEMS, item.id, previousCartonState(item)).catch(() => {}))
+      succeeded.map((item) => restorePreviousCartonState(item).catch(() => {}))
     );
     throw err;
   }
@@ -1074,7 +1078,7 @@ export const cartonsApi = {
     }
 
     if (members.length === 0) {
-      await Promise.all(toRemove.map((m) => updateRecord(TABLES.ITEMS, m.id, releaseFromCarton(m))));
+      await Promise.all(toRemove.map((m) => releaseFromCarton(m)));
       return { cartonNumber, items: [], cbm: 0, totalPrice: 0 };
     }
 
@@ -1089,7 +1093,7 @@ export const cartonsApi = {
     // Pricing can still reject (e.g. an air carton without a weight), so it runs before ANY write.
     const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(members.length, shippingType, customerId, dims);
 
-    await Promise.all(toRemove.map((m) => updateRecord(TABLES.ITEMS, m.id, releaseFromCarton(m))));
+    await Promise.all(toRemove.map((m) => releaseFromCarton(m)));
     const updated = await writeCartonMembers(members, cartonNumber, dims, perItemPrice, new Set(newItems.map((i) => i.id)));
 
     return { cartonNumber, items: updated, cbm, totalPrice };
@@ -1099,7 +1103,7 @@ export const cartonsApi = {
     const records = await getAllRecords(TABLES.ITEMS, `{CartonNumber} = '${cartonNumber}'`);
     const members = records.map(mapItem);
     await assertCartonNotInvoiced(members);
-    await Promise.all(members.map((m) => updateRecord(TABLES.ITEMS, m.id, releaseFromCarton(m))));
+    await Promise.all(members.map((m) => releaseFromCarton(m)));
   },
 
   // Only returns cartons that are still pending invoicing — once a carton's
