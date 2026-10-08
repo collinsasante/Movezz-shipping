@@ -11,6 +11,7 @@
 import { actorKeyFromEnv, beginImportActor } from "./actor.mjs";
 import { ImportError } from "./errors.mjs";
 import { IMPORTER_VERSION, fingerprint } from "./util.mjs";
+import { noopLogger } from "./log.mjs";
 import { paymentEvents } from "./financial.mjs";
 import { snapshotFingerprint } from "./snapshot.mjs";
 import { collectEntries, validateAll } from "./validate.mjs";
@@ -60,7 +61,8 @@ const dbReason = (e) => ({ category: String(e.code ?? "").startsWith("MV") ? "DB
 const J = (o) => JSON.stringify(o);
 
 class Ctx {
-  constructor(client, batchId, mappings, key, snapshot) {
+  constructor(client, batchId, mappings, key, snapshot, log = noopLogger) {
+    this.log = log; this.tx = { count: 0, maxMs: 0, totalMs: 0, byStage: {} };
     this.client = client; this.batchId = batchId; this.map = new Map([...mappings].map(([k, v]) => [k, v])); this.key = key; this.snapshot = snapshot;
     this.counts = {}; this.dbEntries = []; this.failed = new Set(); this.seq = 0; this.journal = [];
   }
@@ -69,6 +71,15 @@ class Ctx {
 }
 
 async function withTx(ctx, tag, fn) {
+  const t0 = performance.now();
+  try { return await withTxInner(ctx, tag, fn); } finally {
+    const ms = performance.now() - t0; const t = ctx.tx;
+    t.count++; t.totalMs += ms; if (ms > t.maxMs) t.maxMs = ms;
+    const st = (t.byStage[tag] ??= { count: 0, maxMs: 0, totalMs: 0 }); st.count++; st.totalMs += ms; if (ms > st.maxMs) st.maxMs = ms;
+    if (ms > 5000) ctx.log.warn("import.slow_transaction", { stage: tag, ms: Math.round(ms) });
+  }
+}
+async function withTxInner(ctx, tag, fn) {
   const { client } = ctx;
   await client.query("BEGIN");
   try {
@@ -103,6 +114,7 @@ async function insertMapped(ctx, srcTable, srcId, tgtTable, fp, run) {
     await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
     const d = dbReason(e);
     ctx.dbEntries.push({ table: srcTable, sourceId: srcId, category: d.category, severity: "blocking", reason: d.reason, field: null });
+    ctx.log.warn("import.record_rejected", { table: srcTable, sourceId: srcId, category: d.category, sqlstate: e.code, constraint: e.constraint });
     ctx.failed.add(K(srcTable, srcId)); ctx.bump(srcTable, "failed");
     return null;
   }
@@ -111,6 +123,7 @@ async function insertMapped(ctx, srcTable, srcId, tgtTable, fp, run) {
 /** Runs `units` in chunked transactions. unit = { table, id, fp, run(): Promise<targetId> | skip }. */
 async function runStage(ctx, name, units, hooks, { perUnitTx = false, chunk = 100 } = {}) {
   await hooks.beforeStage?.(name);
+  const stageStart = performance.now();
   const todo = [];
   for (const u of units) {
     const have = ctx.map.get(K(u.table, u.id));
@@ -125,11 +138,12 @@ async function runStage(ctx, name, units, hooks, { perUnitTx = false, chunk = 10
       await hooks.beforeCommit?.(name, Math.floor(i / size));
     });
   }
+  ctx.log.info("import.stage", { stage: name, records: units.length, imported: todo.length, ms: Math.round(performance.now() - stageStart) });
   await hooks.afterStage?.(name);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-export async function runImport({ pool, snapshot, st, decision, initiatedBy, env = process.env, hooks = {}, chunk = 100 }) {
+export async function runImport({ pool, snapshot, st, decision, initiatedBy, env = process.env, hooks = {}, chunk = 100, log = noopLogger }) {
   if (!decision?.ok || decision.mode !== "import") throw new ImportError("IMPORT_REFUSED", "the environment guard has not approved an import");
   if (!initiatedBy || !/\S/.test(initiatedBy)) throw new ImportError("IMPORT_INITIATOR", "an initiator label is required");
   const key = actorKeyFromEnv(env);
@@ -153,7 +167,9 @@ export async function runImport({ pool, snapshot, st, decision, initiatedBy, env
     try { target = await readTargetState(client, st); } finally { await client.query("ROLLBACK"); }
     applyTargetState(st, target);
 
-    const ctx = new Ctx(client, batchId, target.mappings, key, snapshot);
+    log.setCorrelationId?.(batchId);
+    log.info("import.started", { batchId, snapshotFingerprint: fp, tables: tables.length, environment: decision.environment, initiatedBy });
+    const ctx = new Ctx(client, batchId, target.mappings, key, snapshot, log);
     await stages(ctx, st, snapshot, hooks, chunk);
     await seedCounters(ctx);
 
@@ -176,8 +192,10 @@ export async function runImport({ pool, snapshot, st, decision, initiatedBy, env
     for (const [t, n] of Object.entries(mappedBy)) { const c = (ctx.counts[t] ??= { imported: 0, skipped: 0, failed: 0 }); c.skipped = n - c.imported; }
     const counts = { perTable: ctx.counts, quarantined: entries.filter((e) => e.severity === "blocking").length, review: entries.filter((e) => e.severity === "review").length, deferred: entries.filter((e) => e.severity === "deferred").length };
     await client.query("UPDATE import_batches SET status = 'completed', counts = $2, finished_at = now() WHERE id = $1", [batchId, J(counts)]);
-    return { batchId, counts, entries, ctx };
+    log.info("import.completed", { batchId, quarantined: counts.quarantined, review: counts.review, deferred: counts.deferred, transactions: ctx.tx.count, maxTransactionMs: Math.round(ctx.tx.maxMs) });
+    return { batchId, counts, entries, ctx, metrics: { transactions: ctx.tx } };
   } catch (e) {
+    log.error("import.failed", { batchId, error: e });
     if (batchId) await client.query("ROLLBACK").catch(() => {}).then(() => client.query("UPDATE import_batches SET status = 'failed', error = $2, finished_at = now() WHERE id = $1 AND status = 'running'", [batchId, String(e.message).slice(0, 1900)])).catch(() => {});
     throw e;
   } finally {

@@ -13,6 +13,7 @@ export { databaseSignature } from "./reconcile.mjs";
 export * from "./validate.mjs";
 export { assertApprovedEnvironment, evaluateEnvironment } from "./env-guard.mjs";
 export { reportToJson, renderReport } from "./report.mjs";
+export { createLogger, redact } from "./log.mjs";
 
 /**
  * Stages 2-5 without any database. Pure and deterministic.
@@ -49,13 +50,13 @@ export async function dryRun({ snapshot, pool, env = process.env, targetUrl }) {
 
 /**
  * IMPORT (+ reconciliation + report). Refuses unless the environment guard approves.
- * @param {{ snapshot: any, pool: any, env?: Record<string,string|undefined>, targetUrl?: string, initiatedBy: string, hooks?: any, chunk?: number }} a
+ * @param {{ snapshot: any, pool: any, env?: Record<string,string|undefined>, targetUrl?: string, initiatedBy: string, hooks?: any, chunk?: number, log?: any }} a
  * @returns {Promise<any>}
  */
-export async function importSnapshot({ snapshot, pool, env = process.env, targetUrl, initiatedBy, hooks, chunk }) {
+export async function importSnapshot({ snapshot, pool, env = process.env, targetUrl, initiatedBy, hooks, chunk, log }) {
   const decision = assertApprovedEnvironment({ env, targetUrl, mode: "import", snapshotKind: snapshot.source.kind });
   const p = prepare(snapshot);
-  const result = await runImport({ pool, snapshot, st: p.st, decision, initiatedBy, env, hooks, chunk });
+  const result = await runImport({ pool, snapshot, st: p.st, decision, initiatedBy, env, hooks, chunk, log });
   const client = await pool.connect();
   let rec;
   try {

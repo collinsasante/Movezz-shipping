@@ -14,7 +14,7 @@ export const KNOWN_FIELDS = {
   PackageRates: ["Tier", "Sea", "Air"],
   SpecialRates: ["Name", "Sea", "Air"],
   Settings: ["UsdToGhs", "ShippingRatePerCbm"],
-  Customers: ["Name", "Phone", "Email", "ShippingAddress", "ShippingMark", "FirebaseUID", "Status", "ShippingType", "CustomerPackage", "ExchangeRate", "Notes", "PreferredWarehouse", "CreatedAt"],
+  Customers: ["Name", "Phone", "Email", "ShippingAddress", "ShippingMark", "FirebaseUID", "Status", "ShippingType", "CustomerPackage", "ExchangeRate", "Notes", "PreferredWarehouse", "CreatedAt", "CreatedBy"],
   Users: ["FirebaseUID", "Email", "Role", "CustomerRecord", "CustomerName", "CreatedAt", "LastLogin"],
   Containers: ["ContainerID", "Name", "Description", "Status", "Items", "DepartureDate", "ArrivalDate", "TrackingNumber", "Notes", "CreatedAt", "CreatedBy"],
   Items: ["ItemRef", "Photos", "Weight", "FreightType", "Length", "Width", "Height", "DimensionUnit", "Description", "DateReceived", "TrackingNumber", "Customer", "CustomerName",
@@ -199,6 +199,8 @@ export function normalizeCustomer(rec) {
   if (uid !== undefined) r.legacy.had_firebase_uid = true;                      // the identifier itself is deliberately NOT carried over
   const warehouse = r.link0("PreferredWarehouse");
   const created = r.date("CreatedAt");
+  const createdBy = r.text("CreatedBy", { max: 254 });
+  if (createdBy) r.legacy.legacy_created_by = createdBy;                    // who created it in Airtable (kept as history; created_by itself says "legacy-import")
   const row = { name, phone: phone ?? null, email: email ?? null, shipping_mark: mark, shipping_address: r.text("ShippingAddress", { max: 1000 }) ?? null,
     shipping_type: shippingType ?? null, package_tier: tier, notes: r.text("Notes", { max: 2000 }) ?? null, status, created_by: "legacy-import",
     created_at: created?.iso ?? null };

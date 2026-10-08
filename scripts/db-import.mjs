@@ -11,7 +11,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { ImportRefusal } from "./lib/import/errors.mjs";
-import { dryRun, importSnapshot, reconcileSnapshot, readSnapshotFile, renderReport, reportToJson } from "./lib/import/index.mjs";
+import { createLogger, dryRun, importSnapshot, reconcileSnapshot, readSnapshotFile, renderReport, reportToJson } from "./lib/import/index.mjs";
 
 const [mode, ...rest] = process.argv.slice(2);
 const opt = (name) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
@@ -31,9 +31,11 @@ async function main() {
   try {
     const initiatedBy = opt("--initiated-by") ?? "";
     const r = mode === "dry-run" ? await dryRun({ snapshot, pool, env, targetUrl })
-      : mode === "import" ? await importSnapshot({ snapshot, pool, env, targetUrl, initiatedBy })
+      : mode === "import" ? await importSnapshot({ snapshot, pool, env, targetUrl, initiatedBy, log: createLogger({ sink: process.env.MOVEZZ_LOG === "json" ? (l) => process.stderr.write(l + "\n") : undefined }) })
       : await reconcileSnapshot({ snapshot, pool, env, targetUrl });
     process.stdout.write(renderReport(r.report) + "\n");
+    const mj = opt("--metrics-json");
+    if (mj && r.metrics) await writeFile(path.resolve(mj), JSON.stringify(r.metrics) + "\n", { flag: "wx" });
     const out = opt("--report-json");
     if (out) {
       const p = path.resolve(out);

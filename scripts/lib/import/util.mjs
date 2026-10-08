@@ -31,7 +31,9 @@ export function parseDecimal(raw, { scale = 2, allowNegative = false, max = 999_
   let s;
   if (typeof raw === "number") {
     if (!Number.isFinite(raw)) return { ok: false, reason: "not a finite number" };
-    s = String(raw);
+    // JSON numbers come from IEEE doubles: 0.1 + 0.2 arrives as 0.30000000000000004. Doubles carry 15 reliable significant digits, so the
+    // binary-representation noise beyond that is removed - a genuine third decimal (12.345) survives and is still refused for a 2-decimal field.
+    s = String(Number(raw.toPrecision(15)));
     if (/e/i.test(s)) return { ok: false, reason: "exponent notation is not accepted" };
   } else if (typeof raw === "string") s = raw.trim();
   else return { ok: false, reason: "not a number" };

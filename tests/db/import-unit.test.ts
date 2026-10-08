@@ -28,7 +28,7 @@ describe("decimals and dates (money is never floating point)", () => {
     expect(parseDecimal("12.5", { scale: 2 })).toMatchObject({ ok: true, text: "12.50", units: BigInt(1250) });
     expect(parseDecimal(0.1 + 0.2 > 0.3 ? 0.3 : 0.3, { scale: 2 })).toMatchObject({ ok: true, text: "0.30" });
     expect(parseDecimal("1250.00", { scale: 2 }).ok).toBe(true);
-    for (const bad of ["12.345", "1,250.00", "1e3", "-5", "NaN", "", "abc", " ", "12.5.1", "$5", 1e21, Infinity, NaN, null, undefined, {}, [], true]) {
+    for (const bad of ["12.345", "1,250.00", "1e3", "-5", "NaN", "", "abc", " ", "12.5.1", "$5", 12.345, 1e21, Infinity, NaN, null, undefined, {}, [], true]) {
       expect(parseDecimal(bad as never, { scale: 2 }).ok, String(bad)).toBe(false);
     }
     expect(parseDecimal("12.500", { scale: 2 }).ok).toBe(true);                 // trailing zeros are not a rounding
