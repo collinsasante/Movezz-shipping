@@ -116,7 +116,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
     const c = await customer(db.admin); const i = await item(db.admin, c);
     const r = await settle(Array.from({ length: 8 }, () => createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() })));
     expect(r.ok).toHaveLength(1);
-    expect(r.codes).toEqual(Array(7).fill("INVALID_INPUT"));
+    expect(r.codes).toEqual(Array(7).fill("ITEM_ALREADY_INVOICED"));
     expect((await db.admin.query("SELECT count(*)::int AS n FROM invoices WHERE customer_id=$1", [c])).rows[0].n).toBe(1);
     expect((await db.admin.query("SELECT invoice_id FROM items WHERE id=$1", [i])).rows[0].invoice_id).toBe(r.ok[0].invoice.id);
   });

@@ -383,6 +383,51 @@ services must later be SECURITY DEFINER functions (Phase 7F).
 * Carton prices are not recomputed (no carton service yet). Item *staff selection* of a card is a stored `special_rate_id`;
   pricing UI/permissions are later phases.
 
+## 13d. Invoice cancellation, release and re-invoicing (Phase 7E, migration 0012)
+
+**Lifecycle.** `cancelInvoice` is one transaction under the verified actor (7C):
+1. internal staff only (`super_admin` / `warehouse_staff`, role read from the database; customers and service actors get
+   `NOT_AUTHORIZED`; the full permission matrix is Phase 7F). Reason must contain a non-whitespace character.
+2. optional idempotency key (`invoice.cancel` scope): same key + same request replays the stored result; same key + different
+   request -> `IDEMPOTENCY_CONFLICT`. Without a key a repeat is `INVOICE_ALREADY_CANCELLED` and changes nothing.
+3. lock the invoice; `INVOICE_NOT_FOUND` / `INVOICE_ALREADY_CANCELLED`.
+4. **payment prerequisite:** any `completed` payment -> `ACTIVE_PAYMENT_EXISTS`. Nothing is deleted or voided implicitly; staff
+   void the payment first (explicit, audited, with reason and actor), then cancel. `invoices_guard` repeats the rule for SQL.
+5. lock cartons then items, set `Cancelled` (+ `cancelled_at/by`, `cancel_reason`), release, write events and audit, adjust Keepup,
+   complete the idempotency key. Any error rolls back all of it (including events, audit and the key).
+
+**Lock order (everywhere): invoice -> cartons (by id) -> items (by id).** `createInvoice` now locks cartons before items to match
+(a new invoice has no row to lock first). Payments lock only the invoice; voids lock payment then invoice and cancellation never
+locks payment rows, so there is no cycle.
+
+**Release semantics (no new states).** Items: `items.invoice_id = NULL` (the operational `status`, dimensions, weight, quantity,
+customer, provenance and the item's own price columns are untouched). Cartons: `invoiced -> open`, `invoice_id = NULL`; price, rate,
+tier, basis, dimensions and CBM are untouched; member items stay in the carton, so the carton can be invoiced again as a unit.
+The cancelled invoice keeps its lines (with `item_id`/`carton_id`) and every snapshot: it is the historical owner of the old
+pricing. Status events: invoice `<status> -> Cancelled`; each carton `invoiced -> open`; each item an event with unchanged
+operational status and `metadata {event: invoice_released, previous_invoice_id, previous_invoice_ref}` (no item status was invented).
+One `invoice.cancel` audit row records actor, previous/new status, reason and the released item/carton ids.
+
+**Re-invoicing** is simply `createInvoice` again (7D): every item is re-priced by `item_authoritative_price` at the current
+rates, FX is the current row, and a discount is evaluated afresh (super_admin + reason). Nothing is copied from the cancelled
+invoice. A special card that staff selected on the item is the item's *live* selection and is re-validated: a changed card
+price applies; an expired/inactive card fails with `SPECIAL_RATE_NOT_APPLICABLE` (no silent fall-back to tier) until staff
+re-price the item. An item still on a live invoice is `ITEM_ALREADY_INVOICED`.
+
+**Keepup.** There is no verified Keepup cancellation API, so none is claimed. Invoice sync row: no sale and `pending`/`failed` ->
+`cancelled` (a sale will never be created); sale id present, `synced`, `creating` (unknown outcome) or already
+`needs_reconciliation` -> `needs_reconciliation` with the sale id kept and an explicit "NOT cancelled in Keepup" note;
+`not_required` (zero-value) stays. The worker/reconciliation is a later phase.
+
+**Database backstops (migration 0012).** Only staff may move an invoice to Cancelled (`MV012`); at COMMIT a newly cancelled invoice
+must own no item or carton (deferred check, `MV005`), so cancelling by SQL without releasing cannot commit; items/cartons cannot be
+attached to a Cancelled invoice (`MV005`; the `import` actor is exempt for historical data); an item cannot enter a dissolved
+carton and a carton with member items cannot be dissolved (`MV005`: the future carton service must take members out first).
+Existing guards still apply: cancelled invoices are immutable, accept no payments, payments cannot be deleted, voided payments cannot be revived.
+
+**Limitations.** Cancellation permission is only "internal staff" until 7F. Cartons are re-invoiced at their stored price (no
+carton pricing service yet). Cancelling does not touch Keepup payment-sync rows or notify the customer.
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |

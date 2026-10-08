@@ -135,7 +135,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       expect(await code(createInvoice(db.app, { customerId: a, itemIds: [unpriced], actor: user(actor), idempotencyKey: key() }))).toBe("ITEM_UNPRICED");
       const ia = await item(db.admin, a);
       await createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() });
-      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
+      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() }))).toBe("ITEM_ALREADY_INVOICED");
       const ia2 = await item(db.admin, a);
       expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia2], discountUsd: "400.00", actor: user(actor), idempotencyKey: key() }))).toBe("DISCOUNT_INVALID");
       expect(await code(createInvoice(db.app, { customerId: a, actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
@@ -261,13 +261,13 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
     it("cancelled invoices accept no payments; an invoice with completed payments cannot be cancelled; cancelled is terminal", async () => {
       const a = await invoiceFor({ prices: ["100.00"] });
       await pay(a.invoice.id, "10.00");
-      expect(await code(cancelInvoice(db.app, { invoiceId: a.invoice.id, reason: "x", actor: user(actor) }))).toBe("INVALID_STATE");
+      expect(await code(cancelInvoice(db.app, { invoiceId: a.invoice.id, reason: "x", actor: user(actor) }))).toBe("ACTIVE_PAYMENT_EXISTS");
       const b = await invoiceFor({ prices: ["100.00"] });
       const cancelled = await cancelInvoice(db.app, { invoiceId: b.invoice.id, reason: "customer cancelled", actor: user(actor) });
-      expect(cancelled.status).toBe("Cancelled");
+      expect(cancelled.invoice.status).toBe("Cancelled");
       expect(await code(pay(b.invoice.id, "5.00"))).toBe("INVALID_STATE");
       expect(await sqlstate(db.admin.query("UPDATE invoices SET notes='x' WHERE id=$1", [b.invoice.id]))).toBe("MV004");
-      // cancelling releases the freeze on its items (re-pricing/re-invoicing is a service decision for a later phase)
+      // cancelling releases its items (Phase 7E): they are no longer frozen by this invoice
       await db.admin.query("UPDATE items SET tier_price_usd = 1 WHERE id = ANY($1)", [b.itemIds]);
     });
     it("a payment on an unknown invoice is a controlled error", async () => {

@@ -71,12 +71,7 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
     const customer = (await tx.query("SELECT id, email, archived_at FROM customers WHERE id = $1 FOR SHARE", [input.customerId])).rows[0];
     if (!customer || customer.archived_at) throw new DomainError("NOT_FOUND", "Customer not found");
 
-    const items = itemIds.length
-      ? (await tx.query(
-          `SELECT * FROM items WHERE id = ANY($1::uuid[]) AND customer_id = $2 AND invoice_id IS NULL AND carton_id IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE`,
-          [itemIds, input.customerId])).rows
-      : [];
-    if (items.length !== itemIds.length) throw new DomainError("INVALID_INPUT", "Every item must exist, belong to the customer, be uninvoiced and not be in a carton");
+    // lock order (shared with cancelInvoice): invoice -> cartons -> items. A new invoice has no row yet, so here: cartons -> items.
     const cartons = cartonIds.length
       ? (await tx.query(
           `SELECT * FROM cartons WHERE id = ANY($1::uuid[]) AND customer_id = $2 AND status = 'open' ORDER BY id FOR UPDATE`,
@@ -84,6 +79,18 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
       : [];
     if (cartons.length !== cartonIds.length) throw new DomainError("INVALID_INPUT", "Every carton must exist, belong to the customer and be open");
 
+    const items = itemIds.length
+      ? (await tx.query(
+          `SELECT * FROM items WHERE id = ANY($1::uuid[]) AND customer_id = $2 AND invoice_id IS NULL AND carton_id IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE`,
+          [itemIds, input.customerId])).rows
+      : [];
+    if (items.length !== itemIds.length) {
+      const taken = itemIds.length
+        ? (await tx.query("SELECT count(*)::int AS n FROM items WHERE id = ANY($1::uuid[]) AND customer_id = $2 AND invoice_id IS NOT NULL", [itemIds, input.customerId])).rows[0].n
+        : 0;
+      if (taken > 0) throw new DomainError("ITEM_ALREADY_INVOICED", "An item is already on a live invoice; cancel that invoice first");
+      throw new DomainError("INVALID_INPUT", "Every item must exist, belong to the customer, be uninvoiced and not be in a carton");
+    }
     // 2. pricing is recomputed HERE by PostgreSQL (item_authoritative_price) in one statement, so every line comes from one
     //    consistent set of rate rows. The item must already have been priced by staff (D5: unpriced items are never invoiced);
     //    its staff-selected special card is re-validated now and never silently replaced by the tier price.
@@ -250,18 +257,90 @@ export async function voidPayment(db: Pool, input: { paymentId: string; reason: 
   });
 }
 
-/** Cancels an invoice (never deletes). Refused while completed payments exist. Releasing items/cartons is a later-phase rule. */
-export async function cancelInvoice(db: Pool, input: { invoiceId: string; reason: string; actor: ActorAssertion }) {
-  if (!input.reason.trim()) throw new DomainError("INVALID_INPUT", "A cancel reason is required");
+export interface CancelInvoiceInput {
+  invoiceId: string;
+  reason: string;                 // required, must contain a non-whitespace character
+  actor: ActorAssertion;          // verified by PostgreSQL (Phase 7C); never a request field
+  idempotencyKey?: string;        // same key + same request = same logical result; without a key a repeat is INVOICE_ALREADY_CANCELLED
+  request?: { ip?: string; userAgent?: string };
+}
+export interface CancelInvoiceResult { invoice: InvoiceRow; releasedItemIds: string[]; releasedCartonIds: string[]; replayed: boolean }
+
+/**
+ * Cancels an invoice and releases its items and cartons for re-invoicing, in ONE transaction.
+ *
+ *  - Internal staff only (role read from the database for the verified actor; the full matrix is Phase 7F).
+ *  - An invoice with a completed payment is refused (ACTIVE_PAYMENT_EXISTS): the payment must first be voided explicitly. Nothing is
+ *    deleted and no payment is voided implicitly.
+ *  - Lock order, everywhere: invoice -> cartons (by id) -> items (by id). createInvoice uses the same order (cartons -> items).
+ *  - The invoice keeps every snapshot (lines, prices, FX, discount, payments). Release only clears the LIVE links: items.invoice_id
+ *    becomes NULL and invoiced cartons return to 'open'; the item/carton price columns are untouched (a re-invoice recomputes
+ *    them through the Phase 7D pricing function), and the cancelled invoice's lines remain the historical record.
+ *  - Keepup: no verified cancellation API exists, so nothing is claimed. Without an external sale the sync row becomes 'cancelled'
+ *    (no sale will ever be created); with a sale / unknown outcome it becomes 'needs_reconciliation' with the sale id preserved.
+ */
+export async function cancelInvoice(db: Pool, input: CancelInvoiceInput): Promise<CancelInvoiceResult> {
+  if (!/\S/.test(input.reason ?? "")) throw new DomainError("INVALID_INPUT", "A cancellation reason is required");
+  const requestHash = fingerprint({ i: input.invoiceId, r: input.reason });
   return withActorTransaction(db, input.actor, async (tx) => {
-    const old = (await tx.query("SELECT status FROM invoices WHERE id = $1 FOR UPDATE", [input.invoiceId])).rows[0];
-    if (!old) throw new DomainError("NOT_FOUND", "Invoice not found");
+    const role = (await tx.query<{ r: string | null }>("SELECT movezz_sec.actor_role() AS r")).rows[0].r;
+    if (role !== "super_admin" && role !== "warehouse_staff") throw new DomainError("NOT_AUTHORIZED", "Only Movezz staff may cancel an invoice");
+
+    let idemId: string | null = null;
+    if (input.idempotencyKey) {
+      const idem = await beginIdempotent(tx, { scope: "invoice.cancel", actorUserId: await currentActorId(tx), key: input.idempotencyKey, requestHash });
+      if (idem.state === "replay") {
+        const r = idem.response as { releasedItemIds: string[]; releasedCartonIds: string[] };
+        const inv = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [idem.resultEntityId])).rows[0];
+        return { invoice: inv, releasedItemIds: r.releasedItemIds, releasedCartonIds: r.releasedCartonIds, replayed: true };
+      }
+      idemId = idem.id;
+    }
+
+    const old = (await tx.query("SELECT id, invoice_ref, status, total_ghs FROM invoices WHERE id = $1 FOR UPDATE", [input.invoiceId])).rows[0];
+    if (!old) throw new DomainError("INVOICE_NOT_FOUND", "Invoice not found");
+    if (old.status === "Cancelled") throw new DomainError("INVOICE_ALREADY_CANCELLED", `Invoice ${old.invoice_ref} is already cancelled`);
+    const paid = (await tx.query("SELECT count(*)::int AS n FROM payments WHERE invoice_id = $1 AND status = 'completed'", [input.invoiceId])).rows[0].n;
+    if (paid > 0) throw new DomainError("ACTIVE_PAYMENT_EXISTS", `Invoice ${old.invoice_ref} has ${paid} completed payment(s); void them first`);
+
+    const cartons = (await tx.query(`SELECT id, carton_ref, status FROM cartons WHERE invoice_id = $1 ORDER BY id FOR UPDATE`, [input.invoiceId])).rows;
+    if (cartons.some((c) => c.status !== "invoiced")) throw new DomainError("CARTON_NOT_RELEASABLE", "A carton on this invoice is not in the invoiced state");
+    const items = (await tx.query(`SELECT id, item_ref, status FROM items WHERE invoice_id = $1 ORDER BY id FOR UPDATE`, [input.invoiceId])).rows;
+
     const inv = (await tx.query<InvoiceRow>(
       `UPDATE invoices SET status = 'Cancelled', cancelled_at = now(), cancel_reason = $2 WHERE id = $1 RETURNING *`, // cancelled_by is stamped by the database
       [input.invoiceId, input.reason]
     )).rows[0];
+
+    const relC = (await tx.query(`UPDATE cartons SET status = 'open', invoice_id = NULL WHERE invoice_id = $1 AND status = 'invoiced' RETURNING id`, [input.invoiceId])).rows;
+    if (relC.length !== cartons.length) throw new DomainError("CANCELLATION_CONFLICT", "Cartons changed during cancellation");
+    const relI = (await tx.query(`UPDATE items SET invoice_id = NULL WHERE invoice_id = $1 RETURNING id`, [input.invoiceId])).rows;
+    if (relI.length !== items.length) throw new DomainError("CANCELLATION_CONFLICT", "Items changed during cancellation");
+
+    const meta = { event: "invoice_released", previous_invoice_id: input.invoiceId, previous_invoice_ref: old.invoice_ref };
     await recordStatusEvent(tx, { entityType: "invoice", entityId: input.invoiceId, from: old.status, to: "Cancelled", reason: input.reason });
-    await recordAudit(tx, { action: "invoice.cancel", entityType: "invoice", entityId: input.invoiceId, after: { reason: input.reason } });
-    return inv;
+    for (const c of cartons) {
+      await recordStatusEvent(tx, { entityType: "carton", entityId: c.id, from: "invoiced", to: "open", reason: `released: ${old.invoice_ref} cancelled`, metadata: meta });
+    }
+    for (const it of items) {
+      // the item's operational status is unchanged; the event records that it is available for invoicing again
+      await recordStatusEvent(tx, { entityType: "item", entityId: it.id, from: it.status, to: it.status, reason: `released: ${old.invoice_ref} cancelled`, metadata: meta });
+    }
+
+    // Keepup: record locally; do not claim an external cancellation that has not happened
+    await tx.query(
+      `UPDATE keepup_sync SET
+         sync_state = CASE WHEN keepup_sale_id IS NULL AND sync_state IN ('pending','failed') THEN 'cancelled' ELSE 'needs_reconciliation' END,
+         last_error = CASE WHEN keepup_sale_id IS NULL AND sync_state IN ('pending','failed')
+                           THEN 'Invoice cancelled in Movezz before any Keepup sale was created'
+                           ELSE 'Invoice cancelled in Movezz; the Keepup sale has NOT been cancelled in Keepup (no verified cancellation API) - reconcile manually' END,
+         next_retry_at = NULL
+       WHERE invoice_id = $1 AND kind = 'invoice' AND sync_state NOT IN ('not_required','cancelled')`, [input.invoiceId]);
+
+    const releasedItemIds = relI.map((r) => r.id as string), releasedCartonIds = relC.map((r) => r.id as string);
+    await recordAudit(tx, { action: "invoice.cancel", entityType: "invoice", entityId: input.invoiceId, request: input.request,
+      before: { status: old.status }, after: { status: "Cancelled", reason: input.reason, invoice_ref: old.invoice_ref, released_item_ids: releasedItemIds, released_carton_ids: releasedCartonIds } });
+    if (idemId) await completeIdempotent(tx, idemId, { entityType: "invoice", entityId: input.invoiceId, response: { releasedItemIds, releasedCartonIds } });
+    return { invoice: inv, releasedItemIds, releasedCartonIds, replayed: false };
   });
 }

@@ -210,7 +210,7 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
     it("a zero-value invoice can still be cancelled (history kept); a normal invoice is unaffected (Pending until paid)", async () => {
       const c = await customer(db.admin); const i = await item(db.admin, c); const j = await item(db.admin, c);
       const z = await createInvoice(db.app, { customerId: c, itemIds: [i], discountUsd: "350.00", discountReason: "waiver", actor: user(actor), idempotencyKey: key() });
-      expect((await cancelInvoice(db.app, { invoiceId: z.invoice.id, reason: "issued by mistake", actor: user(actor) })).status).toBe("Cancelled");
+      expect((await cancelInvoice(db.app, { invoiceId: z.invoice.id, reason: "issued by mistake", actor: user(actor) })).invoice.status).toBe("Cancelled");
       const n = await createInvoice(db.app, { customerId: c, itemIds: [j], actor: user(actor), idempotencyKey: key() });
       expect(n.invoice.status).toBe("Pending");
     });
@@ -357,7 +357,7 @@ dbDescribe("migration 0009 upgrade path (PostgreSQL)", () => {
       await old.admin.query(`SELECT allocate_reference('container','2026'), allocate_reference('container','2026'), allocate_reference('container','2026'), allocate_reference('container','2027'), allocate_reference('container','2027')`);
       await old.admin.query(`INSERT INTO containers (container_ref) VALUES ('PMX-CON-2026-001'),('PMX-CON-2026-003'),('PMX-CON-2027-002'),('PMX-CON-2027-007')`);
       const before = (await old.admin.query("SELECT (SELECT count(*) FROM items) AS i, (SELECT count(*) FROM invoices) AS v, (SELECT count(*) FROM containers) AS k")).rows[0];
-      expect((await migrate(old.url)).applied).toEqual(["0009_phase7_business_constraints.sql", "0010_trusted_actor_context.sql", "0011_authoritative_pricing.sql"]);
+      expect((await migrate(old.url)).applied).toEqual(["0009_phase7_business_constraints.sql", "0010_trusted_actor_context.sql", "0011_authoritative_pricing.sql", "0012_invoice_cancellation_release.sql"]);
       expect((await old.admin.query("SELECT (SELECT count(*) FROM items) AS i, (SELECT count(*) FROM invoices) AS v, (SELECT count(*) FROM containers) AS k")).rows[0]).toEqual(before);
       expect((await old.admin.query("SELECT invoice_ref, provenance FROM invoices ORDER BY invoice_ref")).rows).toEqual([{ invoice_ref: "ORD-U1", provenance: "estimated" }, { invoice_ref: "ORD-U2", provenance: "native" }]);
       expect((await old.admin.query("SELECT total_ghs::text AS t FROM invoices WHERE invoice_ref='ORD-U1'")).rows[0].t).toBe("1300.00"); // money untouched

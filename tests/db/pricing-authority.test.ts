@@ -440,7 +440,7 @@ dbDescribe("server-authoritative pricing and discounts (PostgreSQL)", () => {
       const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
       const res = await Promise.all(Array.from({ length: 10 }, () => code(invoice(c, [i]))));
       expect(res.filter((r) => r === "OK")).toHaveLength(1);
-      expect(res.filter((r) => r === "INVALID_INPUT")).toHaveLength(9);
+      expect(res.filter((r) => r === "ITEM_ALREADY_INVOICED")).toHaveLength(9);
       expect((await db.admin.query("SELECT count(*)::int AS n FROM invoice_lines WHERE item_id=$1", [i])).rows[0].n).toBe(1);
       expect((await db.admin.query("SELECT count(DISTINCT invoice_id)::int AS n FROM items WHERE id=$1 AND invoice_id IS NOT NULL", [i])).rows[0].n).toBe(1);
     });
