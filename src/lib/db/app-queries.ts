@@ -30,7 +30,7 @@ export async function selectItems(tx: Queryable, where: string, values: unknown[
 }
 
 const ORDER_SELECT = `SELECT v.*, c.name AS customer_name, c.phone AS customer_phone,
-    COALESCE((SELECT array_agg(DISTINCT l.item_id) FILTER (WHERE l.item_id IS NOT NULL) FROM invoice_lines l WHERE l.invoice_id = v.id), '{}') AS item_ids
+    COALESCE((SELECT array_agg(i.id ORDER BY i.item_ref) FROM items i WHERE i.invoice_id = v.id), '{}') AS item_ids
   FROM invoices v JOIN customers c ON c.id = v.customer_id`;
 export async function selectOrders(tx: Queryable, where: string, values: unknown[], tail = "ORDER BY v.created_at DESC, v.id") {
   const { rows } = await tx.query(`${ORDER_SELECT} WHERE (${where}) ${tail}`, values);

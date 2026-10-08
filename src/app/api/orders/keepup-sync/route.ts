@@ -1,11 +1,14 @@
 // POST /api/orders/keepup-sync — sync payment status from Keepup for all pending orders
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/billing";
 import { ordersApi } from "@/lib/airtable";
 import { getKeepupSale } from "@/lib/keepup";
 import { limitUser } from "@/lib/rate-limit";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.keepupSyncPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const limited = limitUser(authResult.user.id, "keepup-sync", 6);

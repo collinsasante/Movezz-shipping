@@ -70,3 +70,24 @@ export async function pgRoute(
     return apiError(err, requestId);
   }
 }
+
+export interface ServiceCtx { actor: ActorAssertion; request: NextRequest; params: Record<string, string>; requestId: string; idempotencyKey: string }
+
+/** For the invoice/payment services, which open their own actor transaction: authenticate, then hand over the verified assertion. */
+export async function pgServiceRoute(request: NextRequest, params: Record<string, string> | Promise<Record<string, string>> | undefined, fn: (c: ServiceCtx) => Promise<Reply>): Promise<Response> {
+  const requestId = randomUUID();
+  try {
+    const a = await pgActorFromRequest(request);
+    if (!a) return Response.json({ success: false, error: "Authentication required" }, { status: 401 });
+    const given = request.headers.get("idempotency-key");
+    const reply = await fn({ actor: { ...a, requestId }, request, params: (await params) ?? {}, requestId, idempotencyKey: given && given.length >= 8 ? given : `ui-${randomUUID()}` });
+    return Response.json(reply.body, { status: reply.status ?? 200, headers: reply.headers });
+  } catch (err) {
+    return apiError(err, requestId);
+  }
+}
+
+/** Runs a read-only block as the verified actor (row-level security and the actor's role apply). */
+export function readAs<T>(actor: ActorAssertion, fn: (tx: PoolClient) => Promise<T>): Promise<T> {
+  return withActorTransaction(getPool(), actor, fn);
+}

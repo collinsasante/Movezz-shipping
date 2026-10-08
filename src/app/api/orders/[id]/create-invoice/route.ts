@@ -4,6 +4,8 @@
 //   Concurrent calls for one order are serialised in-process; see lib/locks.ts for what that does not cover.
 // DELETE /api/orders/[id]/create-invoice — cancel Keepup invoice and clear from order
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/billing";
 import { ordersApi, customersApi, itemsApi, settingsApi } from "@/lib/airtable";
 import { limitUser } from "@/lib/rate-limit";
 import { requireAuth } from "@/lib/auth";
@@ -18,6 +20,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.createInvoicePost(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const limited = limitUser(authResult.user.id, "create-invoice", 10);
@@ -190,6 +193,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isPostgresBackend()) return pg.createInvoiceDelete(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 

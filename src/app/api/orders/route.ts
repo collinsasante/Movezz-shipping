@@ -1,6 +1,8 @@
 // GET  /api/orders  — list orders
 // POST /api/orders  — create order (admin only). Does not touch Keepup; see create-invoice.
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/billing";
 import { ordersApi, itemsApi } from "@/lib/airtable";
 import {
   requireAuth,
@@ -20,6 +22,7 @@ const CreateOrderSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.ordersGet(request);
   const authResult = await requireAuth(request, [
     "super_admin",
     "warehouse_staff",
@@ -59,6 +62,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.ordersPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
