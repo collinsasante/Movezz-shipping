@@ -108,3 +108,26 @@ export function assertSafeTarget(url, confirmHost) {
   }
   return host;
 }
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const PROD_WORDS = /(^|[^a-z])(prod|production|live)([^a-z]|$)/i;
+/**
+ * Stricter guard for operator CLIs that WRITE (migrate, grants, bootstrap admin, purge). Loopback targets pass unchanged. A remote
+ * target must be confirmed three ways (host, exact database name, environment class = staging), must use TLS, and must not look
+ * like production. Production is deliberately NOT reachable through this guard: the production cutover gets its own approved procedure.
+ * @param {{ url: string, confirmHost?: string, confirmDatabase?: string, env?: NodeJS.ProcessEnv }} o
+ * @returns {{ host: string, database: string, local: boolean }}
+ */
+export function assertStagingTarget({ url, confirmHost, confirmDatabase, env = process.env }) {
+  const u = new URL(url);
+  const host = u.hostname.toLowerCase(); const database = decodeURIComponent(u.pathname.replace(/^\//, ""));
+  if (LOOPBACK_HOSTS.has(host)) return { host, database, local: true };
+  const fail = [];
+  if (confirmHost !== host) fail.push(`--confirm-host=${host} is required`);
+  if (!database || confirmDatabase !== database) fail.push("--confirm-database must equal the exact database name");
+  if (env.MOVEZZ_IMPORT_ENVIRONMENT !== "staging") fail.push("MOVEZZ_IMPORT_ENVIRONMENT=staging is required for a remote target");
+  if (PROD_WORDS.test(host) || PROD_WORDS.test(database)) fail.push("the host or database name looks like production");
+  if (!["require", "verify-ca", "verify-full"].includes(u.searchParams.get("sslmode") ?? "")) fail.push("the URL must carry sslmode=require|verify-ca|verify-full (TLS)");
+  if (fail.length) throw new Error(`Refusing remote target "${host}": ${fail.join("; ")}`);
+  return { host, database, local: false };
+}
