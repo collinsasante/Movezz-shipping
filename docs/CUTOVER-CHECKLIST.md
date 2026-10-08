@@ -37,6 +37,10 @@ Labels: VL verified locally · RPV requires production verification · BDR busin
 * **Dead/legacy candidates:** auth/signup and auth/reset-password if registration/Firebase now replace them (owner to confirm).
 * Port only the repository calls; keep the UI and business behaviour; reuse `src/lib/db/*` (ownership, invoices, pricing, registration).
 
+## 3b. Phase 7N status (details and environments in `docs/CUTOVER-EVIDENCE.md`)
+PASS (local / local browser): staff navigation, invoice discount UI, Keepup state display, photo rules, registration, containers, customer login linking.
+BLOCKED: real-export rehearsal (needs an export + staging PostgreSQL), Cloudflare staging test of the deployed bundle (`docs/CLOUDFLARE-STAGING.md`), production secrets/encrypted backups (`docs/SECRETS-AND-BACKUPS.md`), historical-data decision (owner only).
+
 ## 4. BEFORE CUTOVER
 - [x] VL: migrations 0001–0017, importer, reconciliation, rehearsal 1x–10x, backup/restore, identity chain, mock workers, quarantine resolution, production key validation
 - [ ] Port the REQUIRED routes (§3) and re-run the characterization suite against PostgreSQL

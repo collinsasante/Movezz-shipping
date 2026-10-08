@@ -1,6 +1,6 @@
-# Cutover evidence (Phase 7M)
+# Cutover evidence (Phases 7M–7N)
 
-Status vocabulary: **PASS** / **FAIL** / **BLOCKED** / **NOT TESTED**. Environments, strongest first:
+Status vocabulary: **PASS** / **BLOCKED** / **NOT TESTED** / **NOT APPLICABLE** (FAIL if a check failed). Environments used below: *local* (unit tests) · *local PostgreSQL* · *local workerd* · *local browser* (Chromium + the app on the PostgreSQL backend) · *staging PostgreSQL* (none exists) · *Cloudflare staging* (none exists) · *production* (never touched). Environments, strongest first:
 *production* (never touched) · *Cloudflare staging* (none available) · *real Airtable export* (none available) · *staging-like local* (local PostgreSQL 16 + local workerd/Chromium, fictional data, mocked Firebase/e-mail/Keepup) · *unit/route tests*.
 Production remains **not verified**; nothing below was run against production or with production credentials.
 
@@ -49,3 +49,36 @@ Option A: a verified Keepup export carrying invoice and payment provenance (curr
 
 ## Test matrix (this phase)
 PostgreSQL 646/646 · Airtable 661/661 · `tsc` clean · ESLint 0 errors · build compiles. Secret scan of tracked files: only documented placeholders.
+
+
+---
+
+# Phase 7N additions
+
+## Blocker audit (end of 7N)
+| Blocker | Status | Engineering can close it? | Needs owner/business decision? | Needs staging infrastructure? |
+|---|---|---|---|---|
+| Staff navigation shows money/admin entries | **PASS** (local browser) | done | no | no |
+| Invoice discount UI | **PASS** (local unit + local PostgreSQL route tests + local browser build) | done | no (backend rule already approved) | no |
+| Keepup state shown honestly | **PASS** (local browser) — real Keepup **NOT TESTED** (mock only by design) | done for the UI | real-Keepup test needs owner approval | Keepup sandbox |
+| Photo upload rules / ownership | **PASS** (local PostgreSQL); real Cloudinary upload **NOT TESTED** | done | no | Cloudinary staging |
+| Registration → approval; duplicates; no first-user admin | **PASS** (local browser + route tests); activation in a browser **NOT TESTED** (needs a Firebase project) | partly | no | Firebase staging |
+| Container UI | **PASS** (local browser) | done | no | no |
+| Customer login linking | **PASS** (local PostgreSQL) | done | owner defines the out-of-band ownership check | no |
+| Real Airtable-export rehearsal | **BLOCKED** | procedure + safety checks ready | **yes: supply and approve an export** | a staging PostgreSQL |
+| Cloudflare Workers → PostgreSQL (real bundle) | **BLOCKED** | prepared (env lookup, Hyperdrive fallback, staging config); not deployable here | account/approval to create a staging project | **yes** |
+| Production secrets / encrypted backups / restore host | **BLOCKED** (requirements verified locally) | tooling done | storage and custodians | **yes** |
+| Historical data (Option A / B) | **BLOCKED — owner only** | no | **yes** | no |
+
+## 7N results
+* **Staff navigation — PASS (local browser).** Staff see Dashboard, Customers, Items, Containers, Repacking, Sorting, Settings; no Invoices/Staff/Reports (sidebar and mobile bar). `src/lib/nav.ts` + `tests/unit/nav.test.ts` (fails closed while the role is unknown). Security is unchanged: the API still answers 403 to direct calls. Note for Airtable mode: this navigation change ships only when this branch is deployed.
+* **Invoice discount UI — PASS (local).** Only a super_admin sees the control (USD, reason required once > 0, subtotal/discount/total shown, helper `src/lib/discount.ts`); the server stays authoritative. Tests: `tests/unit/discount.test.ts` (no discount, valid, no reason, non-admin, larger than subtotal, equal to subtotal) and `tests/db/pg-routes-billing.test.ts` (server: reason missing → 422, too large → ≥400, negative → 400, staff → 403, issued discount cannot be edited → 409; a fully discounted invoice is checked against the locked zero-total rule).
+* **Keepup UI — PASS (local browser, mock only).** An issued invoice shows "Synchronisation: waiting to be sent / No Keepup sale exists yet"; *Create Invoice* answers 202 and the screen says "Queued for Keepup", never "created"; no Sale ID is shown until the worker has one; only a super_admin may request or retry. Failed and needs-reconciliation labels are rendered from the same field (route tests cover the states); real Keepup **NOT TESTED**.
+* **Photo upload — PASS (local PostgreSQL).** `tests/db/pg-routes-photos.test.ts`: signing needs staff/admin (401/403), folder traversal refused, only https + allowed hosts stored, customers cannot attach, the owner sees the photos, another customer gets 404/empty, replacement archives (not deletes), >20 refused. Cloudinary is mocked; **no Cloudinary call was made**. A real browser upload **NOT TESTED**.
+* **Registration — PASS (local browser).** Public form → "Request Received"; the request is pending, no customer/login exists; admin *Approve* creates the customer with a generated mark and **no login**; a repeated request creates no second customer; exactly one super_admin remains. Activation with a real Firebase identity **NOT TESTED** (route tests exist, 7G).
+* **Containers — PASS (local browser).** Five simultaneous creations → five distinct consecutive `PMX-CON-YYYY-NNN`; create via the form (container number vs. shipping line verified); Add Item dialog; an item in one container cannot join another; remove + move works; status change cascades advance-only; staff view but cannot create; customers get 403 and are redirected; a container with items cannot be deleted, an empty one is archived.
+* **Customer login linking — PASS (local PostgreSQL).** 15 cases in `tests/db/pg-routes-identity.test.ts`: valid link, unverified identity, non-super_admin (staff and the customer's own token), unknown customer, identity already linked elsewhere (409), same identity again (200, no change), different identity for a linked customer (409), inactive customer (409), failed Firebase lookup (409, nothing linked), caller-supplied owner/extra keys (400), audit row, and the customer can then sign in.
+* **Export rehearsal — BLOCKED.** Still no export. Added: `db-import.mjs fingerprint` and `--expect-fingerprint` (`tests/db/import-fingerprint.test.ts`), a runbook `docs/STAGING-REHEARSAL-RUNBOOK.md` covering receive-outside-repo → fingerprint → fresh staging DB → migrate → dry-run → quarantine review → import → reconcile → repeat → backup → restore → reconcile, and the safeguards that keep an export away from production.
+* **Cloudflare — BLOCKED.** No staging project, credentials or staging PostgreSQL exist here, so nothing was deployed and production Cloudflare was not contacted. Found and fixed a second Workers problem besides the pool: `process.env` is not reliably populated on this compatibility date, so `MOVEZZ_DATA_BACKEND`, `DATABASE_URL`, `ACTOR_CONTEXT_KEY` etc. are now also read from the Worker context (`src/lib/env.ts`, unit-tested), with an optional `HYPERDRIVE` binding. `docs/CLOUDFLARE-STAGING.md` has the exact prerequisites and procedure; `open-next.staging.config.ts` (workerd condition on) and `wrangler.staging.toml` are staging-only and do not alter the live build. **Worker runtime / OpenNext configuration / PostgreSQL connectivity / authenticated route of the deployed bundle: NOT TESTED.**
+* **Secrets and backups — BLOCKED for production, PASS for the checkable parts (local).** `docs/SECRETS-AND-BACKUPS.md`. No secret in tracked files or client bundles; logs redact; signing keys excluded from dumps; import key separate; bootstrap explicit. Encrypted backup storage, the production secret store and a production-host restore: **NOT TESTED**.
+* **Historical data — BLOCKED, owner only.** Unchanged: Option A (verified Keepup export with invoice/payment provenance) or Option B (leave unverifiable history in the Airtable archive; PostgreSQL authoritative from cutover). Nothing reconstructed.
