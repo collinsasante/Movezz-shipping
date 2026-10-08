@@ -12,8 +12,17 @@ export interface Queryable {
 
 let pool: Pool | undefined;
 
-export function createPool(connectionString: string, opts: { max?: number; ssl?: boolean } = {}): Pool {
+/** True inside a Cloudflare Worker. */
+export function isWorkersRuntime(userAgent: string | undefined = typeof navigator !== "undefined" ? navigator.userAgent : undefined): boolean {
+  return userAgent === "Cloudflare-Workers";
+}
+
+export function createPool(connectionString: string, opts: { max?: number; ssl?: boolean; workers?: boolean } = {}): Pool {
+  // A Worker may not reuse an I/O object (a TCP connection) created in another request: a pooled connection used by the next request hangs the
+  // Worker (reproduced in workerd, scripts/cf-pg-probe). So on Workers no connection outlives its checkout; elsewhere pooling is unchanged.
+  const perRequest = opts.workers ?? isWorkersRuntime();
   return new Pool({
+    ...(perRequest ? { maxUses: 1, idleTimeoutMillis: 1 } : {}),
     connectionString,
     max: opts.max ?? 10,
     ssl: opts.ssl ? { rejectUnauthorized: true } : undefined, // production: TLS with certificate verification

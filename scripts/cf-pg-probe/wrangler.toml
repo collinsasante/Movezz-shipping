@@ -1,0 +1,5 @@
+# Staging-only probe Worker. Never deploy with production values. Local run:  DATABASE_URL=... npm run cf:probe
+name = "movezz-pg-probe-staging"
+main = "worker.mjs"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
