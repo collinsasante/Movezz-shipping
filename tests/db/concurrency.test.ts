@@ -1,7 +1,7 @@
 // Concurrency: every test fires real parallel requests on separate connections against one PostgreSQL database.
 // No sleeps and no retries: correctness comes from row locks, unique indexes and transactions.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, type TestDb } from "./helpers";
+import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, pricedItem, type TestDb } from "./helpers";
 import { createInvoice, recordPayment } from "../../src/lib/db/invoices";
 import { user } from "../../src/lib/db/actor";
 import { allocateReference, allocateContainerReference } from "../../src/lib/db/references";
@@ -68,7 +68,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   });
 
   it("simultaneous payments: 10 requests of GHS 30 against a GHS 100 balance -> exactly 3 succeed, 7 are overpayments, paid = 90.00", async () => {
-    const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "8.00" }); // 8 x 12.5 = 100.00
+    const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "8.00"); // 8 x 12.5 = 100.00
     const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     expect(invoice.total_ghs).toBe("100.00");
     const r = await settle(Array.from({ length: 10 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "30.00", actor: user(actor), idempotencyKey: key() })));
@@ -80,7 +80,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   });
 
   it("simultaneous payments that exactly settle the invoice all succeed and the invoice ends Paid with balance 0", async () => {
-    const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "8.00" });
+    const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "8.00");
     const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     const r = await settle(Array.from({ length: 4 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "25.00", actor: user(actor), idempotencyKey: key() })));
     expect(r.ok).toHaveLength(4);
@@ -91,7 +91,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   });
 
   it("the same payment idempotency key sent 12 times in parallel records exactly one payment", async () => {
-    const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "8.00" });
+    const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "8.00");
     const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     const k = key();
     const r = await settle(Array.from({ length: 12 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "40.00", actor: user(actor), idempotencyKey: k })));

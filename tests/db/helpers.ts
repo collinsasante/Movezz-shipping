@@ -185,3 +185,14 @@ export function actorQuery(pool: pg.Pool, actor: ActorAssertion = { type: "impor
     },
   };
 }
+
+/**
+ * An item whose AUTHORITATIVE price (basic-tier air rate 8.00 USD/kg, see packageRates()) is exactly `usd`: weight = usd / 8.
+ * Invoice creation recomputes prices from the rate tables, so fixtures must be consistent with them.
+ */
+export async function pricedItem(db: Q, customerId: string, usd: string | number, over: Record<string, unknown> = {}) {
+  const kg = (Number(usd) / 8).toFixed(3);
+  const price = (Math.round(Number(kg) * 8 * 100) / 100).toFixed(2);
+  if (Number(price) !== Number(usd)) throw new Error(`pricedItem: ${usd} is not reachable at 8.00 USD/kg (got ${price})`);
+  return item(db, customerId, { freight_type: "air", weight_kg: kg, length: null, width: null, height: null, tier_rate_usd: 8, tier_price_usd: price, ...over });
+}

@@ -73,7 +73,7 @@ dbDescribe("special rates (PostgreSQL)", () => {
 
   it("an unknown card id is rejected", async () => {
     const c = await customer(db.admin);
-    expect(await code(price(db, await bare(db, c), "00000000-0000-0000-0000-00000000dead"))).toBe("SPECIAL_RATE_NOT_APPLICABLE");
+    expect(await code(price(db, await bare(db, c), "00000000-0000-0000-0000-00000000dead"))).toBe("SPECIAL_RATE_NOT_FOUND");
   });
 
   it("the database refuses an inapplicable card even if SQL bypasses the service (insert and update)", async () => {
@@ -134,6 +134,6 @@ dbDescribe("special rates (PostgreSQL)", () => {
 
   it("with no active tier rate pricing fails with a controlled error instead of guessing", async () => {
     const c = await customer(db.admin, { tier: "enterprise" });
-    expect(await code(price(db, await bare(db, c)))).toBe("INVALID_INPUT");
+    expect(await code(price(db, await bare(db, c)))).toBe("PRICING_NOT_FOUND");
   });
 });

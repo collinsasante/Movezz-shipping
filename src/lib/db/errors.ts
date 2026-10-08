@@ -12,6 +12,12 @@ export type DomainErrorCode =
   | "IDEMPOTENCY_CONFLICT"
   | "DUPLICATE"
   | "ACTOR_INVALID"
+  | "PRICING_NOT_FOUND"
+  | "PRICING_INVALID"
+  | "SPECIAL_RATE_NOT_FOUND"
+  | "DISCOUNT_NOT_AUTHORIZED"
+  | "DISCOUNT_INVALID"
+  | "FX_RATE_INVALID"
   | "INTEGRITY";
 
 export class DomainError extends Error {
@@ -29,6 +35,10 @@ const SQLSTATE_MAP: Record<string, DomainErrorCode> = {
   MV005: "INVALID_STATE",
   MV006: "INVALID_INPUT",
   MV007: "ACTOR_INVALID", // no/unknown/inactive/forged/replayed actor
+  MV008: "DISCOUNT_NOT_AUTHORIZED", // discount by anyone but a super_admin
+  MV009: "PRICING_NOT_FOUND", // no applicable authoritative rate / item / tier
+  MV010: "PRICING_INVALID", // zero, negative, missing basis, or a line that disagrees with the authoritative price
+  MV011: "FX_RATE_INVALID", // invoice FX is not the current authoritative USD->GHS rate
   "23505": "DUPLICATE", // unique_violation
   "23503": "INTEGRITY", // foreign_key_violation
   "23514": "INTEGRITY", // check_violation

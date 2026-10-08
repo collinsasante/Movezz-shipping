@@ -6,14 +6,15 @@ import { withActorTransaction, currentActorId, type ActorAssertion } from "./act
 import { recordAudit, recordStatusEvent } from "./audit";
 import { DomainError } from "./errors";
 import { allocateReference } from "./references";
+import { assertNoClientFinancials } from "./pricing";
 import { beginIdempotent, completeIdempotent, fingerprint } from "./idempotency";
 
 export interface CreateInvoiceInput {
   customerId: string;
   itemIds?: string[];               // loose items (not in a carton)
   cartonIds?: string[];             // open cartons; their member items are billed through the carton line
-  discountUsd?: string;             // decimal string, default "0"
-  discountReason?: string;          // required by the database when discountUsd > 0 (authorization is Phase 7D)
+  discountUsd?: string;             // decimal string, default "0". Only a super_admin (database role of the verified actor) may use it.
+  discountReason?: string;          // required (non-blank) when discountUsd > 0; frozen on the invoice
   invoiceDate?: string;             // YYYY-MM-DD
   notes?: string;
   /** The authenticated actor from the server auth layer (never request input). Verified by PostgreSQL. */
@@ -35,12 +36,20 @@ type Line = {
 
 const uniq = (xs: string[]) => [...new Set(xs)];
 
+/**
+ * Creates an invoice. Every money value is computed here from authoritative database data; the caller supplies only WHAT to bill
+ * (items/cartons), an optional discount (super_admin only) with its reason, and metadata. Prices, billing basis, special rates,
+ * subtotal, FX and totals cannot be supplied (assertNoClientFinancials rejects them) and the database re-validates them.
+ */
 export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promise<{ invoice: InvoiceRow; replayed: boolean }> {
+  assertNoClientFinancials(input, "createInvoice");
   const itemIds = uniq(input.itemIds ?? []).sort();
   const cartonIds = uniq(input.cartonIds ?? []).sort();
   if (itemIds.length + cartonIds.length === 0) throw new DomainError("INVALID_INPUT", "An invoice needs at least one item or carton");
   const discount = input.discountUsd ?? "0";
-  if (!/^\d+(\.\d{1,2})?$/.test(discount)) throw new DomainError("INVALID_INPUT", "Discount must be a non-negative amount with at most 2 decimals");
+  if (!/^\d+(\.\d{1,2})?$/.test(discount)) throw new DomainError("DISCOUNT_INVALID", "Discount must be a non-negative amount with at most 2 decimals");
+  const discounted = Number(discount) > 0;
+  if (discounted && !/\S/.test(input.discountReason ?? "")) throw new DomainError("DISCOUNT_INVALID", "A discount needs a reason");
 
   const requestHash = fingerprint({ c: input.customerId, i: itemIds, k: cartonIds, d: discount, r: input.discountReason ?? null, date: input.invoiceDate ?? null, n: input.notes ?? null });
 
@@ -50,6 +59,12 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
     if (idem.state === "replay") {
       const inv = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [idem.resultEntityId])).rows[0];
       return { invoice: inv, replayed: true };
+    }
+
+    // discount authority (D16): decided from the DATABASE role of the verified actor, never from the request. The invoice
+    // trigger (0011) enforces the same rule for any other path.
+    if (discounted && (await tx.query<{ r: string | null }>("SELECT movezz_sec.actor_role() AS r")).rows[0].r !== "super_admin") {
+      throw new DomainError("DISCOUNT_NOT_AUTHORIZED", "Only a super_admin may grant a discount");
     }
 
     // 1. ownership + state: lock the rows and require every one to belong to the customer and be uninvoiced
@@ -69,21 +84,43 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
       : [];
     if (cartons.length !== cartonIds.length) throw new DomainError("INVALID_INPUT", "Every carton must exist, belong to the customer and be open");
 
-    // 2. pricing comes from the stored server-side snapshots; an unpriced item cannot be invoiced
+    // 2. pricing is recomputed HERE by PostgreSQL (item_authoritative_price) in one statement, so every line comes from one
+    //    consistent set of rate rows. The item must already have been priced by staff (D5: unpriced items are never invoiced);
+    //    its staff-selected special card is re-validated now and never silently replaced by the tier price.
     const lines: Line[] = [];
     for (const it of items) {
-      const special = it.billing_basis === "special";
-      const price = special ? it.special_price_usd : it.tier_price_usd;
-      if (price === null) throw new DomainError("ITEM_UNPRICED", `Item ${it.item_ref} has no price`);
-      lines.push({
-        item_id: it.id, carton_id: null, description: it.description || it.item_ref, unit: String(price), basis: it.billing_basis,
-        tier: it.package_tier, rate: String(special ? it.special_rate_usd : it.tier_rate_usd),
-        special_rate_id: special ? it.special_rate_id : null, special_rate_name: special ? it.special_rate_name : null,
-        metadata: { item_ref: it.item_ref, tracking_number: it.tracking_number, cbm_total: it.cbm_total },
-      });
+      const stored = it.billing_basis === "special" ? it.special_price_usd : it.tier_price_usd;
+      if (stored === null || it.freight_type === null) throw new DomainError("ITEM_UNPRICED", `Item ${it.item_ref} has no price`);
+    }
+    if (items.length) {
+      const fresh = (await tx.query(
+        `SELECT x.id, p.* FROM unnest($1::uuid[], $2::uuid[]) AS x(id, card), LATERAL item_authoritative_price(x.id, x.card) p`,
+        [items.map((i) => i.id), items.map((i) => (i.billing_basis === "special" ? i.special_rate_id : null))])).rows;
+      const byId = new Map(fresh.map((r) => [r.id as string, r]));
+      for (const it of items) {
+        const p = byId.get(it.id);
+        if (!p) throw new DomainError("PRICING_NOT_FOUND", `No authoritative price for item ${it.item_ref}`);
+        const special = p.billing_basis === "special";
+        const changed = String(it.tier_price_usd) !== String(p.tier_price_usd) || (special && String(it.special_price_usd) !== String(p.special_price_usd)) || it.billing_basis !== p.billing_basis;
+        if (changed) {
+          await tx.query(
+            `UPDATE items SET package_tier = $2, tier_rate_usd = $3, tier_price_usd = $4, billing_basis = $5,
+                    special_rate_id = $6, special_rate_name = $7, special_rate_usd = $8, special_price_usd = $9 WHERE id = $1`,
+            [it.id, p.package_tier, p.tier_rate_usd, p.tier_price_usd, p.billing_basis, p.special_rate_id, p.special_rate_name, p.special_rate_usd, p.special_price_usd]);
+          await recordAudit(tx, { action: "item.reprice", entityType: "item", entityId: it.id, request: input.request,
+            before: { tier_price_usd: String(it.tier_price_usd), special_price_usd: it.special_price_usd === null ? null : String(it.special_price_usd) },
+            after: { billing_basis: p.billing_basis, tier_price_usd: String(p.tier_price_usd), special_price_usd: special ? String(p.special_price_usd) : null, reason: "repriced at invoicing" } });
+        }
+        lines.push({
+          item_id: it.id, carton_id: null, description: it.description || it.item_ref, unit: String(special ? p.special_price_usd : p.tier_price_usd), basis: p.billing_basis,
+          tier: p.package_tier, rate: String(special ? p.special_rate_usd : p.tier_rate_usd),
+          special_rate_id: special ? p.special_rate_id : null, special_rate_name: special ? p.special_rate_name : null,
+          metadata: { item_ref: it.item_ref, tracking_number: it.tracking_number, cbm_total: it.cbm_total },
+        });
+      }
     }
     for (const c of cartons) {
-      if (c.price_usd === null) throw new DomainError("ITEM_UNPRICED", `Carton ${c.carton_ref} has no price`);
+      if (c.price_usd === null || Number(c.price_usd) <= 0) throw new DomainError("ITEM_UNPRICED", `Carton ${c.carton_ref} has no price`);
       lines.push({
         item_id: null, carton_id: c.id, description: `Carton ${c.carton_ref}`, unit: String(c.price_usd), basis: c.pricing_basis,
         tier: c.package_tier, rate: c.rate_usd === null ? null : String(c.rate_usd), special_rate_id: null, special_rate_name: null,
@@ -92,10 +129,11 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
     }
 
     // 3. freeze FX (raises FX_RATE_MISSING; never defaults) and the money totals, all in NUMERIC
-    const fx = (await tx.query("SELECT id, rate FROM current_fx_rate('USD', 'GHS', now())")).rows[0];
+    const fx = (await tx.query("SELECT id, rate FROM current_fx_rate('USD', 'GHS', now())")).rows[0]; // MV001 -> FX_RATE_MISSING; never defaults
+    if (!(Number(fx.rate) >= 0.1 && Number(fx.rate) <= 1000)) throw new DomainError("FX_RATE_INVALID", "The configured USD->GHS rate is outside the accepted range");
     const subtotal = (await tx.query<{ s: string }>("SELECT coalesce(sum(p), 0)::text AS s FROM unnest($1::numeric[]) p", [lines.map((l) => l.unit)])).rows[0].s;
     if ((await tx.query<{ bad: boolean }>("SELECT $1::numeric > $2::numeric AS bad", [discount, subtotal])).rows[0].bad) {
-      throw new DomainError("INVALID_INPUT", "The discount cannot exceed the invoice subtotal");
+      throw new DomainError("DISCOUNT_INVALID", "The discount cannot exceed the invoice subtotal");
     }
 
     // 4. everything below is the same transaction
@@ -132,6 +170,11 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
       action: "invoice.create", entityType: "invoice", entityId: inv.id, request: input.request,
       after: { invoice_ref: ref, customer_id: input.customerId, subtotal_usd: subtotal, discount_usd: discount, fx_rate: String(fx.rate), total_ghs: inv.total_ghs, lines: lines.length },
     });
+    if (discounted) {
+      // the reason is part of the immutable invoice snapshot AND of the audit trail; the actor is the verified super_admin
+      await recordAudit(tx, { action: "invoice.discount", entityType: "invoice", entityId: inv.id, request: input.request,
+        after: { discount_usd: discount, discount_reason: input.discountReason, subtotal_usd: subtotal, invoice_ref: ref } });
+    }
     // Keepup is created later by a worker from this row (never inline): the state machine starts at 'pending'.
     // A zero-total invoice is Movezz-only (docs/DECISIONS.md A2): no Keepup sale, sync state 'not_required'.
     await tx.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key, sync_state) VALUES ('invoice', $1, $2, $3)`,

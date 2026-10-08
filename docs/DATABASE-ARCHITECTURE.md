@@ -332,6 +332,57 @@ Run `prune_actor_sessions()` periodically (spent assertions older than 7 days). 
   item pricing, status changes by triggers). Customer, item, carton, container, registration, rate, FX and user mutation
   services do not exist yet; each must call `withActorTransaction` + `recordAudit` when built (7D–7G).
 
+## 13c. Authoritative pricing and discount authority (Phase 7D, migration 0011)
+
+**Who decides what.** The client says *what* to bill (item/carton ids, an optional discount with a reason, notes) and *which*
+special card staff chose when pricing an item. The server and PostgreSQL decide everything monetary. `createInvoice` and
+`priceItem` reject (they do not ignore) any caller-supplied unit price, rate, billing basis, special price, subtotal, total,
+FX rate/row or role (`assertNoClientFinancials`).
+
+**Single definition of price: `item_authoritative_price(item, card?)` (SQL).** Tier = the customer's package tier + the active
+`package_rates` row for the item's freight type (`package_rates_no_overlap` guarantees at most one). Sea = CBM x quantity x rate,
+air = kg x quantity x rate, rounded once to 2 decimals. A special price exists only when a card id is passed and
+`resolve_special_rate` accepts it (exists, active, effective window, global or this customer's, has a *positive* rate for this
+freight type); there is no fallback to another freight's rate or to the tier price. Missing rate/tier -> `PRICING_NOT_FOUND`;
+zero/negative/missing measurement or a price that rounds to 0 -> `PRICING_INVALID`; bad card -> `SPECIAL_RATE_NOT_FOUND` /
+`SPECIAL_RATE_NOT_APPLICABLE`. The function takes `FOR SHARE` locks on the rate rows it uses, so a concurrent rate edit waits for
+the invoice transaction (no invoice mixes two rate versions). TypeScript holds no rate or formula.
+
+**Invoice creation flow** (one transaction, one verified actor): idempotency -> discount authority -> lock + ownership of
+items/cartons -> items must already be priced (D5, `ITEM_UNPRICED`) -> *all* items re-priced in one statement from the
+authoritative function (the staff-selected card is re-validated; if it is no longer valid the invoice fails rather than falling
+back to tier) -> changed snapshots are written back and audited (`item.reprice`) -> FX from `current_fx_rate` (never defaulted)
+-> subtotal, discount check, `round((subtotal - discount) x fx, 2)` in NUMERIC -> header, lines, status, `invoice.create` (+
+`invoice.discount`) audit, Keepup state (`not_required` for a zero total), outbox. This also implements Addendum A: a re-invoice
+after a cancellation prices at the current rates. Cartons keep their stored `price_usd`/basis until the carton service exists
+(later phase); the line must equal it and be positive.
+
+**Discount authority.** Only a `super_admin` may discount (D16). The check uses the *database role of the verified actor*
+(`movezz_sec.actor_role()`, read from `users` by `begin_actor` in this transaction), never a request field. It is enforced in
+TypeScript (`DISCOUNT_NOT_AUTHORIZED`) and again by the `invoices_pricing_authority` trigger (`MV008`) for every other path:
+staff, customers, `system`, `integration` and even the `import` actor are refused for native invoices. The reason (non-blank
+when discount > 0) is part of the frozen invoice snapshot, and `invoice.discount` is audited with actor, amount, reason, subtotal.
+
+**Database backstops (direct SQL cannot bypass).** On native invoices: `fx_rate` must equal the referenced active USD->GHS row and
+that row must be the *current* one (`MV011`); every item line must equal `item_authoritative_price` (basis, rate, tier, card,
+unit price; `MV010`); lines must sum to the subtotal (existing deferred check); the snapshot columns are immutable after insert
+(existing `invoices_guard`, `invoice_lines` append-only, items frozen while on a live invoice). Non-native (historical) provenance,
+which relaxes those rules, can only be written by the `import` actor (`MV006`).
+
+**`users` is read-only for the runtime role** (except `full_name`, `last_login_at`): INSERT, DELETE and writes to
+`role`, `is_active`, `customer_id`, `auth_uid` were revoked, because discount authority depends on `users.role`. User/registration
+services must later be SECURITY DEFINER functions (Phase 7F).
+
+**Limitations (not hidden).**
+* The application server holds the actor signing key (7C) and the runtime role can still edit rate tables (`package_rates`,
+  `special_rates`, `fx_rates`) and item descriptive/measurement columns: *who may change rates and measurements* is the
+  staff-permission matrix (7F). Pricing is recomputed from whatever those tables say at invoicing time.
+* An FX rate that changes between the service reading it and the insert makes the invoice fail with `FX_RATE_INVALID`
+  (retry-safe through the idempotency key). Package/special rate edits cannot slip in between pricing and the line insert: the
+  share locks make the editor wait.
+* Carton prices are not recomputed (no carton service yet). Item *staff selection* of a card is a stored `special_rate_id`;
+  pricing UI/permissions are later phases.
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |

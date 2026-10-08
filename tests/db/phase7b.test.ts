@@ -5,7 +5,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  dbDescribe, createTestDb, createBareTestDb, customer, item, carton, staffUser, fxRate, packageRates, specialRate, sqlstate, actorQuery, type TestDb,
+  dbDescribe, createTestDb, createBareTestDb, customer, item, carton, staffUser, fxRate, packageRates, specialRate, sqlstate, actorQuery, pricedItem, type TestDb,
 } from "./helpers";
 import { createInvoice, recordPayment, cancelInvoice } from "../../src/lib/db/invoices";
 import { priceItem } from "../../src/lib/db/pricing";
@@ -85,17 +85,20 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
       expect(await sqlstate(carton(db.admin, c, { rate_usd: 0 }))).toBe("23514");
       expect(await sqlstate(db.admin.query("INSERT INTO package_rates (tier, freight_type, rate_usd, is_active) VALUES ('enterprise','air',0,false)"))).toBe("23514");
       const { invoice } = await (async () => { const i = await item(db.admin, c); return createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() }); })();
-      expect(await sqlstate(db.admin.query(`INSERT INTO invoice_lines (invoice_id, line_no, description, unit_price_usd, line_total_usd, billing_basis) VALUES ($1,9,'x',0,0,'tier')`, [invoice.id]))).toBe("23514");
+      // on a native invoice the pricing guard refuses it first; the CHECK constraint itself is exercised on a historical (import) invoice
+      expect(await sqlstate(db.admin.query(`INSERT INTO invoice_lines (invoice_id, line_no, description, unit_price_usd, line_total_usd, billing_basis) VALUES ($1,9,'x',0,0,'tier')`, [invoice.id]))).toBe("MV010");
+      const legacy = (await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs, provenance, legacy_airtable_id) VALUES ('ORD-ZL1',$1,10,12.5,125,'legacy_known','recZL1') RETURNING id`, [c])).rows[0].id;
+      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoice_lines (invoice_id, line_no, description, unit_price_usd, line_total_usd, billing_basis, provenance) VALUES ($1,1,'x',0,0,'tier','legacy_known')`, [legacy]))).toBe("23514");
     });
     it("a native invoice needs a positive subtotal; imported (non-native) history may carry zero with provenance", async () => {
       const c = await customer(db.admin);
-      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-Z1',$1,0,12.5,0)`, [c]))).toBe("23514");
-      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs, provenance, legacy_airtable_id) VALUES ('ORD-Z2',$1,0,12.5,0,'legacy_known','recZ2')`, [c]);
+      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-Z1',$1, (SELECT id FROM current_fx_rate()),0,12.5,0)`, [c]))).toBe("23514");
+      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs, provenance, legacy_airtable_id) VALUES ('ORD-Z2',$1, (SELECT id FROM current_fx_rate()),0,12.5,0,'legacy_known','recZ2')`, [c]);
     });
-    it("pricing an item that evaluates to zero is refused by the database backstop (the friendly error is Phase 7D)", async () => {
+    it("pricing an item that evaluates to zero is refused with PRICING_INVALID and writes nothing", async () => {
       const c = await customer(db.admin);
       const zero = await item(db.admin, c, { package_tier: null, tier_rate_usd: null, tier_price_usd: null, length: 0, width: 0, height: 0 });
-      expect(await code(withActorTransaction(db.app, user(actor), (tx) => priceItem(tx, zero)))).toBe("INTEGRITY");
+      expect(await code(withActorTransaction(db.app, user(actor), (tx) => priceItem(tx, zero)))).toBe("PRICING_INVALID");
       expect((await db.admin.query("SELECT tier_price_usd FROM items WHERE id=$1", [zero])).rows[0].tier_price_usd).toBeNull();
     });
   });
@@ -140,7 +143,8 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
 
   describe("D16 / A3 discount reason (required only when the discount is above zero)", () => {
     const insert = (c: string, ref: string, discount: number, reason: string | null) =>
-      actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs) VALUES ($1,$2,100,$3::numeric,$4,12.5,round((100-$3::numeric)*12.5,2))`, [ref, c, discount, reason]);
+      // discounts are a super_admin-only act (Phase 7D): the raw insert runs under a verified super_admin actor
+      actorQuery(db.admin, user(actor)).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs) VALUES ($1,$2,(SELECT id FROM current_fx_rate()),100,$3::numeric,$4,12.5,round((100-$3::numeric)*12.5,2))`, [ref, c, discount, reason]);
     it("accepts discount 0 with NULL reason, and a positive discount with a real reason", async () => {
       const c = await customer(db.admin);
       expect(await sqlstate(insert(c, "ORD-R1", 0, null))).toBe("OK");
@@ -166,20 +170,20 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
       const c = await customer(db.admin); const i = await item(db.admin, c); const i2 = await item(db.admin, c);
       const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], discountUsd: "50.00", discountReason: "Approved promotional discount", actor: user(actor), idempotencyKey: key() });
       expect((await db.admin.query("SELECT discount_reason FROM invoices WHERE id=$1", [invoice.id])).rows[0].discount_reason).toBe("Approved promotional discount");
-      expect(await code(createInvoice(db.app, { customerId: c, itemIds: [i2], discountUsd: "50.00", actor: user(actor), idempotencyKey: key() }))).toBe("INTEGRITY");
+      expect(await code(createInvoice(db.app, { customerId: c, itemIds: [i2], discountUsd: "50.00", actor: user(actor), idempotencyKey: key() }))).toBe("DISCOUNT_INVALID");
     });
   });
 
   describe("D4 / A2 zero-value invoices", () => {
     it("a 100% discount gives a zero-value invoice that is Paid, has no payment, keeps its lines and history, and is Movezz-only", async () => {
-      const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "100.00" });
+      const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "100.00");
       const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], discountUsd: "100.00", discountReason: "Approved promotional waiver by management", actor: user(actor), idempotencyKey: key() });
       expect(invoice).toMatchObject({ status: "Paid", subtotal_usd: "100.00", discount_usd: "100.00", total_usd: "0.00", total_ghs: "0.00", amount_paid_ghs: "0.00", balance_ghs: "0.00", fx_rate: "12.50000000" });
       expect(invoice.invoice_ref).toMatch(/^ORD-\d{5}$/);
       expect((await db.admin.query("SELECT count(*)::int AS n FROM payments WHERE invoice_id=$1", [invoice.id])).rows[0].n).toBe(0);
       expect((await db.admin.query("SELECT count(*)::int AS n FROM invoice_lines WHERE invoice_id=$1", [invoice.id])).rows[0].n).toBe(1);
       expect((await db.admin.query("SELECT old_status, new_status FROM status_events WHERE entity_type='invoice' AND entity_id=$1", [invoice.id])).rows).toEqual([{ old_status: null, new_status: "Paid" }]);
-      expect((await db.admin.query("SELECT action, after_data->>'total_ghs' AS t FROM audit_logs WHERE entity_id=$1", [invoice.id])).rows).toEqual([{ action: "invoice.create", t: "0.00" }]);
+      expect((await db.admin.query("SELECT action, after_data->>'total_ghs' AS t FROM audit_logs WHERE entity_id=$1 AND action='invoice.create'", [invoice.id])).rows).toEqual([{ action: "invoice.create", t: "0.00" }]);
       expect((await db.admin.query("SELECT sync_state, kind FROM keepup_sync WHERE invoice_id=$1", [invoice.id])).rows).toEqual([{ sync_state: "not_required", kind: "invoice" }]);
     });
     it("no payment can be recorded on it (no fake or real payment: it is already settled)", async () => {
@@ -191,14 +195,14 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
     });
     it("the database settles any zero-total invoice itself and refuses a zero-total invoice that is Pending/Partial", async () => {
       const c = await customer(db.admin);
-      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs) VALUES ('ORD-ZV1',$1,100,100,'waiver',12.5,0)`, [c]);
+      await actorQuery(db.admin, user(actor)).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs) VALUES ('ORD-ZV1',$1, (SELECT id FROM current_fx_rate()),100,100,'waiver',12.5,0)`, [c]);
       expect((await db.admin.query("SELECT status FROM invoices WHERE invoice_ref='ORD-ZV1'")).rows[0].status).toBe("Paid");
-      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs, status) VALUES ('ORD-ZV2',$1,100,100,'waiver',12.5,0,'Partial')`, [c]))).toBe("23514");
+      expect(await sqlstate(actorQuery(db.admin, user(actor)).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs, status) VALUES ('ORD-ZV2',$1, (SELECT id FROM current_fx_rate()),100,100,'waiver',12.5,0,'Partial')`, [c]))).toBe("23514");
     });
     it("Keepup state: not_required is valid only for zero-total invoices, and a zero-total invoice cannot be queued for Keepup", async () => {
       const c = await customer(db.admin);
-      const zero = (await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs) VALUES ('ORD-ZV3',$1,100,100,'waiver',12.5,0) RETURNING id`, [c])).rows[0].id;
-      const paid = (await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-ZV4',$1,100,12.5,1250) RETURNING id`, [c])).rows[0].id;
+      const zero = (await actorQuery(db.admin, user(actor)).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, discount_usd, discount_reason, fx_rate, total_ghs) VALUES ('ORD-ZV3',$1, (SELECT id FROM current_fx_rate()),100,100,'waiver',12.5,0) RETURNING id`, [c])).rows[0].id;
+      const paid = (await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-ZV4',$1, (SELECT id FROM current_fx_rate()),100,12.5,1250) RETURNING id`, [c])).rows[0].id;
       expect(await sqlstate(db.admin.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key) VALUES ('invoice',$1,'k-zero-1')`, [zero]))).toBe("MV005");
       expect(await sqlstate(db.admin.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key, sync_state) VALUES ('invoice',$1,'k-pos-1','not_required')`, [paid]))).toBe("MV005");
       expect(await sqlstate(db.admin.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key, sync_state) VALUES ('invoice',$1,'k-zero-2','not_required')`, [zero]))).toBe("OK");
@@ -249,7 +253,7 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
     it("a frozen invoice rate outside the bounds is refused, estimated or not", async () => {
       const c = await customer(db.admin);
       for (const rate of [0.05, 2000]) {
-        expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs, fx_estimated, provenance, provenance_note) VALUES ('ORD-F1',$1,100,$2::numeric,round(100*$2::numeric,2),true,'estimated','x')`, [c, rate])), String(rate)).toBe("23514");
+        expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs, fx_estimated, provenance, provenance_note) VALUES ('ORD-F1',$1, (SELECT id FROM current_fx_rate()),100,$2::numeric,round(100*$2::numeric,2),true,'estimated','x')`, [c, rate])), String(rate)).toBe("23514");
       }
     });
   });
@@ -258,7 +262,7 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
     it("estimated/ambiguous values need an explanation; fx_estimated requires a non-native provenance", async () => {
       const c = await customer(db.admin);
       const inv = (prov: string, note: string | null, est: boolean, ref: string) =>
-        actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs, fx_estimated, provenance, provenance_note) VALUES ($1,$2,100,12.5,1250,$3,$4,$5)`, [ref, c, est, prov, note]);
+        actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs, fx_estimated, provenance, provenance_note) VALUES ($1,$2, (SELECT id FROM current_fx_rate()),100,12.5,1250,$3,$4,$5)`, [ref, c, est, prov, note]);
       expect(await sqlstate(inv("estimated", null, true, "ORD-P1"))).toBe("23514");
       expect(await sqlstate(inv("estimated", "   ", true, "ORD-P2"))).toBe("23514");
       expect(await sqlstate(inv("native", null, true, "ORD-P3"))).toBe("23514");
@@ -275,7 +279,7 @@ dbDescribe("Phase 7B schema rules (PostgreSQL)", () => {
     });
     it("the provenance of an invoice cannot be edited afterwards", async () => {
       const c = await customer(db.admin);
-      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs, provenance) VALUES ('ORD-P7',$1,100,12.5,1250,'legacy_known')`, [c]);
+      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs, provenance) VALUES ('ORD-P7',$1, (SELECT id FROM current_fx_rate()),100,12.5,1250,'legacy_known')`, [c]);
       expect(await sqlstate(db.admin.query("UPDATE invoices SET provenance='native' WHERE invoice_ref='ORD-P7'"))).toBe("MV004");
     });
   });
@@ -353,7 +357,7 @@ dbDescribe("migration 0009 upgrade path (PostgreSQL)", () => {
       await old.admin.query(`SELECT allocate_reference('container','2026'), allocate_reference('container','2026'), allocate_reference('container','2026'), allocate_reference('container','2027'), allocate_reference('container','2027')`);
       await old.admin.query(`INSERT INTO containers (container_ref) VALUES ('PMX-CON-2026-001'),('PMX-CON-2026-003'),('PMX-CON-2027-002'),('PMX-CON-2027-007')`);
       const before = (await old.admin.query("SELECT (SELECT count(*) FROM items) AS i, (SELECT count(*) FROM invoices) AS v, (SELECT count(*) FROM containers) AS k")).rows[0];
-      expect((await migrate(old.url)).applied).toEqual(["0009_phase7_business_constraints.sql", "0010_trusted_actor_context.sql"]);
+      expect((await migrate(old.url)).applied).toEqual(["0009_phase7_business_constraints.sql", "0010_trusted_actor_context.sql", "0011_authoritative_pricing.sql"]);
       expect((await old.admin.query("SELECT (SELECT count(*) FROM items) AS i, (SELECT count(*) FROM invoices) AS v, (SELECT count(*) FROM containers) AS k")).rows[0]).toEqual(before);
       expect((await old.admin.query("SELECT invoice_ref, provenance FROM invoices ORDER BY invoice_ref")).rows).toEqual([{ invoice_ref: "ORD-U1", provenance: "estimated" }, { invoice_ref: "ORD-U2", provenance: "native" }]);
       expect((await old.admin.query("SELECT total_ghs::text AS t FROM invoices WHERE invoice_ref='ORD-U1'")).rows[0].t).toBe("1300.00"); // money untouched

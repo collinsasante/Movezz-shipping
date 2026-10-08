@@ -257,7 +257,7 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
           FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
          WHERE p.prosecdef AND n.nspname IN ('public','movezz_sec') ORDER BY 2,3`)).rows;
       expect(fns.length).toBeGreaterThanOrEqual(12);
-      const allow = new Set(["begin_actor", "current_actor_id", "current_actor_type", "require_actor", "append_audit", "append_status_event"]);
+      const allow = new Set(["begin_actor", "current_actor_id", "current_actor_type", "require_actor", "append_audit", "append_status_event", "actor_role"]);
       const refAlloc = new Set(["allocate_reference", "allocate_container_reference"]); // intentionally runtime-callable (reference numbers; no actor, no data read)
       for (const f of fns) {
         const label = `${f.schema}.${f.name}`;
@@ -549,7 +549,7 @@ dbDescribe("migration 0010 upgrade (PostgreSQL)", () => {
     const bare = await createBareTestDb();
     try {
       const r = await migrate(bare.url);
-      expect(r.applied.at(-1)).toBe("0010_trusted_actor_context.sql");
+      expect(r.applied).toContain("0010_trusted_actor_context.sql");
       expect((await migrate(bare.url)).applied).toEqual([]);
       expect((await bare.admin.query("SELECT to_regclass('movezz_sec.actor_keys') IS NOT NULL AS ok")).rows[0].ok).toBe(true);
     } finally { await bare.close(); }

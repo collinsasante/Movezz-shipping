@@ -1,6 +1,6 @@
 // Invoice creation (atomic, frozen snapshots), payments (GHS, append-only, no overpayment) and their immutability rules.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, specialRate, sqlstate, actorQuery, TEST_ACTOR_KEY, type TestDb } from "./helpers";
+import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, specialRate, sqlstate, actorQuery, TEST_ACTOR_KEY, pricedItem, type TestDb } from "./helpers";
 import { createInvoice, recordPayment, voidPayment, cancelInvoice } from "../../src/lib/db/invoices";
 import { priceItem } from "../../src/lib/db/pricing";
 import { withActorTransaction, user, beginActor } from "../../src/lib/db/actor";
@@ -21,7 +21,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
     await fxRate(db.admin, opts.rate ?? "12.50000000");
     const c = await customer(db.admin);
     const itemIds: string[] = [];
-    for (const p of opts.prices ?? ["100.00"]) itemIds.push(await item(db.admin, c, { tier_price_usd: p }));
+    for (const p of opts.prices ?? ["100.00"]) itemIds.push(await pricedItem(db.admin, c, p));
     const r = await createInvoice(db.app, { customerId: c, itemIds, discountUsd: opts.discount, discountReason: opts.discount ? "Approved test discount" : undefined, actor: user(actor), idempotencyKey: key("inv") });
     return { c, itemIds, ...r };
   };
@@ -34,10 +34,10 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       expect(invoice.invoice_ref).toMatch(/^ORD-\d{5}$/);
       const lines = (await db.admin.query("SELECT * FROM invoice_lines WHERE invoice_id=$1 ORDER BY line_no", [invoice.id])).rows;
       expect(lines.map((l) => l.line_total_usd).sort()).toEqual(["100.00", "50.25"]);
-      expect(lines.every((l) => l.billing_basis === "tier" && l.package_tier === "basic" && l.rate_usd === "350.0000")).toBe(true);
+      expect(lines.every((l) => l.billing_basis === "tier" && l.package_tier === "basic" && l.rate_usd === "8.0000")).toBe(true);
       expect((await db.admin.query("SELECT count(*)::int AS n FROM items WHERE invoice_id=$1", [invoice.id])).rows[0].n).toBe(itemIds.length);
       expect((await db.admin.query("SELECT new_status FROM status_events WHERE entity_type='invoice' AND entity_id=$1", [invoice.id])).rows).toEqual([{ new_status: "Pending" }]);
-      expect((await db.admin.query("SELECT action FROM audit_logs WHERE entity_id=$1", [invoice.id])).rows).toEqual([{ action: "invoice.create" }]);
+      expect((await db.admin.query("SELECT action FROM audit_logs WHERE entity_id=$1 ORDER BY id", [invoice.id])).rows).toEqual([{ action: "invoice.create" }, { action: "invoice.discount" }]); // this invoice carries a discount
       expect((await db.admin.query("SELECT sync_state, attempt_count FROM keepup_sync WHERE invoice_id=$1", [invoice.id])).rows).toEqual([{ sync_state: "pending", attempt_count: 0 }]);
       expect((await db.admin.query("SELECT status, recipient FROM notification_outbox WHERE dedupe_key=$1", [`invoice.created:${invoice.id}`])).rows).toHaveLength(1);
       void c;
@@ -74,6 +74,10 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       await db.admin.query("UPDATE customers SET package_tier='enterprise' WHERE id=$1", [c]);
       await db.admin.query("UPDATE items SET description='renamed', weight_kg=9 WHERE id=$1", [itemIds[0]]);
       expect(await snap()).toEqual(before);
+      // restore the shared fixtures: later tests price against the real rates (prices are recomputed at invoicing)
+      await db.admin.query("UPDATE package_rates SET rate_usd = CASE freight_type WHEN 'sea' THEN 350 ELSE 8 END WHERE tier='basic'");
+      await db.admin.query("UPDATE customers SET package_tier='basic' WHERE id=$1", [c]);
+      await fxRate(db.admin, "12.50000000");
     });
 
     it("FX history is reconstructable: the invoice points at the rate row it used, and an older rate is picked for an older instant", async () => {
@@ -133,7 +137,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       await createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() });
       expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
       const ia2 = await item(db.admin, a);
-      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia2], discountUsd: "400.00", actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
+      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia2], discountUsd: "400.00", actor: user(actor), idempotencyKey: key() }))).toBe("DISCOUNT_INVALID");
       expect(await code(createInvoice(db.app, { customerId: a, actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
       expect((await db.admin.query("SELECT invoice_id FROM items WHERE id=$1", [ia2])).rows[0].invoice_id).toBeNull();
     });
@@ -171,19 +175,20 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
     it("lines must add up to the subtotal at commit, and the GHS total must equal round(USD total x rate)", async () => {
       await fxRate(db.admin);
       const c = await customer(db.admin);
+      const lineItem = await pricedItem(db.admin, c, "60.00");   // an authoritative USD 60 line under a USD 100 header
       const bad = db.admin.connect().then(async (cl) => {
         try {
           await cl.query("BEGIN");
           await beginActor(cl, { type: "import" }, TEST_ACTOR_KEY);
-          const inv = (await cl.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X1',$1,100,12.5,1250) RETURNING id`, [c])).rows[0];
-          await cl.query(`INSERT INTO invoice_lines (invoice_id, line_no, description, unit_price_usd, line_total_usd, billing_basis) VALUES ($1,1,'x',60,60,'tier')`, [inv.id]);
+          const inv = (await cl.query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X1',$1, (SELECT id FROM current_fx_rate()),100,12.5,1250) RETURNING id`, [c])).rows[0];
+          await cl.query(`INSERT INTO invoice_lines (invoice_id, line_no, item_id, description, unit_price_usd, line_total_usd, billing_basis, package_tier, rate_usd) VALUES ($1,1,$2,'x',60,60,'tier','basic',8)`, [inv.id, lineItem]);
           await cl.query("COMMIT");
         } finally { cl.release(); }
       });
       await expect(bad).rejects.toMatchObject({ code: "MV006" });
-      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X2',$1,100,12.5,1249.99)`, [c]))).toBe("23514");
+      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X2',$1, (SELECT id FROM current_fx_rate()),100,12.5,1249.99)`, [c]))).toBe("23514");
       // an estimated (reconstructed) legacy invoice is exempt from the exact-GHS rule, and may have no lines
-      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, fx_estimated, total_ghs, legacy_airtable_id, provenance, provenance_note) VALUES ('ORD-X3',$1,100,12.5,true,1300,'recLEG1','estimated','historic rate unknown')`, [c]);
+      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, fx_rate_id, subtotal_usd, fx_rate, fx_estimated, total_ghs, legacy_airtable_id, provenance, provenance_note) VALUES ('ORD-X3',$1, (SELECT id FROM current_fx_rate()),100,12.5,true,1300,'recLEG1','estimated','historic rate unknown')`, [c]);
     });
     it("a line cannot reference another customer's item", async () => {
       const { invoice } = await invoiceFor();
