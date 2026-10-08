@@ -40,11 +40,9 @@ export async function GET(
     const { id } = await params;
     const order = await ordersApi.getById(id);
 
+    // Someone else's order and a non-existent order are indistinguishable (404).
     if (user.role === "customer" && order.customerId !== user.customerId) {
-      return Response.json(
-        { success: false, error: "Access denied" },
-        { status: 403 }
-      );
+      return notFoundResponse("Order not found");
     }
 
     // Auto-fetch and store keepupLink if saleId exists but link is missing

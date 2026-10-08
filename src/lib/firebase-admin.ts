@@ -65,7 +65,7 @@ export async function verifyIdToken(idToken: string) {
   }
 
   const data = (await resp.json()) as {
-    users?: Array<{ localId: string; email?: string }>;
+    users?: Array<{ localId: string; email?: string; emailVerified?: boolean }>;
   };
   const user = data.users?.[0];
   if (!user) throw new Error("No user found for token");
@@ -73,6 +73,8 @@ export async function verifyIdToken(idToken: string) {
   return {
     uid: user.localId,
     email: user.email,
+    // Only a true value from Firebase counts; anything else is treated as unverified.
+    emailVerified: user.emailVerified === true,
     sub: user.localId,
   };
 }

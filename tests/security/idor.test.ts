@@ -1,7 +1,7 @@
 // IDOR / BOLA characterization: can customer A reach customer B's data? Also existence leaks.
 import { describe, it, expect } from "vitest";
 import { standardWorld } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 async function seeded() {
   const s = await standardWorld();
@@ -61,26 +61,28 @@ describe("customer A -> items", () => {
     const s = await seeded();
     expect(ids(await s.w.call("items", "GET", { token: s.custA, query: { search: "TRK-B-222" } }))).toEqual([]);
   });
-  it(PRESERVE("A -> A item allowed, A -> B item denied (403)"), async () => {
+  it(PRESERVE("A -> A item allowed; A -> B item denied"), async () => {
     const s = await seeded();
     expect((await s.w.call("items/[id]", "GET", { token: s.custA, params: { id: "recIA" } })).status).toBe(200);
-    expect((await s.w.call("items/[id]", "GET", { token: s.custA, params: { id: "recIB" } })).status).toBe(403);
+    expect((await s.w.call("items/[id]", "GET", { token: s.custA, params: { id: "recIB" } })).status).toBe(404);
   });
-  it(KNOWN_BUG("item lookups leak existence: 403 for someone else's item, 404 for a non-existent one"), async () => {
-    // Future behavior (Phase 3, D.1): ownership failures return 404 so existence is not revealed. Documents current behavior only.
+  it(FIXED("someone else's item is indistinguishable from a non-existent one (identical 404 response)"), async () => {
     const s = await seeded();
     const other = await s.w.call("items/[id]", "GET", { token: s.custA, params: { id: "recIB" } });
     const none = await s.w.call("items/[id]", "GET", { token: s.custA, params: { id: "recNope" } });
-    expect([other.status, none.status]).toEqual([403, 404]);
+    expect([other.status, none.status]).toEqual([404, 404]);
+    expect(other.json).toEqual(none.json);
   });
-  it(PRESERVE("A -> B item history denied (403)"), async () => {
+  it(FIXED("A -> B item history is denied before any history is read; a missing item is the same 404 (no more 500)"), async () => {
     const s = await seeded();
-    expect((await s.w.call("items/[id]/history", "GET", { token: s.custA, params: { id: "recIB" } })).status).toBe(403);
+    s.w.db.insert("StatusHistory", { RecordType: "Item", RecordID: "recIB", PreviousStatus: "a", NewStatus: "b", ChangedAt: "2026-03-01T00:00:00.000Z" });
+    s.w.db.clearCalls();
+    const other = await s.w.call("items/[id]/history", "GET", { token: s.custA, params: { id: "recIB" } });
+    const none = await s.w.call("items/[id]/history", "GET", { token: s.custA, params: { id: "recNope" } });
+    expect([other.status, none.status]).toEqual([404, 404]);
+    expect(other.json).toEqual(none.json);
+    expect(s.w.db.count("StatusHistory", "select")).toBe(0); // ownership is decided first
     expect((await s.w.call("items/[id]/history", "GET", { token: s.custA, params: { id: "recIA" } })).status).toBe(200);
-  });
-  it(KNOWN_BUG("item history leaks existence differently again: 500 for a non-existent item"), async () => {
-    const s = await seeded();
-    expect((await s.w.call("items/[id]/history", "GET", { token: s.custA, params: { id: "recNope" } })).status).toBe(500);
   });
   it(PRESERVE("a customer cannot change or delete items or their status (403)"), async () => {
     const s = await seeded();
@@ -96,16 +98,17 @@ describe("customer A -> invoices", () => {
     expect(ids(await s.w.call("orders", "GET", { token: s.custA }))).toEqual(["recOA"]);
     expect(ids(await s.w.call("orders", "GET", { token: s.custA, query: { customerId: "recCustB" } }))).toEqual(["recOA"]);
   });
-  it(PRESERVE("A -> A order allowed, A -> B order denied (403)"), async () => {
+  it(PRESERVE("A -> A order allowed; A -> B order denied"), async () => {
     const s = await seeded();
     expect((await s.w.call("orders/[id]", "GET", { token: s.custA, params: { id: "recOA" } })).status).toBe(200);
-    expect((await s.w.call("orders/[id]", "GET", { token: s.custA, params: { id: "recOB" } })).status).toBe(403);
+    expect((await s.w.call("orders/[id]", "GET", { token: s.custA, params: { id: "recOB" } })).status).toBe(404);
   });
-  it(KNOWN_BUG("order lookups leak existence: 403 for someone else's order, 404 for a non-existent one"), async () => {
+  it(FIXED("someone else's order is indistinguishable from a non-existent one (identical 404 response)"), async () => {
     const s = await seeded();
     const other = await s.w.call("orders/[id]", "GET", { token: s.custA, params: { id: "recOB" } });
     const none = await s.w.call("orders/[id]", "GET", { token: s.custA, params: { id: "recNope" } });
-    expect([other.status, none.status]).toEqual([403, 404]);
+    expect([other.status, none.status]).toEqual([404, 404]);
+    expect(other.json).toEqual(none.json);
   });
   it(PRESERVE("a customer cannot create, edit, delete or invoice orders (403)"), async () => {
     const s = await seeded();
@@ -115,27 +118,58 @@ describe("customer A -> invoices", () => {
   });
 });
 
-describe(KNOWN_BUG("a customer user with NO linked customer record sees EVERYONE's items and orders"), () => {
-  // Phase 3 section F: customer reads are always filtered by the caller's customer_id (NOT NULL for role=customer).
-  // This test documents current behavior only. It must be inverted when authorization moves into the repository layer.
-  async function orphanCustomer() {
+describe(FIXED("a customer user with NO valid customer profile is denied everywhere"), () => {
+  // HIGH severity in Phase 4: such a login was served EVERY customer's items and orders.
+  async function brokenLogins() {
     const s = await seeded();
-    const token = s.w.asUser("customer"); // Users row with Role=customer but no CustomerRecord link
-    return { ...s, token };
+    return {
+      ...s,
+      orphan: s.w.asUser("customer"), // Users row with Role=customer and no CustomerRecord
+      dangling: s.w.asUser("customer", { customerId: "recDeletedCustomer" }), // link to a record that no longer exists
+    };
   }
-  it("documents that GET /api/items returns every customer's items", async () => {
-    const s = await orphanCustomer();
-    expect(ids(await s.w.call("items", "GET", { token: s.token })).sort()).toEqual(["recIA", "recIB"]);
+  it("GET /api/items and GET /api/orders return 403, never other customers' records", async () => {
+    const s = await brokenLogins();
+    for (const t of [s.orphan, s.dangling]) {
+      for (const route of ["items", "orders"]) {
+        const res = await s.w.call(route, "GET", { token: t });
+        expect(res.status, route).toBe(403);
+        expect(res.json?.code).toBe("CUSTOMER_NOT_LINKED");
+        expect(JSON.stringify(res.json)).not.toContain("recIA");
+        expect(JSON.stringify(res.json)).not.toContain("recIB");
+      }
+    }
   });
-  it("documents that GET /api/orders returns every customer's orders", async () => {
-    const s = await orphanCustomer();
-    expect(ids(await s.w.call("orders", "GET", { token: s.token })).sort()).toEqual(["recOA", "recOB"]);
+  it("every other customer-reachable route is denied as well", async () => {
+    const s = await brokenLogins();
+    const calls: [string, "GET" | "PATCH", Record<string, string>?, unknown?][] = [
+      ["customers/[id]", "GET", { id: "recCustA" }], ["customers/[id]", "PATCH", { id: "recCustA" }, { notes: "x" }],
+      ["customers/me/warehouse", "PATCH", undefined, { warehouseId: "w" }], ["dashboard/customer", "GET"],
+      ["items/[id]", "GET", { id: "recIA" }], ["items/[id]/history", "GET", { id: "recIA" }], ["orders/[id]", "GET", { id: "recOA" }],
+      ["warehouses", "GET"], ["package-rates", "GET"], ["special-rates", "GET"],
+    ];
+    for (const t of [s.orphan, s.dangling]) {
+      for (const [route, method, params, body] of calls) {
+        const res = await s.w.call(route, method, { token: t, params, body });
+        expect(res.status, `${method} ${route}`).toBe(403);
+      }
+    }
   });
-  it("documents that the other customer-scoped routes still deny (customer detail 403, dashboard 400)", async () => {
-    const s = await orphanCustomer();
-    expect((await s.w.call("customers/[id]", "GET", { token: s.token, params: { id: "recCustA" } })).status).toBe(403);
-    expect((await s.w.call("dashboard/customer", "GET", { token: s.token })).status).toBe(400);
-    expect((await s.w.call("items/[id]", "GET", { token: s.token, params: { id: "recIA" } })).status).toBe(403);
+  it("the data layer is fail-closed too: a missing customer id returns nothing instead of everything", async () => {
+    const s = await seeded();
+    expect(await s.w.airtable.itemsApi.getByCustomer(undefined as unknown as string)).toEqual([]);
+    expect(await s.w.airtable.ordersApi.getByCustomer("")).toEqual([]);
+    expect((await s.w.airtable.dashboardApi.getCustomerStats(undefined as unknown as string)).totalItems).toBe(0);
+  });
+  it("a customer cannot reach the data by supplying a customerId query parameter either", async () => {
+    const s = await brokenLogins();
+    const res = await s.w.call("items", "GET", { token: s.orphan, query: { customerId: "recCustB" } });
+    expect(res.status).toBe(403);
+  });
+  it("admin and staff are unaffected (no customer profile is required for them)", async () => {
+    const s = await brokenLogins();
+    expect((await s.w.call("items", "GET", { token: s.admin })).status).toBe(200);
+    expect((await s.w.call("orders", "GET", { token: s.staff })).status).toBe(200);
   });
 });
 

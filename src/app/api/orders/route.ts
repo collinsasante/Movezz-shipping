@@ -6,6 +6,7 @@ import {
   requireAuth,
   serverErrorResponse,
   badRequestResponse,
+  forbiddenResponse,
 } from "@/lib/auth";
 import { createKeepupSale } from "@/lib/keepup";
 import { sendInvoiceCreatedEmail } from "@/lib/email";
@@ -38,7 +39,9 @@ export async function GET(request: NextRequest) {
       search: searchParams.get("search") ?? undefined,
     };
 
+    // The customer id comes from the authenticated identity only; a customer without one gets nothing.
     if (user.role === "customer") {
+      if (!user.customerId) return forbiddenResponse("Your login is not linked to a customer profile");
       params.customerId = user.customerId;
     }
 

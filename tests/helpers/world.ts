@@ -116,12 +116,12 @@ export async function freshWorld() {
    * Creates a Users row (and, for role=customer, links it to `customerId`) and
    * returns a Firebase ID token the mocked verifyIdToken() will accept.
    */
-  function asUser(role: Role, opts: { customerId?: string; email?: string; withUsersRow?: boolean } = {}): string {
+  function asUser(role: Role, opts: { customerId?: string; email?: string; withUsersRow?: boolean; emailVerified?: boolean } = {}): string {
     userCounter++;
     const uid = `uid-${role}-${userCounter}`;
     const email = opts.email ?? `${role}-${userCounter}@example.invalid`;
     const token = `token-${uid}`;
-    state().tokens.set(token, { uid, email });
+    state().tokens.set(token, { uid, email, emailVerified: opts.emailVerified });
     if (opts.withUsersRow !== false) {
       db.insert("Users", {
         FirebaseUID: uid,

@@ -3,7 +3,7 @@
 import { NextRequest } from "next/server";
 import { verifyIdToken } from "@/lib/firebase-admin";
 import { usersApi, customersApi } from "@/lib/airtable";
-import { badRequestResponse } from "@/lib/auth";
+import { badRequestResponse, customerAccessDenied, resolveCustomerLink } from "@/lib/auth";
 import { checkRateLimit, rateLimitedResponse, getClientIp, checkBodySize } from "@/lib/rate-limit";
 
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
     try {
       decoded = await verifyIdToken(idToken);
     } catch (verifyErr) {
-      const detail = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+      console.warn("[verify] token rejected:", verifyErr instanceof Error ? verifyErr.message : "unknown");
       return Response.json(
-        { success: false, error: "Invalid or expired token", detail },
+        { success: false, error: "Invalid or expired token" },
         { status: 401 }
       );
     }
@@ -57,64 +57,53 @@ export async function POST(request: NextRequest) {
     }
 
     if (!appUser) {
-      // Bootstrap: first Firebase login auto-creates super_admin if the Users table is empty.
-      let userCount = 0;
-      try {
-        userCount = await usersApi.countAll();
-      } catch (countErr) {
-        const msg = countErr instanceof Error ? countErr.message : String(countErr);
+      // SECURITY: there is deliberately NO "first login becomes super_admin" bootstrap. The first
+      // administrator is created by an operator with `npm run admin:bootstrap`; every other account is
+      // created by an administrator or through the customer onboarding flow.
+      //
+      // The only automatic registration left is the legacy claim of an admin-created Customers row by
+      // e-mail. It requires a VERIFIED e-mail (otherwise anyone could register a Firebase login with a
+      // victim's address and inherit the victim's account) and a customer that no other login owns.
+      const email = (decoded.email ?? "").trim();
+      const candidate =
+        email && decoded.emailVerified === true
+          ? await customersApi.getByEmail(email).catch(() => null)
+          : null;
+      const claimable = candidate && (!candidate.firebaseUid || candidate.firebaseUid === decoded.uid);
+
+      if (!candidate || !claimable) {
         return Response.json(
           {
             success: false,
-            error: "Cannot count users in database. Check Airtable setup.",
-            step: "count_users",
-            ...(IS_DEV && { detail: msg }),
+            error: "You are not registered in this system. Ask an administrator to add you.",
+            code: "NOT_REGISTERED",
           },
-          { status: 503 }
+          { status: 404 }
         );
       }
 
-      if (userCount === 0) {
-        try {
-          appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "super_admin");
-        } catch (createErr) {
-          const msg = createErr instanceof Error ? createErr.message : String(createErr);
-          return Response.json(
-            {
-              success: false,
-              error: "Failed to create your account in the database.",
-              step: "create_user",
-              ...(IS_DEV && { detail: msg }),
-            },
-            { status: 500 }
-          );
-        }
-      } else {
-        // Check if this Firebase user was created by an admin (email exists in Customers table)
-        const existingCustomer = await customersApi.getByEmail(decoded.email ?? "").catch(() => null);
-        if (existingCustomer) {
-          try {
-            appUser = await usersApi.create(decoded.uid, decoded.email ?? "", "customer", existingCustomer.id);
-            // Link Firebase UID to customer record (non-fatal)
-            customersApi.linkFirebaseUid(existingCustomer.id, decoded.uid).catch(() => {});
-          } catch (createErr) {
-            const msg = createErr instanceof Error ? createErr.message : String(createErr);
-            return Response.json(
-              { success: false, error: "Failed to set up your account.", detail: msg, step: "auto_create_customer" },
-              { status: 500 }
-            );
-          }
-        } else {
-          return Response.json(
-            {
-              success: false,
-              error: "You are not registered in this system. Ask an administrator to add you.",
-              code: "NOT_REGISTERED",
-            },
-            { status: 404 }
-          );
-        }
+      try {
+        appUser = await usersApi.create(decoded.uid, email, "customer", candidate.id);
+        // Link Firebase UID to customer record (non-fatal)
+        customersApi.linkFirebaseUid(candidate.id, decoded.uid).catch(() => {});
+      } catch (createErr) {
+        console.error("[verify] could not register customer login:", createErr instanceof Error ? createErr.message : "unknown");
+        return Response.json(
+          { success: false, error: "Failed to set up your account.", step: "auto_create_customer" },
+          { status: 500 }
+        );
       }
+    }
+
+    // A customer login needs a valid, active customer profile (fail closed).
+    if (appUser.role === "customer") {
+      let link;
+      try {
+        link = await resolveCustomerLink(appUser);
+      } catch {
+        return Response.json({ success: false, error: "Could not verify your account. Please try again.", step: "customer_link" }, { status: 503 });
+      }
+      if (link !== "ok") return customerAccessDenied(link);
     }
 
     // Enrich customer users with shippingMark + customerName (login-time only, not per-request)

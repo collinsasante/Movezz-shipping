@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { freshWorld, standardWorld } from "../helpers/world";
 import { state } from "../helpers/state";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 describe("token handling (requireAuth / getAuthUser)", () => {
   it(PRESERVE("no token -> 401 'Authentication required'"), async () => {
@@ -41,11 +41,29 @@ describe("token handling (requireAuth / getAuthUser)", () => {
     const mine = await w.call("items", "GET", { token: custA });
     expect(mine.json?.data.map((i: { id: string }) => i.id)).toEqual(["recI1"]);
   });
-  it(KNOWN_BUG("there is no 'inactive user' concept: an inactive customer record does not block API access"), async () => {
-    // Future behavior (Phase 3): users.is_active checked on every request. Documents current behavior only.
+  it(FIXED("a customer whose customer record is inactive is denied (403 ACCOUNT_INACTIVE)"), async () => {
+    // Phase 4 documented that an inactive customer kept full API access. Interpretation (to be confirmed by the
+    // owner, see docs/SECURITY-BASELINE.md): "inactive" means an administrator deactivated the account.
     const { w, custA } = await standardWorld();
     w.db.update("Customers", "recCustA", { Status: "inactive" });
-    expect((await w.call("items", "GET", { token: custA })).status).toBe(200);
+    const res = await w.call("items", "GET", { token: custA });
+    expect(res.status).toBe(403);
+    expect(res.json?.code).toBe("ACCOUNT_INACTIVE");
+  });
+  it(FIXED("a customer login with no customer record, or a dangling link, is denied (403 CUSTOMER_NOT_LINKED)"), async () => {
+    const { w } = await standardWorld();
+    const orphan = w.asUser("customer");
+    const dangling = w.asUser("customer", { customerId: "recDeleted" });
+    for (const t of [orphan, dangling]) {
+      const res = await w.call("items", "GET", { token: t });
+      expect(res.status).toBe(403);
+      expect(res.json?.code).toBe("CUSTOMER_NOT_LINKED");
+    }
+  });
+  it(PRESERVE("deactivation does not affect staff or admins (they have no customer record)"), async () => {
+    const { w, admin, staff } = await standardWorld();
+    expect((await w.call("items", "GET", { token: admin })).status).toBe(200);
+    expect((await w.call("items", "GET", { token: staff })).status).toBe(200);
   });
 });
 
@@ -95,21 +113,21 @@ describe("POST /api/auth/verify", () => {
     const { w } = await standardWorld();
     expect((await w.call("auth/verify", "POST", { body: {} })).status).toBe(400);
   });
-  it(KNOWN_BUG("an invalid token returns the raw verification error text in the response"), async () => {
+  it(FIXED("an invalid token no longer returns the verification error text"), async () => {
     const { w } = await standardWorld();
     const res = await verify(w, "garbage");
     expect(res.status).toBe(401);
-    expect(res.json?.detail).toBe("INVALID_ID_TOKEN");
+    expect(res.json).toEqual({ success: false, error: "Invalid or expired token" });
   });
   it(PRESERVE("DELETE clears the cookie"), async () => {
     const { w } = await standardWorld();
     const res = await w.call("auth/verify", "DELETE");
     expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
   });
-  it(PRESERVE("a Firebase user who matches an admin-created Customers row by email is auto-registered as that customer"), async () => {
+  it(PRESERVE("a Firebase user with a VERIFIED e-mail matching an admin-created Customers row is registered as that customer"), async () => {
     const { w } = await standardWorld();
     w.seed.customer("recCustD", { Email: "dana@example.invalid" });
-    const token = w.asUser("customer", { withUsersRow: false, email: "dana@example.invalid" });
+    const token = w.asUser("customer", { withUsersRow: false, email: "dana@example.invalid", emailVerified: true });
     const res = await verify(w, token);
     expect(res.status).toBe(200);
     expect(res.json?.data.user).toMatchObject({ role: "customer", customerId: "recCustD" });
@@ -124,30 +142,89 @@ describe("POST /api/auth/verify", () => {
   });
 });
 
-describe(KNOWN_BUG("first-user bootstrap: the first Firebase login on an empty Users table becomes super_admin"), () => {
-  // Phase 3 ADR-5: automatic promotion must be removed; admin bootstrap becomes an explicit server-side CLI.
-  // This test documents current behavior only. It must be inverted when the auth hardening phase lands.
-  it("documents current first-user bootstrap behavior: any valid Firebase user is promoted when no Users row exists", async () => {
+describe(FIXED("first-user bootstrap: no login is ever promoted to super_admin automatically"), () => {
+  // Phase 4 pinned the old behavior (first Firebase login on an empty Users table became super_admin).
+  it("an empty Users table plus a valid Firebase login creates NOTHING and is refused (404 NOT_REGISTERED)", async () => {
     const w = await freshWorld();
     const anyone = w.asUser("customer", { withUsersRow: false, email: "random.visitor@example.invalid" });
     const res = await w.call("auth/verify", "POST", { body: { idToken: anyone } });
-    expect(res.status).toBe(200);
-    expect(res.json?.data.user.role).toBe("super_admin");
-    expect(w.db.all("Users")).toHaveLength(1);
+    expect(res.status).toBe(404);
+    expect(res.json?.code).toBe("NOT_REGISTERED");
+    expect(w.db.all("Users")).toHaveLength(0);
+    expect(res.headers.get("set-cookie")).toBeNull();
   });
-  it("documents that two simultaneous first logins are BOTH promoted to super_admin", async () => {
+  it("simultaneous first logins create no users at all", async () => {
     const w = await freshWorld();
     const a = w.asUser("customer", { withUsersRow: false, email: "a@example.invalid" });
     const b = w.asUser("customer", { withUsersRow: false, email: "b@example.invalid" });
-    await Promise.all([w.call("auth/verify", "POST", { body: { idToken: a } }), w.call("auth/verify", "POST", { body: { idToken: b } })]);
-    expect(w.db.all("Users").map((r) => r.fields["Role"])).toEqual(["super_admin", "super_admin"]);
+    const results = await Promise.all([w.call("auth/verify", "POST", { body: { idToken: a } }), w.call("auth/verify", "POST", { body: { idToken: b } })]);
+    expect(results.map((r) => r.status)).toEqual([404, 404]);
+    expect(w.db.all("Users")).toHaveLength(0);
   });
-  it("documents that the promoted account may have an empty email when the token carries none", async () => {
+  it("a token with no e-mail on an empty table is refused as well", async () => {
     const w = await freshWorld();
-    const token = "token-no-email";
-    state().tokens.set(token, { uid: "uid-noemail", email: "" });
-    const res = await w.call("auth/verify", "POST", { body: { idToken: token } });
-    expect(res.json?.data.user).toMatchObject({ role: "super_admin", email: "" });
+    state().tokens.set("token-no-email", { uid: "uid-noemail", email: "" });
+    const res = await w.call("auth/verify", "POST", { body: { idToken: "token-no-email" } });
+    expect(res.status).toBe(404);
+    expect(w.db.all("Users")).toHaveLength(0);
+  });
+  it("an unknown Firebase UID is refused even when other users exist", async () => {
+    const { w } = await standardWorld();
+    const stranger = w.asUser("super_admin", { withUsersRow: false, email: "stranger@example.invalid" });
+    const res = await w.call("auth/verify", "POST", { body: { idToken: stranger } });
+    expect(res.status).toBe(404);
+    expect(w.db.all("Users").some((u) => u.fields["Email"] === "stranger@example.invalid")).toBe(false);
+  });
+  it("the role is never taken from the request: a forged role in the body or a header changes nothing", async () => {
+    const w = await freshWorld();
+    const t = w.asUser("customer", { withUsersRow: false, email: "forger@example.invalid" });
+    const res = await w.call("auth/verify", "POST", { body: { idToken: t, role: "super_admin", Role: "super_admin" }, headers: { "x-role": "super_admin" } });
+    expect(res.status).toBe(404);
+    expect(w.db.all("Users")).toHaveLength(0);
+  });
+  it("the e-mail claim of an existing Customers row requires a verified e-mail (no account takeover by registering someone else's address)", async () => {
+    const { w } = await standardWorld();
+    w.seed.customer("recVictim", { Email: "victim@example.invalid" });
+    const attacker = w.asUser("customer", { withUsersRow: false, email: "victim@example.invalid", emailVerified: false });
+    const res = await w.call("auth/verify", "POST", { body: { idToken: attacker } });
+    expect(res.status).toBe(404);
+    expect(w.db.all("Users").some((u) => u.fields["Email"] === "victim@example.invalid")).toBe(false);
+  });
+  it("a customer row already owned by another login cannot be claimed by e-mail", async () => {
+    const { w } = await standardWorld();
+    w.seed.customer("recOwned", { Email: "owned@example.invalid", FirebaseUID: "someone-elses-uid" });
+    const claimer = w.asUser("customer", { withUsersRow: false, email: "owned@example.invalid", emailVerified: true });
+    expect((await w.call("auth/verify", "POST", { body: { idToken: claimer } })).status).toBe(404);
+  });
+  it("a deactivated customer cannot log in (403 ACCOUNT_INACTIVE) and receives no session cookie", async () => {
+    const { w, custA } = await standardWorld();
+    w.db.update("Customers", "recCustA", { Status: "inactive" });
+    const res = await w.call("auth/verify", "POST", { body: { idToken: custA } });
+    expect(res.status).toBe(403);
+    expect(res.json?.code).toBe("ACCOUNT_INACTIVE");
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+  it("a customer login with no customer profile cannot log in (403 CUSTOMER_NOT_LINKED)", async () => {
+    const { w } = await standardWorld();
+    const orphan = w.asUser("customer");
+    const res = await w.call("auth/verify", "POST", { body: { idToken: orphan } });
+    expect(res.status).toBe(403);
+    expect(res.json?.code).toBe("CUSTOMER_NOT_LINKED");
+  });
+  it("public registration can only ever create a CUSTOMER: signup and onboarding ignore a role in the body", async () => {
+    const w = await freshWorld();
+    const res = await w.call("onboard", "POST", { body: { name: "Mallory Evil", phone: "0244001234", email: "mallory@example.invalid", location: "Accra", role: "super_admin" } });
+    expect(res.status).toBe(201);
+    expect(w.db.all("Users").map((u) => u.fields["Role"])).toEqual(["customer"]);
+    const signup = await w.call("auth/signup", "POST", { body: { flow: "email", name: "Eve Evil", phone: "0200000001", email: "eve@example.invalid", password: "a-long-enough-password", role: "super_admin" } });
+    expect(signup.status).toBe(201);
+    expect(w.db.all("Users").map((u) => u.fields["Role"])).toEqual(["customer", "customer"]);
+  });
+  it("staff cannot be created through any public endpoint; POST /api/users is admin-only and cannot create customers", async () => {
+    const { w, admin, staff, custA } = await standardWorld();
+    expect((await w.call("users", "POST", { token: staff, body: { email: "x@example.invalid", role: "super_admin" } })).status).toBe(403);
+    expect((await w.call("users", "POST", { token: custA, body: { email: "x@example.invalid", role: "super_admin" } })).status).toBe(403);
+    expect((await w.call("users", "POST", { token: admin, body: { email: "x@example.invalid", role: "customer" } })).status).toBe(400);
   });
 });
 

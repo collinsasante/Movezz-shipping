@@ -8,6 +8,8 @@
 export interface Identity {
   uid: string;
   email: string;
+  /** Defaults to true (verified) unless a test says otherwise. */
+  emailVerified?: boolean;
 }
 
 interface TestState {

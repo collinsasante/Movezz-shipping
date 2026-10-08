@@ -53,7 +53,7 @@ vi.mock("@/lib/firebase-admin", async () => {
     verifyIdToken: vi.fn(async (token: string) => {
       const id = state().tokens.get(token);
       if (!id) throw new Error("INVALID_ID_TOKEN");
-      return { uid: id.uid, email: id.email, sub: id.uid };
+      return { uid: id.uid, email: id.email, emailVerified: id.emailVerified ?? true, sub: id.uid };
     }),
     createFirebaseUser: vi.fn(async (email: string) => ({ uid: `fb-${email}` })),
     deleteFirebaseUser: vi.fn(async () => undefined),

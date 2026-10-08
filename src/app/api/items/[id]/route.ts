@@ -52,12 +52,10 @@ export async function GET(
     const { id } = await params;
     const item = await itemsApi.getById(id);
 
-    // Customers can only access their own items
+    // Customers can only access their own items. Someone else's item and a non-existent item
+    // are indistinguishable (404) so ids cannot be probed for existence.
     if (user.role === "customer" && item.customerId !== user.customerId) {
-      return Response.json(
-        { success: false, error: "Access denied" },
-        { status: 403 }
-      );
+      return notFoundResponse("Item not found");
     }
 
     // Attach container ETA

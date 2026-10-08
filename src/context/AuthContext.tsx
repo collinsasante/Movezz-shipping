@@ -71,6 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Not in the system — sign out
           setAppUser(null);
           await signOut().catch(() => {});
+        } else if (status === 403 && (code === "ACCOUNT_INACTIVE" || code === "CUSTOMER_NOT_LINKED")) {
+          // Deactivated or unlinked customer login — the API will refuse everything, so end the session
+          setAppUser(null);
+          try { localStorage.removeItem(USER_CACHE_KEY); } catch {}
+          await signOut().catch(() => {});
         }
         // 500 or other transient errors: do NOT sign out — keep the current session alive
       }

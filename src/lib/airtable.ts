@@ -537,6 +537,7 @@ export const customersApi = {
 // ============================================================
 export const itemsApi = {
   async list(params: ItemFilterParams = {}): Promise<Item[]> {
+
     // Only use Airtable formula for fields that are NOT linked records.
     // Linked record fields (Customer, Container, Order) can't be filtered by
     // record ID in filterByFormula — filter those in JS after fetching.
@@ -607,6 +608,8 @@ export const itemsApi = {
   },
 
   async getByCustomer(customerId: string): Promise<Item[]> {
+    // Fail closed: list({customerId: undefined}) means "no filter" = everyone's items.
+    if (!customerId) return [];
     return this.list({ customerId });
   },
 
@@ -1061,6 +1064,7 @@ export const cartonsApi = {
 // ============================================================
 export const ordersApi = {
   async list(params: OrderFilterParams = {}): Promise<Order[]> {
+
     const formulas: string[] = [];
     if (params.status) formulas.push(`{Status} = '${params.status}'`);
     // Search is done in JS after customer names are resolved so that
@@ -1107,6 +1111,8 @@ export const ordersApi = {
   },
 
   async getByCustomer(customerId: string): Promise<Order[]> {
+    // Fail closed: list({customerId: undefined}) means "no filter" = everyone's orders.
+    if (!customerId) return [];
     return this.list({ customerId });
   },
 

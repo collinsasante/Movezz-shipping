@@ -5,6 +5,8 @@
 // must replace or invert it. Never "fix" production code just to make one pass.
 export const KNOWN_BUG = (title: string) => `KNOWN BUG - ${title}`;
 export const PRESERVE = (title: string) => `PRESERVE - ${title}`;
+/** A regression test for a defect that was a KNOWN BUG in the Phase 4 baseline and has since been fixed. */
+export const FIXED = (title: string) => `FIXED - ${title}`;
 
 /** Standard reminder printed in every known-bug block. */
 export const REPLACE_NOTE =

@@ -1,7 +1,7 @@
 // GET /api/items/[id]/history — status history for an item
 import { NextRequest } from "next/server";
 import { itemsApi, statusHistoryApi } from "@/lib/airtable";
-import { requireAuth, serverErrorResponse } from "@/lib/auth";
+import { requireAuth, serverErrorResponse, notFoundResponse } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -18,14 +18,12 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // Customers can only access history for their own items
+    // Customers can only access history for their own items. Ownership is established BEFORE any
+    // history is read, and "not yours" looks exactly like "does not exist" (404).
     if (user.role === "customer") {
-      const item = await itemsApi.getById(id);
-      if (item.customerId !== user.customerId) {
-        return Response.json(
-          { success: false, error: "Access denied" },
-          { status: 403 }
-        );
+      const item = await itemsApi.getById(id).catch(() => null);
+      if (!item || item.customerId !== user.customerId) {
+        return notFoundResponse("Item not found");
       }
     }
 
