@@ -1,0 +1,755 @@
+{
+ "format": "movezz-airtable-snapshot/1",
+ "source": {
+  "kind": "fixture",
+  "label": "synthetic-clean",
+  "capturedAt": "2026-03-01T00:00:00.000Z"
+ },
+ "tables": {
+  "Warehouses": [
+   {
+    "id": "recW1",
+    "fields": {
+     "Name": "Amrahia Warehouse",
+     "Address": "Adenta-Dodowa Road",
+     "Country": "Ghana",
+     "IsActive": true
+    }
+   }
+  ],
+  "Suppliers": [
+   {
+    "id": "recS1",
+    "fields": {
+     "SupplierID": "SUP-0001",
+     "Name": "Guangzhou Textiles",
+     "Category": "Clothing",
+     "Rating": 4
+    }
+   }
+  ],
+  "PackageRates": [
+   {
+    "id": "recP1",
+    "fields": {
+     "Tier": "basic",
+     "Sea": 350,
+     "Air": 8
+    }
+   },
+   {
+    "id": "recP2",
+    "fields": {
+     "Tier": "business",
+     "Sea": 280,
+     "Air": 6
+    }
+   }
+  ],
+  "SpecialRates": [
+   {
+    "id": "recSR1",
+    "fields": {
+     "Name": "VIP Gold",
+     "Sea": 300,
+     "Air": 6
+    }
+   }
+  ],
+  "Settings": [
+   {
+    "id": "recSet1",
+    "fields": {
+     "UsdToGhs": 12.5,
+     "ShippingRatePerCbm": 350
+    }
+   }
+  ],
+  "Customers": [
+   {
+    "id": "recC1",
+    "fields": {
+     "Name": "Ama Mensah",
+     "Phone": "0241231234",
+     "Email": "ama@example.invalid",
+     "ShippingMark": "MOVEZZ-AM1234",
+     "Status": "active",
+     "CustomerPackage": "basic",
+     "PreferredWarehouse": "recW1",
+     "CreatedAt": "2025-01-10T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recC2",
+    "fields": {
+     "Name": "Kofi Boateng",
+     "Phone": "0245675678",
+     "Email": "kofi@example.invalid",
+     "ShippingMark": "MOVEZZ-KB5678",
+     "Status": "active",
+     "CustomerPackage": "premium",
+     "CreatedAt": "2025-02-11T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recC3",
+    "fields": {
+     "Name": "Yaw Asare",
+     "Phone": "0209990000",
+     "ShippingMark": "MOVEZZ-YA0000",
+     "Status": "inactive",
+     "CreatedAt": "2024-12-01T08:00:00.000Z"
+    }
+   }
+  ],
+  "Containers": [
+   {
+    "id": "recK1",
+    "fields": {
+     "ContainerID": "PMX-CON-2026-001",
+     "Name": "MSC",
+     "Status": "Loading",
+     "DepartureDate": "2026-02-01",
+     "TrackingNumber": "MSCU1234567"
+    }
+   },
+   {
+    "id": "recK2",
+    "fields": {
+     "ContainerID": "PMX-CON-2026-002",
+     "Name": "Maersk",
+     "Status": "Arrived in Ghana",
+     "DepartureDate": "2026-01-05",
+     "ArrivalDate": "2026-02-20",
+     "TrackingNumber": "MAEU7654321"
+    }
+   }
+  ],
+  "Items": [
+   {
+    "id": "recI1",
+    "fields": {
+     "ItemRef": "ITM-0001",
+     "Customer": [
+      "recC1"
+     ],
+     "Container": [
+      "recK1"
+     ],
+     "Order": [
+      "recO1"
+     ],
+     "Status": "Arrived in Ghana",
+     "FreightType": "sea",
+     "Length": 100,
+     "Width": 100,
+     "Height": 100,
+     "DimensionUnit": "cm",
+     "Quantity": 1,
+     "PkgShippingRate": 350,
+     "PkgEstShipping": 350,
+     "Description": "Fabric rolls",
+     "DateReceived": "2026-01-12",
+     "CreatedAt": "2026-01-12T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI2",
+    "fields": {
+     "ItemRef": "ITM-0002",
+     "Customer": [
+      "recC1"
+     ],
+     "Container": [
+      "recK1"
+     ],
+     "Order": [
+      "recO1"
+     ],
+     "Status": "Arrived in Ghana",
+     "FreightType": "sea",
+     "Length": 100,
+     "Width": 100,
+     "Height": 100,
+     "DimensionUnit": "cm",
+     "Quantity": 1,
+     "PkgShippingRate": 350,
+     "PkgEstShipping": 350,
+     "Description": "Shoes",
+     "CreatedAt": "2026-01-13T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI3",
+    "fields": {
+     "ItemRef": "ITM-0003",
+     "Customer": [
+      "recC1"
+     ],
+     "Order": [
+      "recO2"
+     ],
+     "Status": "Sorting",
+     "FreightType": "air",
+     "Weight": 12.5,
+     "PkgShippingRate": 8,
+     "PkgEstShipping": 100,
+     "Description": "Phones",
+     "CreatedAt": "2026-01-20T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI6",
+    "fields": {
+     "ItemRef": "ITM-0006",
+     "Customer": [
+      "recC1"
+     ],
+     "Order": [
+      "recO5"
+     ],
+     "Status": "Ready for Pickup",
+     "FreightType": "sea",
+     "Length": 50,
+     "Width": 50,
+     "Height": 50,
+     "DimensionUnit": "cm",
+     "Quantity": 1,
+     "CartonNumber": "CTN-0001",
+     "CartonLength": 100,
+     "CartonWidth": 100,
+     "CartonHeight": 50,
+     "PkgEstShipping": 87.5,
+     "PreCartonPkgEstShipping": 100,
+     "PkgShippingRate": 350,
+     "Description": "Bags",
+     "CreatedAt": "2026-02-02T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI7",
+    "fields": {
+     "ItemRef": "ITM-0007",
+     "Customer": [
+      "recC1"
+     ],
+     "Order": [
+      "recO5"
+     ],
+     "Status": "Ready for Pickup",
+     "FreightType": "sea",
+     "Length": 50,
+     "Width": 50,
+     "Height": 50,
+     "DimensionUnit": "cm",
+     "Quantity": 1,
+     "CartonNumber": "CTN-0001",
+     "CartonLength": 100,
+     "CartonWidth": 100,
+     "CartonHeight": 50,
+     "PkgEstShipping": 87.5,
+     "PreCartonPkgEstShipping": 100,
+     "PkgShippingRate": 350,
+     "Description": "Hats",
+     "CreatedAt": "2026-02-02T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI5",
+    "fields": {
+     "ItemRef": "ITM-0005",
+     "Customer": [
+      "recC1"
+     ],
+     "Order": [
+      "recO4"
+     ],
+     "Status": "Completed",
+     "FreightType": "air",
+     "Weight": 6.25,
+     "PkgShippingRate": 8,
+     "PkgEstShipping": 50,
+     "Description": "Watch",
+     "CreatedAt": "2026-01-25T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI4",
+    "fields": {
+     "ItemRef": "ITM-0004",
+     "Customer": [
+      "recC2"
+     ],
+     "Order": [
+      "recO3"
+     ],
+     "Status": "Arrived in Ghana",
+     "FreightType": "air",
+     "Weight": 10,
+     "PkgShippingRate": 8,
+     "PkgEstShipping": 80,
+     "Description": "Tablet",
+     "CreatedAt": "2026-01-28T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI17",
+    "fields": {
+     "ItemRef": "ITM-0017",
+     "Customer": [
+      "recC2"
+     ],
+     "Status": "Shipped to Ghana",
+     "FreightType": "sea",
+     "Length": 80,
+     "Width": 60,
+     "Height": 40,
+     "IsSpecialItem": true,
+     "specialRateName": "VIP Gold",
+     "SpecialShippingRate": 300,
+     "EstShippingPrice": 57.6,
+     "Description": "Special cargo",
+     "CreatedAt": "2026-02-05T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recI30",
+    "fields": {
+     "ItemRef": "ITM-0030",
+     "Customer": [
+      "recC2"
+     ],
+     "Container": [
+      "recK2"
+     ],
+     "Status": "Arrived in Ghana",
+     "FreightType": "sea",
+     "Length": 60,
+     "Width": 60,
+     "Height": 60,
+     "CartonNumber": "CTN-0003",
+     "CartonLength": 120,
+     "CartonWidth": 60,
+     "CartonHeight": 60,
+     "PkgEstShipping": 75,
+     "PreCartonPkgEstShipping": 80,
+     "Description": "Boxes A",
+     "Photos": [
+      {
+       "id": "attAAA111",
+       "url": "https://v5.airtableusercontent.com/v1/a.jpg",
+       "width": 800,
+       "height": 600
+      },
+      {
+       "id": "attBBB222",
+       "url": "https://res.cloudinary.com/demo/image/upload/b.jpg"
+      }
+     ]
+    }
+   },
+   {
+    "id": "recI31",
+    "fields": {
+     "ItemRef": "ITM-0031",
+     "Customer": [
+      "recC2"
+     ],
+     "Container": [
+      "recK2"
+     ],
+     "Status": "Arrived in Ghana",
+     "FreightType": "sea",
+     "Length": 60,
+     "Width": 60,
+     "Height": 60,
+     "CartonNumber": "CTN-0003",
+     "CartonLength": 120,
+     "CartonWidth": 60,
+     "CartonHeight": 60,
+     "PkgEstShipping": 75,
+     "PreCartonPkgEstShipping": 80,
+     "Description": "Boxes B"
+    }
+   }
+  ],
+  "Orders": [
+   {
+    "id": "recO1",
+    "fields": {
+     "OrderRef": "ORD-00001",
+     "Customer": [
+      "recC1"
+     ],
+     "Items": [
+      "recI1",
+      "recI2"
+     ],
+     "InvoiceAmount": 8750,
+     "Status": "Paid",
+     "InvoiceDate": "2026-01-15",
+     "CreatedAt": "2026-01-15T08:00:00.000Z",
+     "AmountPaid": 8750,
+     "BalanceDue": 0,
+     "KeepupSaleId": "KU-1000"
+    }
+   },
+   {
+    "id": "recO2",
+    "fields": {
+     "OrderRef": "ORD-00002",
+     "Customer": [
+      "recC1"
+     ],
+     "Items": [
+      "recI3"
+     ],
+     "InvoiceAmount": 1250,
+     "Status": "Partial",
+     "InvoiceDate": "2026-01-22",
+     "CreatedAt": "2026-01-22T08:00:00.000Z",
+     "AmountPaid": 500,
+     "BalanceDue": 750,
+     "KeepupSaleId": "KU-1001"
+    }
+   },
+   {
+    "id": "recO3",
+    "fields": {
+     "OrderRef": "ORD-00003",
+     "Customer": [
+      "recC2"
+     ],
+     "Items": [
+      "recI4"
+     ],
+     "InvoiceAmount": 1000,
+     "Status": "Cancelled",
+     "InvoiceDate": "2026-01-30",
+     "CreatedAt": "2026-01-30T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recO4",
+    "fields": {
+     "OrderRef": "ORD-00004",
+     "Customer": [
+      "recC1"
+     ],
+     "Items": [
+      "recI5"
+     ],
+     "InvoiceAmount": 0,
+     "Discount": 50,
+     "Status": "Paid",
+     "InvoiceDate": "2026-01-26",
+     "CreatedAt": "2026-01-26T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recO5",
+    "fields": {
+     "OrderRef": "ORD-00005",
+     "Customer": [
+      "recC1"
+     ],
+     "Items": [
+      "recI6",
+      "recI7"
+     ],
+     "InvoiceAmount": 2187.5,
+     "Status": "Pending",
+     "InvoiceDate": "2026-02-03",
+     "CreatedAt": "2026-02-03T08:00:00.000Z",
+     "AmountPaid": 0,
+     "BalanceDue": 2187.5
+    }
+   }
+  ],
+  "VerifiedInvoices": [
+   {
+    "id": "vi1",
+    "fields": {
+     "OrderRecordID": "recO1",
+     "SubtotalUsd": 700,
+     "DiscountUsd": 0,
+     "FxRate": 12.5,
+     "TotalGhs": 8750,
+     "Source": "keepup-export"
+    }
+   },
+   {
+    "id": "vi2",
+    "fields": {
+     "OrderRecordID": "recO2",
+     "SubtotalUsd": 100,
+     "DiscountUsd": 0,
+     "FxRate": 12.5,
+     "TotalGhs": 1250,
+     "Source": "keepup-export"
+    }
+   },
+   {
+    "id": "vi3",
+    "fields": {
+     "OrderRecordID": "recO3",
+     "SubtotalUsd": 80,
+     "DiscountUsd": 0,
+     "FxRate": 12.5,
+     "TotalGhs": 1000,
+     "CancelledAt": "2026-02-01T10:00:00Z",
+     "CancelReason": "Customer changed their mind",
+     "Source": "keepup-export"
+    }
+   },
+   {
+    "id": "vi4",
+    "fields": {
+     "OrderRecordID": "recO4",
+     "SubtotalUsd": 50,
+     "DiscountUsd": 50,
+     "DiscountReason": "Approved waiver by management",
+     "FxRate": 12.5,
+     "TotalGhs": 0,
+     "Source": "keepup-export"
+    }
+   },
+   {
+    "id": "vi5",
+    "fields": {
+     "OrderRecordID": "recO5",
+     "SubtotalUsd": 175,
+     "DiscountUsd": 0,
+     "FxRate": 12.5,
+     "TotalGhs": 2187.5,
+     "Source": "keepup-export"
+    }
+   }
+  ],
+  "VerifiedInvoiceLines": [
+   {
+    "id": "vl1",
+    "fields": {
+     "LineKey": "L-O1-1",
+     "OrderRecordID": "recO1",
+     "LineNo": 1,
+     "ItemRecordID": "recI1",
+     "Description": "Fabric rolls",
+     "UnitPriceUsd": 350,
+     "BillingBasis": "tier",
+     "PackageTier": "basic",
+     "RateUsd": 350
+    }
+   },
+   {
+    "id": "vl2",
+    "fields": {
+     "LineKey": "L-O1-2",
+     "OrderRecordID": "recO1",
+     "LineNo": 2,
+     "ItemRecordID": "recI2",
+     "Description": "Shoes",
+     "UnitPriceUsd": 350,
+     "BillingBasis": "tier",
+     "PackageTier": "basic",
+     "RateUsd": 350
+    }
+   },
+   {
+    "id": "vl3",
+    "fields": {
+     "LineKey": "L-O2-1",
+     "OrderRecordID": "recO2",
+     "LineNo": 1,
+     "ItemRecordID": "recI3",
+     "Description": "Phones",
+     "UnitPriceUsd": 100,
+     "BillingBasis": "tier",
+     "PackageTier": "basic",
+     "RateUsd": 8
+    }
+   },
+   {
+    "id": "vl4",
+    "fields": {
+     "LineKey": "L-O3-1",
+     "OrderRecordID": "recO3",
+     "LineNo": 1,
+     "ItemRecordID": "recI4",
+     "Description": "Tablet",
+     "UnitPriceUsd": 80,
+     "BillingBasis": "tier",
+     "PackageTier": "enterprise",
+     "RateUsd": 8
+    }
+   },
+   {
+    "id": "vl5",
+    "fields": {
+     "LineKey": "L-O4-1",
+     "OrderRecordID": "recO4",
+     "LineNo": 1,
+     "ItemRecordID": "recI5",
+     "Description": "Watch",
+     "UnitPriceUsd": 50,
+     "BillingBasis": "tier",
+     "PackageTier": "basic",
+     "RateUsd": 8
+    }
+   },
+   {
+    "id": "vl6",
+    "fields": {
+     "LineKey": "L-O5-1",
+     "OrderRecordID": "recO5",
+     "LineNo": 1,
+     "CartonNumber": "CTN-0001",
+     "Description": "Carton CTN-0001",
+     "UnitPriceUsd": 175,
+     "BillingBasis": "tier",
+     "PackageTier": "basic",
+     "RateUsd": 350
+    }
+   }
+  ],
+  "VerifiedPayments": [
+   {
+    "id": "vp1",
+    "fields": {
+     "PaymentKey": "PAY-1",
+     "OrderRecordID": "recO1",
+     "AmountGhs": 8750,
+     "Currency": "GHS",
+     "Method": "bank_transfer",
+     "PaidAt": "2026-01-16T09:00:00Z",
+     "Status": "completed",
+     "KeepupReference": "KR-1"
+    }
+   },
+   {
+    "id": "vp2",
+    "fields": {
+     "PaymentKey": "PAY-2",
+     "OrderRecordID": "recO2",
+     "AmountGhs": 500,
+     "Currency": "GHS",
+     "Method": "momo",
+     "PaidAt": "2026-01-23T09:00:00Z",
+     "Status": "completed"
+    }
+   },
+   {
+    "id": "vp3",
+    "fields": {
+     "PaymentKey": "PAY-3",
+     "OrderRecordID": "recO3",
+     "AmountGhs": 400,
+     "Currency": "GHS",
+     "Method": "cash",
+     "PaidAt": "2026-01-31T09:00:00Z",
+     "Status": "voided",
+     "VoidedAt": "2026-01-31T15:00:00Z",
+     "VoidReason": "Entered on the wrong invoice"
+    }
+   }
+  ],
+  "StatusHistory": [
+   {
+    "id": "recH1",
+    "fields": {
+     "RecordType": "Item",
+     "RecordID": "recI1",
+     "RecordRef": "ITM-0001",
+     "PreviousStatus": "Shipped to Ghana",
+     "NewStatus": "Arrived in Ghana",
+     "ChangedBy": "staff@example.invalid",
+     "ChangedByRole": "warehouse_staff",
+     "ChangedAt": "2026-02-21T09:00:00Z"
+    }
+   },
+   {
+    "id": "recH2",
+    "fields": {
+     "RecordType": "Order",
+     "RecordID": "recO1",
+     "RecordRef": "ORD-00001",
+     "PreviousStatus": "Pending",
+     "NewStatus": "Paid",
+     "ChangedBy": "admin@example.invalid",
+     "ChangedByRole": "super_admin",
+     "ChangedAt": "2026-01-16T09:05:00Z"
+    }
+   },
+   {
+    "id": "recH3",
+    "fields": {
+     "RecordType": "Container",
+     "RecordID": "recK2",
+     "RecordRef": "PMX-CON-2026-002",
+     "PreviousStatus": "Shipped to Ghana",
+     "NewStatus": "Arrived in Ghana",
+     "ChangedBy": "staff@example.invalid",
+     "ChangedByRole": "warehouse_staff",
+     "ChangedAt": "2026-02-20T12:00:00Z"
+    }
+   }
+  ],
+  "ActivityLogs": [
+   {
+    "id": "recA1",
+    "fields": {
+     "Action": "CREATE_ITEM",
+     "UserEmail": "staff@example.invalid",
+     "UserRole": "warehouse_staff",
+     "Details": "Created ITM-0001",
+     "EntityType": "Item",
+     "EntityID": "recI1",
+     "Timestamp": "2026-01-12T08:30:00Z",
+     "IPAddress": "203.0.113.7"
+    }
+   },
+   {
+    "id": "recA2",
+    "fields": {
+     "Action": "LOGIN",
+     "UserEmail": "admin@example.invalid",
+     "UserRole": "super_admin",
+     "Details": "login",
+     "Timestamp": "2026-01-12T07:30:00Z"
+    }
+   }
+  ],
+  "Users": [
+   {
+    "id": "recU1",
+    "fields": {
+     "FirebaseUID": "uid-admin-1",
+     "Email": "admin@example.invalid",
+     "Role": "super_admin",
+     "CreatedAt": "2024-01-01T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recU2",
+    "fields": {
+     "FirebaseUID": "uid-staff-1",
+     "Email": "staff@example.invalid",
+     "Role": "warehouse_staff",
+     "CreatedAt": "2024-02-01T08:00:00.000Z"
+    }
+   },
+   {
+    "id": "recU3",
+    "fields": {
+     "FirebaseUID": "uid-cust-1",
+     "Email": "ama@example.invalid",
+     "Role": "customer",
+     "CustomerRecord": [
+      "recC1"
+     ],
+     "CreatedAt": "2025-01-11T08:00:00.000Z"
+    }
+   }
+  ]
+ }
+}
