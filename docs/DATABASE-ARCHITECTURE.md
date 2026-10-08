@@ -5,6 +5,11 @@ exist. The running application still uses Airtable; no routes were switched, no 
 was deployed. Passing migrations and tests does **not** make this database production-ready — see
 ["What has and has not been verified"](#what-has-and-has-not-been-verified).
 
+> **Authoritative business rules:** [DECISIONS.md](DECISIONS.md) (25 decisions approved at the Phase 6 decision gate)
+> take precedence over anything below. Where this document disagrees with it, DECISIONS.md wins; the known
+> disagreements are listed in its "Conformance" table (container numbering §8, zero-value invoices §3/§9, cancellation
+> release §9). The implementation has **not** yet been changed to match.
+
 ## 1. Decisions that shaped the schema
 
 | Decision | Where it shows up |
@@ -182,8 +187,8 @@ same transaction as the business change; a worker sends them later. Nothing is s
 serialises allocators of the same type, so numbers are unique under concurrency (tested with 60 parallel callers); a
 rolled-back transaction releases its number (no gaps among committed references). Formats are unchanged from
 `src/lib/utils.ts`: `ITM-0001`, `ORD-00001`, `SUP-0001`, `CTN-0001`, `PMX-CON-2026-001`. Padding never truncates
-(`CTN-10000`). **Behavior change to confirm:** containers restart at 001 each calendar year (scope = year); in Airtable
-the sequence was `count(all containers)+1` and never restarted. `seed_reference_counter()` lifts a counter above
+(`CTN-10000`). **Superseded behavior (do not rely on it):** containers restart at 001 each calendar year (scope = year). **SUPERSEDED by DECISIONS.md D1:** the container
+sequence must be globally monotonic and must NOT restart; the implementation still restarts and must be corrected. `seed_reference_counter()` lifts a counter above
 imported legacy references.
 
 ## 9. Transaction boundaries
