@@ -9,3 +9,10 @@ INSERT INTO users (auth_uid, email, role) VALUES ('uid-admin', 'admin@example.in
 INSERT INTO users (auth_uid, email, role, customer_id) SELECT 'uid-ama', 'ama@example.invalid', 'customer', id FROM customers WHERE shipping_mark = 'MOVEZZ-AO0111';
 INSERT INTO users (auth_uid, email, role, customer_id) SELECT 'uid-kojo', 'kojo@example.invalid', 'customer', id FROM customers WHERE shipping_mark = 'MOVEZZ-KM0222';
 -- the harness key (scripts/ui-staging/start.sh) must be registered once:  SELECT movezz_sec.set_actor_key(decode('<hex of the 32-byte key>','hex'));
+-- Items expected by ui-run.mjs (flow, flow2): three priced boxes for Ama (invoiced by `flow`), one for Kojo (cancelled by `flow`),
+-- and a fifth Ama box that stays un-invoiced for `flow2`. All priced from the seeded package rates (basic sea, 100x100x100 cm = 1 CBM = USD 350).
+INSERT INTO items (item_ref, customer_id, description, freight_type, length, width, height, dimension_unit, quantity, package_tier, tier_rate_usd, tier_price_usd)
+SELECT v.ref, c.id, v.descr, 'sea', 100, 100, 100, 'cm', 1, 'basic', 350, 350
+  FROM (VALUES ('ITM-0001','MOVEZZ-AO0111','Ama box 1'), ('ITM-0002','MOVEZZ-AO0111','Ama box 2'), ('ITM-0003','MOVEZZ-AO0111','Ama box 3'),
+               ('ITM-0004','MOVEZZ-KM0222','Kojo box'),  ('ITM-0005','MOVEZZ-AO0111','Ama box 4')) AS v(ref, mark, descr)
+  JOIN customers c ON c.shipping_mark = v.mark;
