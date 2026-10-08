@@ -1,0 +1,20 @@
+# STAGING ONLY. Never use these values, this name or this file for the live Pages project (wrangler.toml stays the production configuration).
+# Prerequisites and the exact procedure: docs/CLOUDFLARE-STAGING.md
+name = "movezz-shipping-staging"
+main = ".open-next/worker.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat_v2"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[vars]
+NODE_ENV = "production"
+MOVEZZ_DATA_BACKEND = "postgres"
+# Secrets (never in this file):  wrangler secret put DATABASE_URL --config wrangler.staging.toml   (staging database only)
+#                                wrangler secret put ACTOR_CONTEXT_KEY / FIREBASE_* / NEXT_PUBLIC_* as for staging
+# Preferred database path: a Hyperdrive binding to the STAGING database, read by the app when DATABASE_URL is absent:
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<staging hyperdrive id>"

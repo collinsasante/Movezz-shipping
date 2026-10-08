@@ -3,6 +3,7 @@
 //
 // Credentials: DATABASE_URL is the RUNTIME role (movezz_app: DML only). Migrations use MIGRATION_DATABASE_URL and
 // never run through this module. Neither value is logged or hard-coded.
+import { readEnv, hyperdriveUrl } from "../env";
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 import { toDomainError } from "./errors";
 
@@ -33,9 +34,10 @@ export function createPool(connectionString: string, opts: { max?: number; ssl?:
 
 export function getPool(): Pool {
   if (!pool) {
-    const url = process.env.DATABASE_URL;
+    const url = readEnv("DATABASE_URL") ?? hyperdriveUrl();
     if (!url) throw new Error("DATABASE_URL is not set");
-    pool = createPool(url, { ssl: process.env.DATABASE_SSL === "true" });
+    // TLS with certificate verification when asked for; a Hyperdrive connection string terminates TLS itself, so the flag only applies to DATABASE_URL
+    pool = createPool(url, { ssl: readEnv("DATABASE_SSL") === "true" && readEnv("DATABASE_URL") !== undefined });
   }
   return pool;
 }

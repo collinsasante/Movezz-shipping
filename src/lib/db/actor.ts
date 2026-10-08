@@ -8,6 +8,7 @@
 // verified Firebase token resolved to a Movezz user) - never a value taken from request input. The signing key
 // (ACTOR_CONTEXT_KEY, per environment) stays in the server environment. Code that holds this key can sign for any user:
 // that is the unavoidable limit of a single-service architecture and is documented in DATABASE-ARCHITECTURE.md.
+import { readEnv } from "../env";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { toDomainError, DomainError } from "./errors";
@@ -30,7 +31,7 @@ const ASSERTION_TTL_SECONDS = 60;
 
 /** Reads ACTOR_CONTEXT_KEY (base64, >= 32 bytes). Never logged. */
 export function actorKeyFromEnv(): Buffer {
-  const raw = process.env.ACTOR_CONTEXT_KEY;
+  const raw = readEnv("ACTOR_CONTEXT_KEY");
   if (!raw) throw new DomainError("ACTOR_INVALID", "ACTOR_CONTEXT_KEY is not configured");
   const key = Buffer.from(raw, "base64");
   if (key.length < 32) throw new DomainError("ACTOR_INVALID", "ACTOR_CONTEXT_KEY must decode to at least 32 bytes");

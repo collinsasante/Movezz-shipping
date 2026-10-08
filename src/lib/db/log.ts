@@ -12,7 +12,8 @@ type Level = "info" | "warn" | "error";
 export type LogSink = (line: string) => void;
 let sink: LogSink | null = null;
 export function setLogSink(s: LogSink | null): void { sink = s; }
-const active = (): LogSink | null => sink ?? (process.env.MOVEZZ_LOG === "json" ? (l) => process.stderr.write(l + "\n") : null);
+import { readEnv } from "../env";
+const active = (): LogSink | null => sink ?? (readEnv("MOVEZZ_LOG") === "json" ? (l) => console.error(l) : null);
 
 const SECRET_KEY = /pass(word)?|secret|token|api[_-]?key|private|authorization|cookie|signature|credential|auth_uid|firebase|actor_context|e-?mail|phone|recipient|payload|name$/i;
 const SCRUBS: [RegExp, string][] = [

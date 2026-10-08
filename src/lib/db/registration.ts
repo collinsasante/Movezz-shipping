@@ -6,6 +6,7 @@
 //   - approval / rejection / the admin queue run under the verified super_admin's trusted actor and are authorized in the policy table.
 // There are no passwords anywhere in this flow: the applicant creates their own Firebase login (own password or Google) and the server
 // only ever sees a VERIFIED ID token.
+import { readEnv } from "../env";
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
 import { withActorTransaction, type ActorAssertion } from "./actor";
@@ -21,7 +22,7 @@ export interface PublicRegistrationInput {
 }
 
 /** Salted hash of the submitter's address: lets the database throttle one source across server instances without storing the IP. */
-export function clientKeyFor(ip: string, pepper: string = process.env.REGISTRATION_THROTTLE_PEPPER ?? "movezz-registration"): string {
+export function clientKeyFor(ip: string, pepper: string = readEnv("REGISTRATION_THROTTLE_PEPPER") ?? "movezz-registration"): string {
   return createHash("sha256").update(`${pepper}|${ip}`).digest("hex").slice(0, 32);
 }
 

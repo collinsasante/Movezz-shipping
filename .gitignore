@@ -41,3 +41,7 @@ next-env.d.ts
 .wrangler
 .pages-deploy/
 .claude/
+
+# receive exports OUTSIDE the repository; if one is ever staged here by mistake it must not be committed
+staging-exports/
+*.airtable-export.json
