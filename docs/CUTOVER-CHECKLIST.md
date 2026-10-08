@@ -66,3 +66,6 @@ Customer login and ownership checks; invoice and payment checks; warehouse workf
 
 ## 9. PRODUCTION ACTIONS NOT PERFORMED
 Production export, import, migration, DNS, environment variables, Firebase/Keepup/Cloudinary/Cloudflare access, deployment, merge, traffic switch, Airtable shutdown.
+
+## 10. Procedure
+The step-by-step cutover and rollback procedure with approval gates is `docs/CUTOVER-RUNBOOK.md` (documented, not executed, not proven in staging).

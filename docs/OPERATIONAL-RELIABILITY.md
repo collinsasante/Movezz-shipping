@@ -16,7 +16,7 @@ Legend: **Fixed** (change made + regression test) · **Verified** (existing beha
 | Idempotency ledger integrity; `voidPayment` idempotency key | trigger `idempotency_zz_ledger_guard`, `src/lib/db/invoices.ts` |
 | History authority (who may record which audit/status entries) | `movezz_sec.history_allowed`, `append_audit`, `append_status_event` |
 | Fail-closed operational writes | trigger `a0_<table>_requires_actor` on items, cartons, containers, item_photos, invoice_lines |
-| Expired-key purge (operator only) | `scripts/db-purge-idempotency.mjs` |
+| Expired-key purge (operator only) | `scripts/db-purge-idempotency.mjs` (+ `scripts/lib/purge-idempotency.mjs`; same strict target guard as migrations; deletes only keys expired before the run started; strict flags) |
 
 The live (Airtable-backed) application and `src/lib/keepup.ts` are untouched. No route was switched to PostgreSQL and no
 worker entry point (cron, queue consumer, Cloudflare scheduled handler) was created: wiring a worker to a schedule and to a
