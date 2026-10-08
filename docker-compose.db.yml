@@ -1,0 +1,14 @@
+# Local development database only (not for production). `scripts/db-local.sh start` uses this when Docker is available.
+# NOTE: written for convenience; it could not be exercised in the build environment (no Docker daemon there).
+services:
+  postgres:
+    image: postgres:16
+    ports:
+      - "127.0.0.1:54329:5432"          # bound to localhost only
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust  # local throwaway data; never reuse this setting elsewhere
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

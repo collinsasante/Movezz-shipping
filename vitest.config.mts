@@ -18,6 +18,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    exclude: ["tests/db/**", "node_modules/**"], // PostgreSQL integration tests run with vitest.db.config.mts (npm run test:db)
     setupFiles: ["tests/setup/setup.ts"],
     clearMocks: true,
     testTimeout: 15_000,
