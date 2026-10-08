@@ -17,6 +17,7 @@ import { GET as usersGet, POST as usersPost } from "../../src/app/api/users/rout
 import { DELETE as userDelete } from "../../src/app/api/users/[id]/route";
 import { GET as customersGet, POST as customersPost } from "../../src/app/api/customers/route";
 import { POST as linkLogin } from "../../src/app/api/customers/[id]/link-login/route";
+import { POST as staffLink } from "../../src/app/api/users/link-login/route";
 import { GET as customerGet, PATCH as customerPatch, DELETE as customerDelete } from "../../src/app/api/customers/[id]/route";
 
 let ipn = 0;
@@ -141,6 +142,37 @@ dbDescribe("Group A on PostgreSQL: auth, users, customers (real routes)", () => 
       expect((await link(admin, inactive, { firebaseUid: "fb_import_3" })).status).toBe(409);                         // never revives an inactive customer
       const tokenForNew = tok("fb_import_1");
       expect((await verify(req("/api/auth/verify", "POST", { body: { idToken: tokenForNew } }))).status).toBe(200);   // and the customer can now sign in
+    });
+  });
+
+  describe("activating an existing staff login (users/link-login)", () => {
+    it("super_admin only, verified identity only, warehouse_staff only, idempotent, no merging or escalation", async () => {
+      const link = (token: string | undefined, body: unknown = { firebaseUid: "fb_staff_old1" }) => staffLink(req("/api/users/link-login", "POST", { token, body }));
+      fb.getFirebaseUser.mockResolvedValue({ localId: "fb_staff_old1", email: "oldstaff1@example.invalid", emailVerified: true });
+      expect((await link(undefined)).status).toBe(401);
+      expect((await link(staff)).status).toBe(403); expect((await link(ca)).status).toBe(403);
+      expect((await link(admin, { firebaseUid: "fb_staff_old1", role: "super_admin" })).status).toBe(400);           // no client-chosen role
+      expect((await link(admin, { firebaseUid: "x" })).status).toBe(400);
+      fb.getFirebaseUser.mockResolvedValueOnce({ localId: "fb_staff_old1", email: "oldstaff1@example.invalid", emailVerified: false });
+      expect((await link(admin)).status).toBe(400);                                                                   // unverified e-mail: could be a pre-registered impostor
+      fb.getFirebaseUser.mockResolvedValueOnce(null);
+      expect((await link(admin)).status).toBe(404);
+      fb.getFirebaseUser.mockRejectedValueOnce(new Error("firebase down"));
+      expect((await link(admin)).status).toBe(409);
+      expect((await q("SELECT count(*)::int AS n FROM users WHERE auth_uid = 'fb_staff_old1'"))[0].n).toBe(0);
+      const first = await json(await link(admin));
+      expect(first.status).toBe(201);
+      expect((await q("SELECT role, customer_id, is_active FROM users WHERE auth_uid = 'fb_staff_old1'"))[0]).toEqual({ role: "warehouse_staff", customer_id: null, is_active: true });
+      expect((await q("SELECT count(*)::int AS n FROM audit_logs WHERE action = 'user.create' AND entity_id = $1", [first.body.data.userId]))[0].n).toBe(1);
+      expect((await json(await link(admin))).body.data.alreadyLinked).toBe(true);                                      // idempotent
+      fb.getFirebaseUser.mockResolvedValue({ localId: "fb_staff_old2", email: "OLDSTAFF1@example.invalid", emailVerified: true });
+      expect((await link(admin, { firebaseUid: "fb_staff_old2" })).status).toBe(409);                                  // same e-mail, different identity: refused (no takeover)
+      const adminEmail = (await q("SELECT email FROM users WHERE id = $1", [adminId]))[0].email;
+      fb.getFirebaseUser.mockResolvedValue({ localId: "fb_attacker", email: adminEmail, emailVerified: true });
+      expect((await link(admin, { firebaseUid: "fb_attacker" })).status).toBe(409);                                    // cannot re-bind an existing administrator's e-mail
+      expect((await q("SELECT count(*)::int AS n FROM users WHERE auth_uid = 'fb_attacker'"))[0].n).toBe(0);
+      expect((await verify(req("/api/auth/verify", "POST", { body: { idToken: tok("fb_staff_old1") } }))).status).toBe(200);   // the staff member can now sign in as staff
+      expect((await json(await verify(req("/api/auth/verify", "POST", { body: { idToken: tok("fb_staff_old1") } })))).body.data.user.role).toBe("warehouse_staff");
     });
   });
 

@@ -190,7 +190,7 @@ export const itemStatusPatch = (request: NextRequest, p: P) => pgRoute(request, 
   const item = await loadItem(c.tx, c, c.params.id);
   c.after(async () => {   // after COMMIT: customer e-mail (best effort, as before); WhatsApp only when requested
     const cust = (await (await import("@/lib/db/client")).getPool().query("SELECT email, name FROM customers WHERE id = $1", [cur.customer_id])).rows[0];
-    if (d.sendWhatsApp && cur.invoice_id) {   // opt-in per update, as in the Airtable flow; best effort
+    if (d.sendWhatsApp && cur.invoice_id && cur.status !== d.status) {   // opt-in per update; never for a repeated/retried identical status (no duplicate messages); best effort, not guaranteed delivery
       try {
         const w = (await (await import("@/lib/db/client")).getPool().query("SELECT c.name, c.phone, v.invoice_ref FROM customers c JOIN invoices v ON v.id = $2 WHERE c.id = $1", [cur.customer_id, cur.invoice_id])).rows[0];
         if (w?.phone) { const { whatsAppApi } = await import("@/lib/whatsapp"); const { buildWhatsAppMessage } = await import("@/lib/utils");

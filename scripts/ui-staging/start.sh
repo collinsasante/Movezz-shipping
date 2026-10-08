@@ -8,6 +8,8 @@ export FAKE_USERS='{"admin@example.invalid":{"uid":"uid-admin","password":"pw-ad
 node scripts/ui-staging/fake-identity.cjs & 
 export MOVEZZ_DATA_BACKEND=postgres DATABASE_URL="${DB:?set DB to a LOCAL staging database url}" NODE_ENV=production
 export ACTOR_CONTEXT_KEY="$(node -e 'console.log(Buffer.from(Array.from({length:32},(_,i)=>(i*37+11)%256)).toString("base64"))')"
-export NODE_OPTIONS="--require $PWD/scripts/ui-staging/redirect-fetch.cjs"
+unset AIRTABLE_API_KEY AIRTABLE_BASE_ID AIRTABLE_PERSONAL_ACCESS_TOKEN   # the PostgreSQL build must not need them
+export AIRTABLE_BLOCK_LOG="${AIRTABLE_BLOCK_LOG:-/tmp/airtable-block.log}"; : > "$AIRTABLE_BLOCK_LOG"
+export NODE_OPTIONS="--require $PWD/scripts/ui-staging/redirect-fetch.cjs --require $PWD/scripts/ui-staging/block-airtable.cjs"
 case "$DB" in *127.0.0.1*|*localhost*) ;; *) echo "refusing: the harness only runs against a local database" >&2; exit 1;; esac
 exec node_modules/.bin/next start -p 3100

@@ -17,6 +17,7 @@ export const whatsAppApi = {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(8000),   // a slow provider must not hold the request open
       body: JSON.stringify({
         messaging_product: "whatsapp",
         to: phoneNumber,

@@ -261,3 +261,26 @@ export const customerLinkLogin = (request: NextRequest, { params }: { params: Pa
     return ok({ userId: id, customerId: p.id, alreadyLinked: false }, { message: "Login linked to the customer" }, 201);
   });
 };
+
+// POST /api/users/link-login — a super_admin activates an EXISTING staff member who already has a Firebase login (e.g. from the
+// Airtable era) as warehouse_staff. Same rules as customer linking: the identity is re-verified with Firebase (verified e-mail required,
+// never taken from the client), conflicts are refused instead of merged, only warehouse_staff can be created (administrators come
+// only from the bootstrap procedure), audited by movezz_sec.admin_create_user.
+const StaffLink = z.object({ firebaseUid: z.string().regex(/^[A-Za-z0-9_-]{6,128}$/, "firebaseUid is invalid") }).strict();
+export const staffLinkLogin = (request: NextRequest) => {
+  if (!checkRateLimit(`link-login:${getClientIp(request)}`, 30, 60 * 60_000)) return Promise.resolve(rateLimitedResponse(3600));
+  return pgRoute(request, undefined, ["super_admin"], async ({ tx, request: r }) => {
+    await authorize(tx, "user.admin");
+    const { firebaseUid } = parseInput(StaffLink, await readJson(r));
+    const fb = await getFirebaseUser(firebaseUid).catch(() => { throw new DomainError("INVALID_STATE", "The Firebase identity could not be verified. Try again."); });
+    if (!fb) throw new DomainError("NOT_FOUND", "No such Firebase identity");
+    if (fb.emailVerified !== true || !fb.email) throw new DomainError("INVALID_INPUT", "The Firebase identity must have a verified e-mail address");
+    const existing = (await tx.query("SELECT id, role, auth_uid, is_active FROM users WHERE auth_uid = $1 OR lower(email) = lower($2)", [firebaseUid, fb.email])).rows[0];
+    if (existing) {
+      if (existing.auth_uid === firebaseUid && existing.role === "warehouse_staff" && existing.is_active) return ok({ userId: existing.id, alreadyLinked: true }, { message: "This login is already an active staff account" });
+      throw new DomainError("DUPLICATE", "This Firebase identity or e-mail already belongs to another Movezz user");
+    }
+    const id = (await tx.query("SELECT movezz_sec.admin_create_user($1::text, $2::text, NULL::text, 'warehouse_staff', NULL::uuid) AS id", [firebaseUid, fb.email])).rows[0].id;
+    return ok({ userId: id, alreadyLinked: false }, { message: "Staff login activated" }, 201);
+  });
+};

@@ -98,4 +98,5 @@ export const PG_BACKED: Entry[] = [
   r("admin/registrations/[id]", "DELETE", [A]),
   r("auth/activate", "POST", "public"),
   r("customers/[id]/link-login", "POST", [A]),   // PostgreSQL backend only (501 in Airtable mode); tested in tests/db/pg-routes-identity.test.ts
+  r("users/link-login", "POST", [A]),   // PostgreSQL backend only (501 in Airtable mode); tested in tests/db/pg-routes-identity.test.ts
 ];

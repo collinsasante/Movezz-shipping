@@ -33,7 +33,7 @@ dbDescribe("migration 0015 upgrade path (PostgreSQL)", () => {
                                                     (SELECT json_agg(o ORDER BY o.dedupe_key) FROM (SELECT dedupe_key, status, attempts FROM notification_outbox) o) AS ob,
                                                     (SELECT count(*) FROM audit_logs) AS au, (SELECT count(*) FROM idempotency_keys) AS ik`)).rows[0];
 
-      expect((await migrate(old.url)).applied).toEqual(["0015_operational_reliability.sql", "0016_import_framework.sql", "0017_quarantine_resolution.sql"]);
+      expect((await migrate(old.url)).applied).toEqual(["0015_operational_reliability.sql", "0016_import_framework.sql", "0017_quarantine_resolution.sql", "0018_photo_rehost_log.sql"]);
       expect((await status(old.url)).filter((s: { applied: boolean }) => !s.applied)).toEqual([]);
       const after = (await old.admin.query(`SELECT (SELECT json_agg(k ORDER BY k.idempotency_key) FROM (SELECT idempotency_key, sync_state, attempt_count, keepup_sale_id FROM keepup_sync) k) AS ks,
                                                    (SELECT json_agg(o ORDER BY o.dedupe_key) FROM (SELECT dedupe_key, status, attempts FROM notification_outbox) o) AS ob,
