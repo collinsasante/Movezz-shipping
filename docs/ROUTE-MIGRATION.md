@@ -5,7 +5,7 @@ any Airtable access throws (`getBase()`), so a request can never mix sources. Ev
 Shared auth (`requireAuth`) is backend-aware (`pgAuthContext`). Required for the PostgreSQL backend: `DATABASE_URL` (runtime role), `ACTOR_CONTEXT_KEY` (random, ≥32 bytes), `DATABASE_SSL=true` in production.
 Labels: VL verified locally (real route handlers + PostgreSQL, Firebase/e-mail mocked) · RPV requires production verification.
 
-**Totals: 43 routes · 34 PostgreSQL-backed (each VL) · 9 never touched Airtable (health, upload/sign, auth/signup, auth/reset-password, customers/me/warehouse, onboard, auth/activate, admin/registrations ×2; the first two now authenticate through PostgreSQL) · 0 Airtable-only · 0 deferred · 0 dead.**
+**Totals: 44 routes · 35 PostgreSQL-backed (incl. the new `customers/[id]/link-login`) (each VL) · 9 never touched Airtable (health, upload/sign, auth/signup, auth/reset-password, customers/me/warehouse, onboard, auth/activate, admin/registrations ×2; the first two now authenticate through PostgreSQL) · 0 Airtable-only · 0 deferred · 0 dead.**
 
 | Group | Routes | Roles (database-enforced) | Notes |
 |---|---|---|---|
@@ -27,4 +27,4 @@ Labels: VL verified locally (real route handlers + PostgreSQL, Firebase/e-mail m
 ## Still not done (honest list)
 * RPV: Workers → PostgreSQL connectivity; a staging run on a real export; the frontend was not exercised against PostgreSQL in a browser (API contracts are covered by route tests).
 * Business decisions B1/B1b/B2 (see `docs/CUTOVER-CHECKLIST.md`); customer-login linking and production backups/keys are cutover actions.
-* `Idempotency-Key` header is honoured on order/payment/cancel routes; the current UI does not send it (a double-click is still stopped by the database: items cannot be invoiced twice, overpayment is refused).
+* `Idempotency-Key` is honoured on order/payment/cancel routes and now sent by the UI for payments and invoice creation (Phase 7M).

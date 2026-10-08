@@ -28,5 +28,5 @@ export default defineConfig([
     files: ["tests/db/import-*.test.ts", "tests/db/source-shape.test.ts", "tests/db/staging-rehearsal.test.ts", "tests/db/quarantine-resolution.test.ts", "tests/db/pg-routes-*.test.ts"],
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
-  globalIgnores([".next/**", ".open-next/**", "node_modules/**", "coverage/**", "out/**", "build/**", "next-env.d.ts", "public/**"]),
+  globalIgnores(["scripts/ui-staging/*.cjs", ".next/**", ".open-next/**", "node_modules/**", "coverage/**", "out/**", "build/**", "next-env.d.ts", "public/**"]),
 ]);
