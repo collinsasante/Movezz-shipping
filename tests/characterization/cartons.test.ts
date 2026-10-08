@@ -2,7 +2,7 @@
 // A "carton" today is just the set of Items that share a CartonNumber (there is no cartons table).
 import { describe, it, expect } from "vitest";
 import { freshWorld, standardWorld, type World } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 const dims = (over: Record<string, unknown> = {}) => ({ length: 50, width: 40, height: 30, dimensionUnit: "cm" as const, ...over });
 const priceOf = (w: World, id: string) => w.db.get("Items", id)?.fields["PkgEstShipping"];
@@ -104,14 +104,14 @@ describe(PRESERVE("carton pricing: tier rate x carton CBM (sea) or x weight (air
   });
 });
 
-describe(KNOWN_BUG("air carton without a weight is priced at 0 instead of being rejected"), () => {
-  it("documents that the carton is created and every member price is 0", async () => {
+describe(FIXED("an air carton without a weight is rejected instead of being priced at 0"), () => {
+  it("rejects creation and writes nothing", async () => {
     const w = await freshWorld();
     w.seed.customer("recCustA");
-    w.seed.item("recI1", "recCustA", { FreightType: "air" });
-    const res = await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1"], ...dims() });
-    expect(res.totalPrice).toBe(0);
-    expect(priceOf(w, "recI1")).toBe(0); // a 0 price is written to the item
+    w.seed.item("recI1", "recCustA", { FreightType: "air", PkgEstShipping: 7 });
+    await expect(w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1"], ...dims() })).rejects.toThrow("Air freight cartons need a weight");
+    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"]).toBeUndefined();
+    expect(priceOf(w, "recI1")).toBe(7);
   });
 });
 
@@ -218,21 +218,41 @@ describe("carton editing and dissolution (current behavior)", () => {
   });
 });
 
-describe(KNOWN_BUG("carton operations that lose or corrupt data"), () => {
-  // Future behavior (Phase 3 R-15/R-16): a real cartons table, one transaction per operation,
-  // price snapshots preserved, only OPEN cartons editable. These tests document current behavior only.
-
-  it("documents that dissolving a carton permanently ERASES each member's own PkgEstShipping (price snapshot lost)", async () => {
+describe(FIXED("carton operations no longer lose prices, half-apply edits or touch invoiced cartons"), () => {
+  it("dissolving a carton restores each member's own price (snapshotted when it joined)", async () => {
     const w = await freshWorld();
     w.seed.customer("recCustA");
     w.seed.item("recI1", "recCustA", { PkgEstShipping: 12.34 }); // the item's own tier price from receiving
     await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1"], ...dims() });
-    expect(priceOf(w, "recI1")).toBe(21); // overwritten by the carton share
+    expect(priceOf(w, "recI1")).toBe(21); // the carton share
     await w.airtable.cartonsApi.dissolve("CTN-0001");
-    expect(priceOf(w, "recI1")).toBeUndefined(); // neither 12.34 nor 21 survives
+    expect(priceOf(w, "recI1")).toBe(12.34);
+    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"]).toBeUndefined();
+    expect(w.db.get("Items", "recI1")?.fields["PreCartonPkgEstShipping"] ?? null).toBeNull();
   });
 
-  it("documents that a mid-way write failure rolls back by erasing fields, also destroying the original item prices", async () => {
+  it("removing a member restores its own price too", async () => {
+    const w = await freshWorld();
+    w.seed.customer("recCustA");
+    w.seed.item("recI1", "recCustA", { PkgEstShipping: 12.34 });
+    w.seed.item("recI2", "recCustA", { PkgEstShipping: 56.78 });
+    await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1", "recI2"], ...dims() });
+    await w.airtable.cartonsApi.update("CTN-0001", { removeItemIds: ["recI2"] });
+    expect(priceOf(w, "recI2")).toBe(56.78);
+    expect(w.db.get("Items", "recI2")?.fields["CartonNumber"]).toBeUndefined();
+  });
+
+  it(KNOWN_BUG("without a PreCartonPkgEstShipping field on the Items table no snapshot exists and a dissolved item has no price"), async () => {
+    // The fake accepts any field, so this documents the dependency: an item that had no price of its own gets none back.
+    const w = await freshWorld();
+    w.seed.customer("recCustA");
+    w.seed.item("recI1", "recCustA"); // no own price, hence no snapshot
+    await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1"], ...dims() });
+    await w.airtable.cartonsApi.dissolve("CTN-0001");
+    expect(priceOf(w, "recI1") ?? null).toBeNull();
+  });
+
+  it("a mid-way write failure rolls back to the items' PREVIOUS state, prices included", async () => {
     const w = await freshWorld();
     w.seed.customer("recCustA");
     w.seed.item("recI1", "recCustA", { PkgEstShipping: 12.34 });
@@ -241,31 +261,44 @@ describe(KNOWN_BUG("carton operations that lose or corrupt data"), () => {
       if (table === "Items" && op === "update" && id === "recI2" && fields?.["CartonNumber"]) throw new Error("simulated Airtable failure");
     };
     await expect(w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1", "recI2"], ...dims() })).rejects.toThrow("simulated Airtable failure");
-    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"]).toBeUndefined(); // rolled back...
-    expect(priceOf(w, "recI1")).toBeUndefined(); // ...but 12.34 is gone, not restored
+    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"] ?? "").toBe("");
+    expect(priceOf(w, "recI1")).toBe(12.34); // restored, not erased
     expect(priceOf(w, "recI2")).toBe(56.78); // never reached
+    expect(w.db.get("Items", "recI1")?.fields["PreCartonPkgEstShipping"] ?? null).toBeNull();
   });
 
-  it("documents that update() applies removals BEFORE validating additions (a rejected edit still removes members)", async () => {
+  it("a rejected edit changes nothing: additions are validated BEFORE removals are applied", async () => {
     const w = await world3Items();
     await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1", "recI2"], ...dims() });
     w.seed.customer("recCustB");
     w.seed.item("recX", "recCustB");
     await expect(w.airtable.cartonsApi.update("CTN-0001", { removeItemIds: ["recI2"], addItemIds: ["recX"] })).rejects.toThrow(/same customer/);
-    expect(w.db.get("Items", "recI2")?.fields["CartonNumber"]).toBeUndefined(); // removal persisted despite the error
+    expect(w.db.get("Items", "recI2")?.fields["CartonNumber"]).toBe("CTN-0001"); // still a member
   });
 
-  it("documents that an INVOICED carton can still be re-dimensioned, re-priced and dissolved", async () => {
+  it("an INVOICED carton cannot be re-dimensioned, edited or dissolved", async () => {
     const w = await world3Items();
     await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1", "recI2"], ...dims() });
+    const before = priceOf(w, "recI1");
     for (const id of ["recI1", "recI2"]) w.db.update("Items", id, { Order: ["recOrd1"] });
-    const edited = await w.airtable.cartonsApi.update("CTN-0001", { length: 100, width: 100, height: 100 });
-    expect(edited.totalPrice).toBe(350); // changed after invoicing; the invoice amount is NOT updated
-    await w.airtable.cartonsApi.dissolve("CTN-0001");
-    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"]).toBeUndefined();
-    expect(w.db.get("Items", "recI1")?.fields["Order"]).toEqual(["recOrd1"]);
+    await expect(w.airtable.cartonsApi.update("CTN-0001", { length: 100, width: 100, height: 100 })).rejects.toThrow(/already invoiced/);
+    await expect(w.airtable.cartonsApi.update("CTN-0001", { removeItemIds: ["recI1"] })).rejects.toThrow(/already invoiced/);
+    await expect(w.airtable.cartonsApi.dissolve("CTN-0001")).rejects.toThrow(/already invoiced/);
+    expect(w.db.get("Items", "recI1")?.fields["CartonNumber"]).toBe("CTN-0001");
+    expect(priceOf(w, "recI1")).toBe(before);
   });
 
+  it("the carton routes map the refusal to a 400", async () => {
+    const w = await world3Items();
+    const admin = w.asUser("super_admin");
+    await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1", "recI2"], ...dims() });
+    for (const id of ["recI1", "recI2"]) w.db.update("Items", id, { Order: ["recOrd1"] });
+    const res = await w.call("cartons/[cartonNumber]", "DELETE", { token: admin, params: { cartonNumber: "CTN-0001" } });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe(KNOWN_BUG("carton numbering"), () => {
   it("documents that carton numbers are REUSED after a carton is dissolved (max existing + 1)", async () => {
     const w = await world3Items();
     const first = await w.airtable.cartonsApi.create({ customerId: "recCustA", itemIds: ["recI1"], ...dims() });

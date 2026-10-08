@@ -271,6 +271,7 @@ function mapItem(record: AirtableRecord<FieldSet>): Item {
     estShippingPrice: (f["EstShippingPrice"] as number) ?? undefined,
     pkgEstShipping: (f["PkgEstShipping"] as number) ?? undefined,
     pkgShippingRate: (f["PkgShippingRate"] as number) ?? undefined,
+    preCartonPkgEstShipping: (f["PreCartonPkgEstShipping"] as number) ?? undefined,
     specialShippingRate: (f["SpecialShippingRate"] as number) ?? undefined,
     isSpecialItem: (f["IsSpecialItem"] as boolean) ?? undefined,
     specialRateName: (f["specialRateName"] as string) ?? undefined,
@@ -882,7 +883,9 @@ async function priceCartonAndSplit(
   let cbm = 0;
   let totalPrice = 0;
   if (shippingType === "air") {
-    totalPrice = (dims.weight ?? 0) * (tierRates.air ?? 0);
+    // A weightless air carton used to be priced 0 and written to every member as a real price.
+    if (!(dims.weight && dims.weight > 0)) throw new BusinessError("Air freight cartons need a weight");
+    totalPrice = dims.weight * (tierRates.air ?? 0);
   } else {
     cbm = computeCbm({ length: dims.length, width: dims.width, height: dims.height, dimensionUnit: dims.dimensionUnit, quantity: 1 });
     totalPrice = cbm * (tierRates.sea ?? 0);
@@ -918,41 +921,81 @@ function refsOf(items: Item[]): string {
   return items.map((i) => i.itemRef).join(", ");
 }
 
-// Writes carton fields to each member sequentially so that if one write fails
-// partway through, every write that already succeeded gets rolled back (fields
-// cleared) rather than leaving items permanently — and invisibly — stuck as
-// "already in a carton" for a carton no UI shows.
+const CLEARED_CARTON_FIELDS = {
+  CartonNumber: "",
+  CartonLength: null,
+  CartonWidth: null,
+  CartonHeight: null,
+  CartonWeight: null,
+} as const;
+
+/**
+ * Takes an item out of its carton. The item's own price is restored from the snapshot taken when it joined
+ * (PreCartonPkgEstShipping); it is only cleared when no snapshot exists - it used to be erased always.
+ * NOTE: the snapshot needs a Number field "PreCartonPkgEstShipping" on the Items table. Without it the
+ * snapshot is never stored and a removed item has no price (the previous behavior). Verify in production.
+ */
+function releaseFromCarton(item: Item): FieldSet {
+  return {
+    ...CLEARED_CARTON_FIELDS,
+    PkgEstShipping: item.preCartonPkgEstShipping ?? null,
+    PreCartonPkgEstShipping: null,
+  } as unknown as FieldSet;
+}
+
+/** The exact carton state an item had before a failed operation, so a rollback restores rather than erases. */
+function previousCartonState(item: Item): FieldSet {
+  return {
+    CartonNumber: item.cartonNumber ?? "",
+    CartonLength: item.cartonLength ?? null,
+    CartonWidth: item.cartonWidth ?? null,
+    CartonHeight: item.cartonHeight ?? null,
+    CartonWeight: item.cartonWeight ?? null,
+    PkgEstShipping: item.pkgEstShipping ?? null,
+    PreCartonPkgEstShipping: item.preCartonPkgEstShipping ?? null,
+  } as unknown as FieldSet;
+}
+
+async function assertCartonNotInvoiced(members: Item[]): Promise<void> {
+  const invoiced = members.filter((m) => m.orderId);
+  if (invoiced.length > 0) {
+    throw new BusinessError(
+      `This carton is already invoiced (${invoiced[0].orderRef ?? invoiced[0].orderId}) and can no longer be changed`
+    );
+  }
+}
+
+// Writes carton fields to each member sequentially. If a write fails partway through, every write that
+// already succeeded is restored to the item's PREVIOUS state (not erased), so a failure never loses a price
+// or leaves items invisibly stuck in a carton. `joining` are the items entering the carton in this call:
+// their own price is snapshotted first.
 async function writeCartonMembers(
   items: Item[],
   cartonNumber: string,
   dims: CartonDimensionsInput,
-  perItemPrice: number[]
+  perItemPrice: number[],
+  joining: Set<string> = new Set(items.map((i) => i.id))
 ): Promise<Item[]> {
-  const succeededIds: string[] = [];
+  const succeeded: Item[] = [];
   try {
     const updated: Item[] = [];
     for (let i = 0; i < items.length; i++) {
-      const record = await updateRecord(TABLES.ITEMS, items[i].id, {
+      const fields: FieldSet = {
         ...cartonDimensionFields(dims),
         CartonNumber: cartonNumber,
         PkgEstShipping: perItemPrice[i],
-      });
-      succeededIds.push(items[i].id);
+      };
+      if (joining.has(items[i].id) && items[i].pkgEstShipping !== undefined) {
+        (fields as Record<string, unknown>)["PreCartonPkgEstShipping"] = items[i].pkgEstShipping;
+      }
+      const record = await updateRecord(TABLES.ITEMS, items[i].id, fields);
+      succeeded.push(items[i]);
       updated.push(mapItem(record));
     }
     return updated;
   } catch (err) {
     await Promise.all(
-      succeededIds.map((id) =>
-        updateRecord(TABLES.ITEMS, id, {
-          CartonNumber: "",
-          CartonLength: null,
-          CartonWidth: null,
-          CartonHeight: null,
-          CartonWeight: null,
-          PkgEstShipping: null,
-        } as unknown as FieldSet).catch(() => {})
-      )
+      succeeded.map((item) => updateRecord(TABLES.ITEMS, item.id, previousCartonState(item)).catch(() => {}))
     );
     throw err;
   }
@@ -998,26 +1041,19 @@ export const cartonsApi = {
     const customerId = members[0].customerId;
     const shippingType = members[0].shippingType ?? "sea";
 
+    await assertCartonNotInvoiced(members);
+
+    // Validate everything first, write afterwards: a rejected edit must change nothing.
+    let toRemove: Item[] = [];
     if (input.removeItemIds && input.removeItemIds.length > 0) {
-      const toRemove = members.filter((m) => input.removeItemIds!.includes(m.id));
-      await Promise.all(
-        toRemove.map((m) =>
-          updateRecord(TABLES.ITEMS, m.id, {
-            CartonNumber: "",
-            CartonLength: null,
-            CartonWidth: null,
-            CartonHeight: null,
-            CartonWeight: null,
-            PkgEstShipping: null,
-          } as unknown as FieldSet)
-        )
-      );
+      toRemove = members.filter((m) => input.removeItemIds!.includes(m.id));
       members = members.filter((m) => !input.removeItemIds!.includes(m.id));
     }
 
+    let newItems: Item[] = [];
     if (input.addItemIds && input.addItemIds.length > 0) {
       const uniqueAddIds = Array.from(new Set(input.addItemIds)).filter((id) => !members.some((m) => m.id === id));
-      const newItems = await Promise.all(uniqueAddIds.map((id) => itemsApi.getById(id)));
+      newItems = await Promise.all(uniqueAddIds.map((id) => itemsApi.getById(id)));
       const wrongCustomer = newItems.filter((i) => i.customerId !== customerId);
       if (wrongCustomer.length > 0)
         throw new BusinessError(`All items in a carton must belong to the same customer: ${refsOf(wrongCustomer)}`);
@@ -1037,6 +1073,7 @@ export const cartonsApi = {
     }
 
     if (members.length === 0) {
+      await Promise.all(toRemove.map((m) => updateRecord(TABLES.ITEMS, m.id, releaseFromCarton(m))));
       return { cartonNumber, items: [], cbm: 0, totalPrice: 0 };
     }
 
@@ -1048,26 +1085,20 @@ export const cartonsApi = {
       dimensionUnit: input.dimensionUnit ?? members[0].dimensionUnit,
     };
 
+    // Pricing can still reject (e.g. an air carton without a weight), so it runs before ANY write.
     const { cbm, totalPrice, perItemPrice } = await priceCartonAndSplit(members.length, shippingType, customerId, dims);
-    const updated = await writeCartonMembers(members, cartonNumber, dims, perItemPrice);
+
+    await Promise.all(toRemove.map((m) => updateRecord(TABLES.ITEMS, m.id, releaseFromCarton(m))));
+    const updated = await writeCartonMembers(members, cartonNumber, dims, perItemPrice, new Set(newItems.map((i) => i.id)));
 
     return { cartonNumber, items: updated, cbm, totalPrice };
   },
 
   async dissolve(cartonNumber: string): Promise<void> {
     const records = await getAllRecords(TABLES.ITEMS, `{CartonNumber} = '${cartonNumber}'`);
-    await Promise.all(
-      records.map((r) =>
-        updateRecord(TABLES.ITEMS, r.id, {
-          CartonNumber: "",
-          CartonLength: null,
-          CartonWidth: null,
-          CartonHeight: null,
-          CartonWeight: null,
-          PkgEstShipping: null,
-        } as unknown as FieldSet)
-      )
-    );
+    const members = records.map(mapItem);
+    await assertCartonNotInvoiced(members);
+    await Promise.all(members.map((m) => updateRecord(TABLES.ITEMS, m.id, releaseFromCarton(m))));
   },
 
   // Only returns cartons that are still pending invoicing — once a carton's

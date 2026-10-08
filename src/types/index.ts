@@ -118,6 +118,8 @@ export interface Item {
   estShippingPrice?: number;
   pkgEstShipping?: number;
   pkgShippingRate?: number;
+  /** The item's own tier price before it joined a carton; restored when it leaves. */
+  preCartonPkgEstShipping?: number;
   specialShippingRate?: number;
   isSpecialItem?: boolean;
   specialRateName?: string;
