@@ -1,4 +1,5 @@
-# Cutover checklist (Phase 7K) — NOTHING BELOW HAS BEEN PERFORMED
+# Cutover checklist — NOTHING BELOW HAS BEEN PERFORMED IN PRODUCTION
+Evidence per blocker (PASS/FAIL/BLOCKED/NOT TESTED, environment, result): `docs/CUTOVER-EVIDENCE.md`. Route status: `docs/ROUTE-MIGRATION.md`.
 
 Labels: VL verified locally · RPV requires production verification · BDR business decision required · CO cutover-time action.
 **Status after Phase 7L:** every Airtable-backed API route now has a PostgreSQL implementation behind `MOVEZZ_DATA_BACKEND=postgres` (`docs/ROUTE-MIGRATION.md`); production is still Airtable. Remaining blockers are business decisions (B1/B1b/B2) and production verification (Workers→PostgreSQL connectivity, real-export staging run, browser test of the UI on the PostgreSQL backend).
@@ -45,7 +46,7 @@ Labels: VL verified locally · RPV requires production verification · BDR busin
 - [ ] RPV: Workers → PostgreSQL connectivity, real volume and duration
 - [ ] Backup and secrets policy applied (§6); workers configured but disabled; rollback plan rehearsed
 
-## 5. Customer login linking (runbook; no new code)
+## 5. Customer login linking (Phase 7M: `POST /api/customers/[id]/link-login`; evidence and operator workflow in `docs/CUTOVER-EVIDENCE.md` §4)
 For each customer who should log in: (1) the customer creates a Firebase identity themselves (no passwords or accounts are created by Movezz); (2) a super_admin verifies ownership out of band (the owner defines how); (3) the super_admin runs `admin_create_user(customer, firebase uid, role=customer)` through the authenticated admin path. Inactive customers stay refused; e-mail alone is never trusted; the client never supplies a customer id; the action is audited by the actor stamp.
 
 ## 6. Backup and key policy (CO; RPV where noted)
