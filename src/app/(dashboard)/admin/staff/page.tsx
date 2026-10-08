@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/utils";
 import type { AppUser, UserRole } from "@/types";
-import { Plus, ShieldCheck, Trash2, Copy, CheckCheck, User, X } from "lucide-react";
+import { Plus, ShieldCheck, Trash2, User, X } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 
@@ -49,10 +49,9 @@ export default function StaffPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [createdPassword, setCreatedPassword] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
   const [createdEmail, setCreatedEmail] = useState<string>("");
   const [emailSent, setEmailSent] = useState(false);
-  const [copiedPass, setCopiedPass] = useState(false);
 
   const [profileUser, setProfileUser] = useState<AppUser | null>(null);
   const [profileEditing, setProfileEditing] = useState(false);
@@ -120,7 +119,7 @@ export default function StaffPage() {
     try {
       const res = await axios.post("/api/users", form);
       setDialogOpen(false);
-      setCreatedPassword(res.data.data?.tempPassword ?? null);
+      setCreated(true);
       setCreatedEmail(form.email);
       setEmailSent(res.data.data?.emailSent ?? false);
       load();
@@ -131,14 +130,6 @@ export default function StaffPage() {
       error("Error", msg);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const copyPassword = () => {
-    if (createdPassword) {
-      navigator.clipboard.writeText(createdPassword);
-      setCopiedPass(true);
-      setTimeout(() => setCopiedPass(false), 2000);
     }
   };
 
@@ -396,8 +387,8 @@ export default function StaffPage() {
         </div>
       )}
 
-      {/* Temp password modal */}
-      {createdPassword && (
+      {/* Account created. No password is ever shown: the person sets their own through the emailed link. */}
+      {created && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 space-y-4">
             <div className="text-center">
@@ -410,23 +401,14 @@ export default function StaffPage() {
                 </p>
               ) : (
                 <p className="text-sm text-gray-500 mt-1">
-                  Email could not be sent. Share this temporary password with the user manually.
+                  The setup email could not be sent to{" "}
+                  <span className="font-medium text-gray-700">{createdEmail}</span>. Ask them to use
+                  &quot;Forgot password&quot; on the sign-in page to set their own password.
                 </p>
               )}
             </div>
-            <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div>
-                {emailSent && (
-                  <p className="text-xs text-gray-400 mb-1">Fallback password (if email fails)</p>
-                )}
-                <code className="font-mono text-base font-bold text-gray-900 tracking-wider">{createdPassword}</code>
-              </div>
-              <button onClick={copyPassword} className="text-gray-400 hover:text-brand-600 transition-colors shrink-0">
-                {copiedPass ? <CheckCheck className="h-5 w-5 text-green-500" /> : <Copy className="h-5 w-5" />}
-              </button>
-            </div>
             <button
-              onClick={() => setCreatedPassword(null)}
+              onClick={() => setCreated(false)}
               className="w-full py-2.5 bg-brand-600 text-white rounded-xl font-medium text-sm hover:bg-brand-700 transition-colors"
             >
               Done

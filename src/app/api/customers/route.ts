@@ -1,6 +1,7 @@
 // GET  /api/customers  — list customers (admin/staff only)
 // POST /api/customers  — create customer (admin only)
 import { NextRequest } from "next/server";
+import { generateUnusedInitialPassword } from "@/lib/initial-password";
 import { customersApi, usersApi, whatsAppApi } from "@/lib/airtable";
 import { createFirebaseUser, setCustomClaims, generatePasswordResetLink } from "@/lib/firebase-admin";
 import { sendWelcomeEmail, sendPasswordResetEmail } from "@/lib/email";
@@ -20,12 +21,6 @@ const CreateCustomerSchema = z.object({
   shippingAddress: z.string().max(500).optional(),
 });
 
-function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  let p = "PAKK-";
-  for (let i = 0; i < 8; i++) p += chars[Math.floor(Math.random() * chars.length)];
-  return p;
-}
 
 // GET /api/customers
 export async function GET(request: NextRequest) {
@@ -88,12 +83,12 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("A customer with this phone number already exists");
     }
 
-    const tempPassword = generateTempPassword();
+    const initialPassword = generateUnusedInitialPassword();
 
     // 1. Create Firebase user
     let firebaseUser: { uid: string };
     try {
-      firebaseUser = await createFirebaseUser(email, tempPassword);
+      firebaseUser = await createFirebaseUser(email, initialPassword);
     } catch (fbErr: unknown) {
       const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
       if (msg.includes("EMAIL_EXISTS") || msg.includes("email-already-in-use") || msg.includes("already exists")) {

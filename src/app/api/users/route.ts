@@ -1,6 +1,7 @@
 // GET  /api/users  — list all users (super_admin only)
 // POST /api/users  — create user account (super_admin only)
 import { NextRequest } from "next/server";
+import { generateUnusedInitialPassword } from "@/lib/initial-password";
 import { usersApi } from "@/lib/airtable";
 import { createFirebaseUser, deleteFirebaseUser, setCustomClaims, generatePasswordResetLink } from "@/lib/firebase-admin";
 import { sendPasswordResetEmail } from "@/lib/email";
@@ -17,15 +18,6 @@ const CreateUserSchema = z.object({
     errorMap: () => ({ message: "Role must be super_admin or warehouse_staff" }),
   }),
 });
-
-function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  let p = "PAKK-";
-  for (let i = 0; i < 8; i++) p += chars[bytes[i] % chars.length];
-  return p;
-}
 
 // GET /api/users
 export async function GET(request: NextRequest) {
@@ -56,12 +48,12 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, role } = parsed.data;
-    const tempPassword = generateTempPassword();
+    const initialPassword = generateUnusedInitialPassword();
 
     // 1. Create Firebase user
     let firebaseUid: string;
     try {
-      const firebaseUser = await createFirebaseUser(email, tempPassword);
+      const firebaseUser = await createFirebaseUser(email, initialPassword);
       firebaseUid = firebaseUser.uid;
     } catch (fbErr: unknown) {
       const msg = fbErr instanceof Error ? fbErr.message : String(fbErr);
@@ -100,7 +92,7 @@ export async function POST(request: NextRequest) {
     return Response.json(
       {
         success: true,
-        data: { user: appUser, emailSent, tempPassword },
+        data: { user: appUser, emailSent }, // the initial password is never returned; the person sets their own via the emailed link
         message: `Account created for ${email}`,
       },
       { status: 201 }
