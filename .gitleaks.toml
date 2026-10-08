@@ -1,0 +1,24 @@
+# gitleaks configuration. Run:  gitleaks git --log-opts="--all" --redact=100   (history, all branches)
+#                               gitleaks dir  --redact=100                     (working tree)
+title = "Movezz gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Reviewed false positives: placeholders, test-only values and git-ignored build output"
+paths = [
+  '''^\.next/''',
+  '''^\.open-next/''',
+  '''^node_modules/''',
+  '''^coverage/''',
+]
+regexes = [
+  '''app(TESTONLY|X{6,})[A-Za-z0-9]*''',
+  '''test-only[-_A-Za-z0-9]*''',
+]
+
+[[allowlists]]
+description = "DEPLOYMENT.md shows an empty PEM template (BEGIN PRIVATE KEY followed by XXXX) for the Firebase service-account instructions"
+targetRules = ["private-key"]
+paths = ['''^DEPLOYMENT\.md$''']
