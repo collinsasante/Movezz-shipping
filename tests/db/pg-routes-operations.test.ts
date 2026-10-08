@@ -29,7 +29,7 @@ function req(url: string, method: string, o: { token?: string; body?: unknown } 
   if (o.body !== undefined) headers["content-type"] = "application/json";
   return new NextRequest(`http://localhost${url}`, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
 }
-const ctx = (o: Record<string, string>) => ({ params: Promise.resolve(o) });
+const ctx = <T extends Record<string, string>>(o: T) => ({ params: Promise.resolve(o) });
 const json = async (r: Response) => ({ status: r.status, body: await r.json().catch(() => null) });
 
 dbDescribe("Group B on PostgreSQL: items, cartons, containers, sorting (real routes)", () => {
