@@ -18,7 +18,6 @@ const r = (route: string, method: HttpMethod, guard: Guard): Entry => ({ route, 
 
 export const MATRIX: Entry[] = [
   r("activity-logs", "GET", [A]),
-  r("admin/migrate-shipping-marks", "POST", [A]),
   r("admin/registrations", "GET", [A, S]),
   r("admin/registrations/[id]", "PATCH", [A, S]),
   r("admin/registrations/[id]", "DELETE", [A, S]),
@@ -48,7 +47,6 @@ export const MATRIX: Entry[] = [
   r("customers/me/warehouse", "PATCH", [C]),
   r("dashboard/admin", "GET", [A, S]),
   r("dashboard/customer", "GET", [C, A]),
-  r("debug-history", "GET", [A]),
   r("health", "GET", "public"),
   r("items", "GET", [A, S, C]),
   r("items", "POST", [A, S]),
