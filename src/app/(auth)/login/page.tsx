@@ -1,5 +1,6 @@
 "use client";
 
+import { safeRedirectPath } from "@/lib/safe-redirect";
 import React, { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn, signInWithGoogle } from "@/lib/firebase";
@@ -35,11 +36,8 @@ function LoginForm() {
 
   const goToDashboard = (role: string) => {
     const defaultPath = role === "customer" ? "/customer" : "/admin";
-    // Only allow internal relative redirects to prevent open redirect attacks
-    if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
-      return router.replace(redirect);
-    }
-    router.replace(defaultPath);
+    // Only same-site paths are accepted (see lib/safe-redirect.ts); anything else goes to the dashboard.
+    router.replace(safeRedirectPath(redirect, defaultPath));
   };
 
   const handleLogin = async (e: React.FormEvent) => {

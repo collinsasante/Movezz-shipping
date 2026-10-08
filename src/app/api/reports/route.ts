@@ -1,5 +1,6 @@
 // GET /api/reports — revenue aggregates for admin reports page
 import { NextRequest } from "next/server";
+import { limitUser } from "@/lib/rate-limit";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 import { TABLES } from "@/lib/airtable";
 import Airtable, { FieldSet, Record as AirtableRecord } from "airtable";
@@ -23,6 +24,8 @@ async function getAllRecords(tableName: string): Promise<AirtableRecord<FieldSet
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
+  const limited = limitUser(authResult.user.id, "reports", 30);
+  if (limited) return limited;
 
   try {
     const { searchParams } = new URL(request.url);

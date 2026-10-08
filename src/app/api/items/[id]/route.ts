@@ -10,6 +10,7 @@ import {
   badRequestResponse,
 } from "@/lib/auth";
 import { z } from "zod";
+import { PhotoUrlSchema } from "@/lib/schemas";
 
 const UpdateItemSchema = z.object({
   weight: z.number().positive().max(10_000).optional(),
@@ -23,7 +24,7 @@ const UpdateItemSchema = z.object({
   containerId: z.string().max(50).optional(),
   customerId: z.string().max(50).optional(),
   isMissing: z.boolean().optional(),
-  photoUrls: z.array(z.string().url().max(500)).max(20).optional(),
+  photoUrls: z.array(PhotoUrlSchema).max(20).optional(),
   estPrice: z.number().min(0).max(500_000).optional(),
   estShippingPrice: z.number().min(0).max(500_000).optional(),
   pkgEstShipping: z.number().min(0).max(500_000).optional(),

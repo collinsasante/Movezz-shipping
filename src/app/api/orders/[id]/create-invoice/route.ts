@@ -5,6 +5,7 @@
 // DELETE /api/orders/[id]/create-invoice — cancel Keepup invoice and clear from order
 import { NextRequest } from "next/server";
 import { ordersApi, customersApi, itemsApi, settingsApi } from "@/lib/airtable";
+import { limitUser } from "@/lib/rate-limit";
 import { requireAuth } from "@/lib/auth";
 import { createKeepupSale, cancelKeepupSale } from "@/lib/keepup";
 import { groupItemsForBilling } from "@/lib/cbm";
@@ -19,6 +20,8 @@ export async function POST(
 ) {
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
+  const limited = limitUser(authResult.user.id, "create-invoice", 10);
+  if (limited) return limited;
 
   try {
     const { id } = await params;

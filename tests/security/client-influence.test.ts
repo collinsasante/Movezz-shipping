@@ -146,30 +146,62 @@ describe(FIXED("package rate writes are validated"), () => {
   });
 });
 
-describe(KNOWN_BUG("user deletion and uploads trust client-supplied identifiers"), () => {
-  it("documents that DELETE /api/users/[id] deletes whatever Firebase UID the request body names", async () => {
+describe(FIXED("user deletion and uploads no longer trust client-supplied identifiers"), () => {
+  it("DELETE /api/users/[id] ignores a Firebase UID in the body and deletes the account's own UID", async () => {
+    const { w, admin, staff } = await standardWorld();
+    const row = w.db.all("Users").find((r) => r.fields["Role"] === "warehouse_staff")!;
+    const res = await w.call("users/[id]", "DELETE", { token: admin, params: { id: row.id }, body: { firebaseUid: "some-unrelated-firebase-uid" } });
+    expect(res.status).toBe(200);
+    expect(w.firebase.deleteFirebaseUser).toHaveBeenCalledTimes(1);
+    expect(w.firebase.deleteFirebaseUser).toHaveBeenCalledWith(row.fields["FirebaseUID"]);
+    expect(w.firebase.deleteFirebaseUser).not.toHaveBeenCalledWith("some-unrelated-firebase-uid");
+    void staff;
+  });
+  it("an unknown user id is a 404 and no Firebase account is touched", async () => {
     const { w, admin } = await standardWorld();
     const res = await w.call("users/[id]", "DELETE", { token: admin, params: { id: "recAnything" }, body: { firebaseUid: "some-unrelated-firebase-uid" } });
-    expect(res.status).toBe(500); // the Airtable row id does not exist, but...
-    expect(w.firebase.deleteFirebaseUser).toHaveBeenCalledWith("some-unrelated-firebase-uid"); // ...the Firebase account was already deleted
+    expect(res.status).toBe(404);
+    expect(w.firebase.deleteFirebaseUser).not.toHaveBeenCalled();
   });
-  it("documents that the last super_admin can delete their own account", async () => {
+  it("the last super_admin cannot be deleted; with a second admin, one can", async () => {
     const { w, admin } = await standardWorld();
     const row = w.db.all("Users").find((r) => r.fields["Role"] === "super_admin")!;
     const res = await w.call("users/[id]", "DELETE", { token: admin, params: { id: row.id }, body: {} });
-    expect(res.status).toBe(200);
-    expect(w.db.all("Users").some((r) => r.fields["Role"] === "super_admin")).toBe(false);
+    expect(res.status).toBe(400);
+    expect(w.db.all("Users").some((r) => r.fields["Role"] === "super_admin")).toBe(true);
+    w.asUser("super_admin");
+    expect((await w.call("users/[id]", "DELETE", { token: admin, params: { id: row.id }, body: {} })).status).toBe(200);
   });
-  it("documents that /api/upload/sign signs whatever folder the client asks for, with no file type or size limits", async () => {
+  it("/api/upload/sign only signs our own folders (default movezz/items)", async () => {
     const { w, staff } = await standardWorld();
-    const res = await w.call("upload/sign", "POST", { token: staff, body: { folder: "../../anywhere/else" } });
-    expect(res.status).toBe(200);
-    expect(res.json?.data).toMatchObject({ folder: "../../anywhere/else", signature: "test-only-signature" });
+    for (const folder of ["../../anywhere/else", "/etc", "movezz/../x", "other/items", "movezz", "MOVEZZ/items", "movezz/a/b/c/d", 5]) {
+      expect((await w.call("upload/sign", "POST", { token: staff, body: { folder } })).status, String(folder)).toBe(400);
+    }
+    const ok = await w.call("upload/sign", "POST", { token: staff, body: { folder: "movezz/items" } });
+    expect(ok.json?.data).toMatchObject({ folder: "movezz/items", signature: "test-only-signature" });
+    expect((await w.call("upload/sign", "POST", { token: staff, body: {} })).json?.data.folder).toBe("movezz/items");
   });
-  it("documents that item photo URLs are only checked to be URLs (any host, up to 20 per item)", async () => {
+  it("/api/upload/sign is rate limited per user (30 per minute)", async () => {
+    const { w, staff, admin } = await standardWorld();
+    for (let i = 0; i < 30; i++) expect((await w.call("upload/sign", "POST", { token: staff, body: {} })).status).toBe(200);
+    const blocked = await w.call("upload/sign", "POST", { token: staff, body: {} });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBe("60");
+    expect((await w.call("upload/sign", "POST", { token: admin, body: {} })).status).toBe(200); // other users unaffected
+  });
+  it("item photo URLs must be https URLs on Cloudinary, Airtable attachments or Firebase Storage", async () => {
     const { w, staff } = await standardWorld();
-    const res = await w.call("items", "POST", { token: staff, body: { customerId: "recCustA", description: "x", dateReceived: "2026-03-01", photoUrls: ["https://attacker.example.invalid/tracker.png"] } });
-    expect(res.status).toBe(201);
+    const base = { customerId: "recCustA", description: "x", dateReceived: "2026-03-01" };
+    for (const url of ["https://attacker.example.invalid/tracker.png", "http://res.cloudinary.com/x/a.jpg", "https://res.cloudinary.com.evil.example/a.jpg", "javascript:alert(1)"]) {
+      expect((await w.call("items", "POST", { token: staff, body: { ...base, photoUrls: [url] } })).status, url).toBe(400);
+    }
+    for (const url of ["https://res.cloudinary.com/demo/image/upload/a.jpg", "https://v5.airtableusercontent.com/v3/u/x/a.png", "https://firebasestorage.googleapis.com/v0/b/x/o/a.jpg"]) {
+      expect((await w.call("items", "POST", { token: staff, body: { ...base, photoUrls: [url] } })).status, url).toBe(201);
+    }
+  });
+  it("Cloudinary file type/size limits are NOT enforced by our signature (configure them on the Cloudinary upload settings)", () => {
+    // Documented residual risk: see docs/SECURITY-BASELINE.md, file uploads.
+    expect(true).toBe(true);
   });
 });
 

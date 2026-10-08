@@ -21,3 +21,21 @@ const TierRates = z
 export const PackageRatesSchema = z
   .object({ basic: TierRates, business: TierRates, enterprise: TierRates, special: TierRates })
   .strict();
+
+/**
+ * Item photo URLs must be https and hosted where photos legitimately live (our Cloudinary uploads, legacy
+ * Airtable attachments, Firebase Storage). Any other host - e.g. a tracking pixel - is rejected.
+ */
+const PHOTO_HOSTS = [/^res\.cloudinary\.com$/, /(^|\.)airtableusercontent\.com$/, /^firebasestorage\.googleapis\.com$/];
+export const PhotoUrlSchema = z
+  .string()
+  .url()
+  .max(500)
+  .refine((value) => {
+    try {
+      const u = new URL(value);
+      return u.protocol === "https:" && PHOTO_HOSTS.some((re) => re.test(u.hostname));
+    } catch {
+      return false;
+    }
+  }, "Photo URL host is not allowed");

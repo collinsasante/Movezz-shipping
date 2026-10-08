@@ -21,6 +21,9 @@ const nextConfig = {
       {
         source: "/(.*)",
         headers: [
+          // HTTPS-only site behind Cloudflare. No includeSubDomains/preload: those are irreversible-ish and
+          // should be a deliberate decision once every subdomain is known to be HTTPS.
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

@@ -2,7 +2,8 @@
 // Client uses these to upload directly to Cloudinary (no secret exposed)
 import { NextRequest } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
-import { requireAuth } from "@/lib/auth";
+import { requireAuth, badRequestResponse } from "@/lib/auth";
+import { limitUser, UPLOAD_FOLDER_PATTERN } from "@/lib/rate-limit";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -13,9 +14,15 @@ cloudinary.config({
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
+  const limited = limitUser(authResult.user.id, "upload-sign", 30);
+  if (limited) return limited;
 
   try {
     const { folder = "movezz/items" } = await request.json().catch(() => ({}));
+    // The client can only choose among our own folders; arbitrary paths ("../..") were signed before.
+    if (typeof folder !== "string" || !UPLOAD_FOLDER_PATTERN.test(folder)) {
+      return badRequestResponse("Invalid upload folder");
+    }
     const timestamp = Math.round(Date.now() / 1000);
 
     const signature = cloudinary.utils.api_sign_request(

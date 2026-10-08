@@ -2,11 +2,14 @@
 import { NextRequest } from "next/server";
 import { ordersApi } from "@/lib/airtable";
 import { getKeepupSale } from "@/lib/keepup";
+import { limitUser } from "@/lib/rate-limit";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
+  const limited = limitUser(authResult.user.id, "keepup-sync", 6);
+  if (limited) return limited;
   const { user } = authResult;
 
   try {

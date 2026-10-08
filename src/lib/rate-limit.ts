@@ -84,3 +84,15 @@ export function checkBodySize(
   }
   return null;
 }
+
+/**
+ * Per-user limit for authenticated, expensive or abusable endpoints. Returns a 429 response when the user
+ * has used up `max` calls to `name` inside `windowMs`, otherwise null. Per-isolate memory only (see the
+ * header of this file): it narrows abuse, it is not a hard guarantee - add Cloudflare rate-limiting rules.
+ */
+export function limitUser(userId: string, name: string, max: number, windowMs = 60_000): Response | null {
+  return checkRateLimit(`user:${userId}:${name}`, max, windowMs) ? null : rateLimitedResponse(Math.ceil(windowMs / 1000));
+}
+
+/** Only these Cloudinary folders can be signed for upload: movezz/<segment>[/<segment>[/<segment>]] */
+export const UPLOAD_FOLDER_PATTERN = /^movezz(\/[a-z0-9_-]{1,40}){1,3}$/;

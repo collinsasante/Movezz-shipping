@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { usersApi } from "@/lib/airtable";
 import { deleteFirebaseUser } from "@/lib/firebase-admin";
-import { requireAuth, serverErrorResponse } from "@/lib/auth";
+import { requireAuth, serverErrorResponse, notFoundResponse, badRequestResponse } from "@/lib/auth";
 
 // DELETE /api/users/[id]
 export async function DELETE(
@@ -14,13 +14,19 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    // id could be Airtable record ID or Firebase UID
-    await usersApi.getByFirebaseUid(id).catch(() => null);
-    const body = await request.json().catch(() => ({}));
-    const firebaseUid: string | undefined = body.firebaseUid;
 
-    if (firebaseUid) {
-      await deleteFirebaseUser(firebaseUid).catch(() => {});
+    // The account to delete is looked up server-side. A Firebase UID supplied in the request body is
+    // ignored: it used to be deleted blindly, so an admin request could remove any Firebase account.
+    const target = (await usersApi.listAll()).find((u) => u.id === id);
+    if (!target) return notFoundResponse("User not found");
+
+    if (target.role === "super_admin") {
+      const admins = (await usersApi.listAll()).filter((u) => u.role === "super_admin");
+      if (admins.length <= 1) return badRequestResponse("The last super admin cannot be deleted");
+    }
+
+    if (target.firebaseUid) {
+      await deleteFirebaseUser(target.firebaseUid).catch(() => {});
     }
 
     await usersApi.delete(id);

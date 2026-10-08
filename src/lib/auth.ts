@@ -1,6 +1,7 @@
 // ============================================================
 // AUTH UTILITIES - Server-side token extraction and validation
 // ============================================================
+import { isCrossSiteCookieRequest } from "./csrf";
 import { NextRequest } from "next/server";
 import { verifyIdToken } from "./firebase-admin";
 import { usersApi, customersApi } from "./airtable";
@@ -132,6 +133,10 @@ export async function requireAuth(
   request: NextRequest,
   roles?: UserRole[]
 ): Promise<{ user: AppUser } | Response> {
+  if (isCrossSiteCookieRequest(request)) {
+    return forbiddenResponse("Cross-site request refused");
+  }
+
   const ctx = await getAuthContext(request);
 
   if (!ctx) {
