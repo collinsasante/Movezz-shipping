@@ -10,7 +10,7 @@ import { createInvoice, recordPayment, cancelInvoice } from "@/lib/db/invoices";
 import { retryKeepupSync } from "@/lib/db/integration-admin";
 import { recordAudit } from "@/lib/db/audit";
 import { DomainError } from "@/lib/db/errors";
-import { isUuid, ownerScope, selectItems, selectOrders } from "@/lib/db/app-queries";
+import { isUuid, ownerScope, selectItems, selectOrders, countOrders, selectOrdersPage } from "@/lib/db/app-queries";
 import { pgRoute, pgServiceRoute, readAs, ok, parseInput, readJson, type RouteCtx } from "@/lib/pg-api";
 
 type P = { params: Promise<Record<string, string>> };
@@ -33,9 +33,10 @@ export const ordersGet = (request: NextRequest) => pgRoute(request, undefined, [
   const s = (sp.get("search") ?? "").trim().toLowerCase().replace(/[%_\\]/g, "");
   const st = sp.get("status");
   const where = `($1::uuid IS NULL OR v.customer_id = $1) AND ($2::text IS NULL OR v.status = $2) AND v.status <> 'Cancelled' AND ($3 = '' OR lower(v.invoice_ref) LIKE '%'||$3||'%' OR lower(c.name) LIKE '%'||$3||'%' OR lower(c.shipping_mark) LIKE '%'||$3||'%')`;
-  const all = await selectOrders(c.tx, where, [cust ?? null, st === "Pending" || st === "Partial" || st === "Paid" ? st : null, s]);
-  const total = all.length;
-  return ok(all.slice((pg - 1) * limit, pg * limit), { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: pg });
+  const vals = [cust ?? null, st === "Pending" || st === "Partial" || st === "Paid" ? st : null, s];
+  const total = await countOrders(c.tx, where, vals);                               // paged in SQL
+  const data = await selectOrdersPage(c.tx, where, vals, limit, (pg - 1) * limit);
+  return ok(data, { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: pg });
 });
 
 async function loadOrder(tx: PoolClient, c: RouteCtx, id: string) {

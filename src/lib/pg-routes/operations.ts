@@ -11,7 +11,7 @@ import { authorize, isAllowed } from "@/lib/db/authz";
 import { recordAudit, recordStatusEvent } from "@/lib/db/audit";
 import { DomainError, toDomainError } from "@/lib/db/errors";
 import { containerOut, itemOut } from "@/lib/db/mappers";
-import { isUuid, ownerScope, selectItems } from "@/lib/db/app-queries";
+import { isUuid, ownerScope, selectItems, countItems, selectItemsPage } from "@/lib/db/app-queries";
 import { pgRoute, ok, parseInput, readJson, type RouteCtx } from "@/lib/pg-api";
 
 type P = { params: Promise<Record<string, string>> };
@@ -96,11 +96,10 @@ export const itemsGet = (request: NextRequest) => pgRoute(request, undefined, [.
   if (s) add("(lower(i.item_ref) LIKE '%'||?||'%' OR lower(i.description) LIKE '%'||?||'%' OR lower(COALESCE(i.tracking_number,'')) LIKE '%'||?||'%' OR lower(c.name) LIKE '%'||?||'%' OR lower(c.shipping_mark) LIKE '%'||?||'%')", s);
   // the single '?' replacement above numbers only the first marker: expand the remaining search markers to the same parameter
   const where = (w.length ? w.join(" AND ") : "true").replace(/\?/g, `$${v.length}`);
-  const all = await selectItems(tx_of(c), where, v);
-  const total = all.length;
-  return ok(all.slice((pg - 1) * limit, pg * limit), { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: pg });
+  const total = await countItems(c.tx, where, v);                                   // paged in SQL: a page never loads the whole table into the Worker
+  const data = await selectItemsPage(c.tx, where, v, limit, (pg - 1) * limit);
+  return ok(data, { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: pg });
 });
-const tx_of = (c: RouteCtx) => c.tx;
 
 export const itemsPost = (request: NextRequest) => pgRoute(request, undefined, [...STAFF], async (c) => {
   const d = parseInput(CreateItem, await readJson(c.request));

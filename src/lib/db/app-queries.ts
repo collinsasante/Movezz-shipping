@@ -29,10 +29,28 @@ export async function selectItems(tx: Queryable, where: string, values: unknown[
   return rows.map(itemOut);
 }
 
+/** Counts the rows selectItems() would return for the same predicate (same joins), so a list can be paged in SQL instead of in memory. */
+export async function countItems(tx: Queryable, where: string, values: unknown[]): Promise<number> {
+  const { rows } = await tx.query(`SELECT count(*)::int AS n FROM items i JOIN customers c ON c.id = i.customer_id WHERE i.archived_at IS NULL AND (${where})`, values);
+  return rows[0].n;
+}
+/** One page of items, ordered newest first. `limit` is capped by the caller. */
+export function selectItemsPage(tx: Queryable, where: string, values: unknown[], limit: number, offset: number) {
+  return selectItems(tx, where, [...values, limit, offset], `ORDER BY i.created_at DESC, i.id LIMIT $${values.length + 1} OFFSET $${values.length + 2}`);
+}
+
 const ORDER_SELECT = `SELECT v.*, (SELECT u.email FROM users u WHERE u.id = v.created_by) AS created_by_email, (SELECT k.sync_state FROM keepup_sync k WHERE k.invoice_id = v.id AND k.kind = 'invoice' ORDER BY k.created_at DESC LIMIT 1) AS keepup_sync_state, c.name AS customer_name, c.phone AS customer_phone,
     COALESCE((SELECT array_agg(i.id ORDER BY i.item_ref) FROM items i WHERE i.invoice_id = v.id), '{}') AS item_ids
   FROM invoices v JOIN customers c ON c.id = v.customer_id`;
 export async function selectOrders(tx: Queryable, where: string, values: unknown[], tail = "ORDER BY v.created_at DESC, v.id") {
   const { rows } = await tx.query(`${ORDER_SELECT} WHERE (${where}) ${tail}`, values);
   return rows.map(orderOut);
+}
+
+export async function countOrders(tx: Queryable, where: string, values: unknown[]): Promise<number> {
+  const { rows } = await tx.query(`SELECT count(*)::int AS n FROM invoices v JOIN customers c ON c.id = v.customer_id WHERE (${where})`, values);
+  return rows[0].n;
+}
+export function selectOrdersPage(tx: Queryable, where: string, values: unknown[], limit: number, offset: number) {
+  return selectOrders(tx, where, [...values, limit, offset], `ORDER BY v.created_at DESC, v.id LIMIT $${values.length + 1} OFFSET $${values.length + 2}`);
 }
