@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, type TestDb } from "./helpers";
 import { createInvoice, recordPayment } from "../../src/lib/db/invoices";
+import { user } from "../../src/lib/db/actor";
 import { allocateReference, allocateContainerReference } from "../../src/lib/db/references";
 import { DomainError } from "../../src/lib/db/errors";
 
@@ -68,9 +69,9 @@ dbDescribe("concurrency (PostgreSQL)", () => {
 
   it("simultaneous payments: 10 requests of GHS 30 against a GHS 100 balance -> exactly 3 succeed, 7 are overpayments, paid = 90.00", async () => {
     const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "8.00" }); // 8 x 12.5 = 100.00
-    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() });
+    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     expect(invoice.total_ghs).toBe("100.00");
-    const r = await settle(Array.from({ length: 10 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "30.00", actorUserId: actor, idempotencyKey: key() })));
+    const r = await settle(Array.from({ length: 10 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "30.00", actor: user(actor), idempotencyKey: key() })));
     expect(r.ok).toHaveLength(3);
     expect(r.codes).toEqual(Array(7).fill("OVERPAYMENT"));
     const inv = (await db.admin.query("SELECT amount_paid_ghs, balance_ghs, status FROM invoices WHERE id=$1", [invoice.id])).rows[0];
@@ -80,8 +81,8 @@ dbDescribe("concurrency (PostgreSQL)", () => {
 
   it("simultaneous payments that exactly settle the invoice all succeed and the invoice ends Paid with balance 0", async () => {
     const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "8.00" });
-    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() });
-    const r = await settle(Array.from({ length: 4 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "25.00", actorUserId: actor, idempotencyKey: key() })));
+    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
+    const r = await settle(Array.from({ length: 4 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "25.00", actor: user(actor), idempotencyKey: key() })));
     expect(r.ok).toHaveLength(4);
     expect((await db.admin.query("SELECT amount_paid_ghs, balance_ghs, status FROM invoices WHERE id=$1", [invoice.id])).rows[0]).toEqual({ amount_paid_ghs: "100.00", balance_ghs: "0.00", status: "Paid" });
     const events = (await db.admin.query("SELECT new_status FROM status_events WHERE entity_type='invoice' AND entity_id=$1 ORDER BY id", [invoice.id])).rows.map((x) => x.new_status);
@@ -91,9 +92,9 @@ dbDescribe("concurrency (PostgreSQL)", () => {
 
   it("the same payment idempotency key sent 12 times in parallel records exactly one payment", async () => {
     const c = await customer(db.admin); const i = await item(db.admin, c, { tier_price_usd: "8.00" });
-    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() });
+    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     const k = key();
-    const r = await settle(Array.from({ length: 12 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "40.00", actorUserId: actor, idempotencyKey: k })));
+    const r = await settle(Array.from({ length: 12 }, () => recordPayment(db.app, { invoiceId: invoice.id, amountGhs: "40.00", actor: user(actor), idempotencyKey: k })));
     expect(r.codes).toEqual([]);
     expect(new Set(r.ok.map((x) => x.payment.id)).size).toBe(1);
     expect(r.ok.filter((x) => !x.replayed)).toHaveLength(1);
@@ -103,7 +104,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   it("simultaneous invoice creation with the SAME idempotency key yields exactly one invoice", async () => {
     const c = await customer(db.admin); const i = await item(db.admin, c);
     const k = key();
-    const r = await settle(Array.from({ length: 12 }, () => createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: k })));
+    const r = await settle(Array.from({ length: 12 }, () => createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: k })));
     expect(r.codes).toEqual([]);
     expect(new Set(r.ok.map((x) => x.invoice.id)).size).toBe(1);
     expect(r.ok.filter((x) => !x.replayed)).toHaveLength(1);
@@ -113,7 +114,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
 
   it("simultaneous invoice creation for the same item with DIFFERENT keys: exactly one wins, the item is on one invoice", async () => {
     const c = await customer(db.admin); const i = await item(db.admin, c);
-    const r = await settle(Array.from({ length: 8 }, () => createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() })));
+    const r = await settle(Array.from({ length: 8 }, () => createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() })));
     expect(r.ok).toHaveLength(1);
     expect(r.codes).toEqual(Array(7).fill("INVALID_INPUT"));
     expect((await db.admin.query("SELECT count(*)::int AS n FROM invoices WHERE customer_id=$1", [c])).rows[0].n).toBe(1);
@@ -123,7 +124,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
   it("invoice numbers are unique and contiguous across parallel invoice creation for different customers", async () => {
     const jobs = await Promise.all(Array.from({ length: 15 }, async () => {
       const c = await customer(db.admin); const i = await item(db.admin, c);
-      return createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() });
+      return createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     }));
     const nums = jobs.map((j) => Number(j.invoice.invoice_ref.slice(4))).sort((a, b) => a - b);
     expect(new Set(nums).size).toBe(15);
@@ -134,7 +135,7 @@ dbDescribe("concurrency (PostgreSQL)", () => {
     for (let round = 0; round < 6; round++) {
       const c = await customer(db.admin); const ct = await carton(db.admin, c);
       const dissolve = db.app.query("UPDATE cartons SET status='dissolved', dissolved_at=now() WHERE id=$1 AND status='open'", [ct]).then((x) => x.rowCount);
-      const inv = settle([createInvoice(db.app, { customerId: c, cartonIds: [ct], actorUserId: actor, idempotencyKey: key() })]);
+      const inv = settle([createInvoice(db.app, { customerId: c, cartonIds: [ct], actor: user(actor), idempotencyKey: key() })]);
       const [dissolved, invoiced] = await Promise.all([dissolve, inv]);
       const row = (await db.admin.query("SELECT status, invoice_id FROM cartons WHERE id=$1", [ct])).rows[0];
       const invoices = (await db.admin.query("SELECT count(*)::int AS n FROM invoice_lines WHERE carton_id=$1", [ct])).rows[0].n;

@@ -12,6 +12,7 @@ export default defineConfig({
     include: ["tests/db/**/*.test.ts"],
     testTimeout: 60_000,
     hookTimeout: 60_000,
-    env: { NODE_ENV: "test", TZ: "UTC" },
+    // test-only signing key for the actor assertion (matches tests/db/helpers.ts); not a real secret
+    env: { NODE_ENV: "test", TZ: "UTC", ACTOR_CONTEXT_KEY: Buffer.alloc(32, 0x5a).toString("base64") },
   },
 });

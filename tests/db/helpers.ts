@@ -2,6 +2,7 @@
 import { randomBytes } from "node:crypto";
 import pg from "pg";
 import { describe } from "vitest";
+import { beginActor, type ActorAssertion } from "../../src/lib/db/actor";
 import { migrate } from "../../scripts/lib/migrate.mjs";
 
 export const ADMIN_URL = process.env.MOVEZZ_TEST_PG_URL;
@@ -12,6 +13,10 @@ else {
 }
 /** describe() that is skipped when no test PostgreSQL is configured. */
 export const dbDescribe = ADMIN_URL ? describe : describe.skip;
+
+/** TEST-ONLY signing key (also set as ACTOR_CONTEXT_KEY in vitest.db.config.mts). Never used outside disposable test databases. */
+export const TEST_ACTOR_KEY_B64 = Buffer.alloc(32, 0x5a).toString("base64");
+export const TEST_ACTOR_KEY = Buffer.from(TEST_ACTOR_KEY_B64, "base64");
 
 const APP_ROLE = "movezz_app";
 const APP_PASSWORD = "test-only-app-role-password"; // local throwaway server only
@@ -50,6 +55,11 @@ export async function createTestDb(): Promise<TestDb> {
   u.pathname = `/${name}`;
   const adminUrl = u.toString();
   await migrate(adminUrl);
+  {
+    const p = new pg.Pool({ connectionString: adminUrl, max: 1 });
+    await p.query("SELECT movezz_sec.set_actor_key($1)", [TEST_ACTOR_KEY]);
+    await p.end();
+  }
   const a = new URL(adminUrl);
   a.username = APP_ROLE;
   a.password = APP_PASSWORD;
@@ -150,5 +160,28 @@ export async function createBareTestDb() {
   return {
     name, url, admin,
     async close() { await admin.end(); await root.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await root.end(); },
+  };
+}
+
+/**
+ * A `query` that runs each statement in its own transaction under a verified actor (owner pool; default an 'import' actor),
+ * for raw fixtures/assertions on tables whose triggers require an actor (invoices, payments, idempotency keys).
+ * Errors are rethrown UNCHANGED so tests can assert the raw SQLSTATE.
+ */
+export function actorQuery(pool: pg.Pool, actor: ActorAssertion = { type: "import" }) {
+  return {
+    async query(sql: string, params?: unknown[]) {
+      const cl = await pool.connect();
+      try {
+        await cl.query("BEGIN");
+        await beginActor(cl, actor, TEST_ACTOR_KEY);
+        const r = await cl.query(sql, params);
+        await cl.query("COMMIT");
+        return r;
+      } catch (e) {
+        await cl.query("ROLLBACK").catch(() => {});
+        throw e;
+      } finally { cl.release(); }
+    },
   };
 }

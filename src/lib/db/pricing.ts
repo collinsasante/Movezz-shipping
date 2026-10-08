@@ -1,5 +1,6 @@
 import type { Queryable } from "./client";
 import { DomainError } from "./errors";
+import { recordAudit } from "./audit";
 
 export interface PricedItem {
   itemId: string;
@@ -20,6 +21,8 @@ export interface PricedItem {
  *  - Nothing here ever chooses a special card automatically, and the client never supplies a price or a basis.
  *
  * Sea: CBM x quantity x rate.  Air: weight x quantity x rate.  Rounded once to 2 decimals.
+ *
+ * Must run inside withActorTransaction(): the pricing change is audited, attributed to the verified actor.
  */
 export async function priceItem(db: Queryable, itemId: string, opts: { specialRateId?: string | null } = {}): Promise<PricedItem> {
   const item = (await db.query(
@@ -57,6 +60,8 @@ export async function priceItem(db: Queryable, itemId: string, opts: { specialRa
               special_rate_id = $5, special_rate_name = $6, special_rate_usd = $7, special_price_usd = $8 WHERE id = $1`,
       [itemId, item.package_tier, tierRate, tierPrice, card.id, card.name, specialRate, specialPrice]
     );
+    await recordAudit(db, { action: "item.price", entityType: "item", entityId: itemId,
+      after: { billing_basis: "special", special_rate_id: card.id, special_rate_name: card.name, tier_price_usd: tierPrice, special_price_usd: specialPrice } });
     return { itemId, billingBasis: "special", tierRateUsd: tierRate, tierPriceUsd: tierPrice, specialRateUsd: specialRate, specialPriceUsd: specialPrice };
   }
 
@@ -65,5 +70,7 @@ export async function priceItem(db: Queryable, itemId: string, opts: { specialRa
             special_rate_id = NULL, special_rate_name = NULL, special_rate_usd = NULL, special_price_usd = NULL WHERE id = $1`,
     [itemId, item.package_tier, tierRate, tierPrice]
   );
+  await recordAudit(db, { action: "item.price", entityType: "item", entityId: itemId,
+    after: { billing_basis: "tier", package_tier: item.package_tier, tier_rate_usd: tierRate, tier_price_usd: tierPrice } });
   return { itemId, billingBasis: "tier", tierRateUsd: tierRate, tierPriceUsd: tierPrice, specialRateUsd: null, specialPriceUsd: null };
 }

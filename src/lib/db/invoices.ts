@@ -2,7 +2,8 @@
 // This is a deliberately small reference implementation of the target architecture (route -> service -> repository);
 // the existing Airtable-backed routes are NOT switched to it in this phase.
 import type { Pool } from "pg";
-import { withTransaction } from "./client";
+import { withActorTransaction, currentActorId, type ActorAssertion } from "./actor";
+import { recordAudit, recordStatusEvent } from "./audit";
 import { DomainError } from "./errors";
 import { allocateReference } from "./references";
 import { beginIdempotent, completeIdempotent, fingerprint } from "./idempotency";
@@ -15,9 +16,10 @@ export interface CreateInvoiceInput {
   discountReason?: string;          // required by the database when discountUsd > 0 (authorization is Phase 7D)
   invoiceDate?: string;             // YYYY-MM-DD
   notes?: string;
-  actorUserId: string | null;
+  /** The authenticated actor from the server auth layer (never request input). Verified by PostgreSQL. */
+  actor: ActorAssertion;
   idempotencyKey: string;
-  request?: { requestId?: string; ip?: string; userAgent?: string };
+  request?: { ip?: string; userAgent?: string };
 }
 
 export interface InvoiceRow {
@@ -42,8 +44,9 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
 
   const requestHash = fingerprint({ c: input.customerId, i: itemIds, k: cartonIds, d: discount, r: input.discountReason ?? null, date: input.invoiceDate ?? null, n: input.notes ?? null });
 
-  return withTransaction(db, async (tx) => {
-    const idem = await beginIdempotent(tx, { scope: "invoice.create", actorUserId: input.actorUserId, key: input.idempotencyKey, requestHash });
+  return withActorTransaction(db, input.actor, async (tx) => {
+    const actorId = await currentActorId(tx);
+    const idem = await beginIdempotent(tx, { scope: "invoice.create", actorUserId: actorId, key: input.idempotencyKey, requestHash });
     if (idem.state === "replay") {
       const inv = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [idem.resultEntityId])).rows[0];
       return { invoice: inv, replayed: true };
@@ -103,7 +106,7 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
        VALUES ($1, $2, coalesce($3::date, current_date), $4::numeric, $5::numeric, $11, $6::numeric, $7,
                round(($4::numeric - $5::numeric) * $6::numeric, 2), $8, $9, $10)
        RETURNING *`,
-      [ref, input.customerId, input.invoiceDate ?? null, subtotal, discount, fx.rate, fx.id, input.idempotencyKey, input.notes ?? null, input.actorUserId, input.discountReason ?? null]
+      [ref, input.customerId, input.invoiceDate ?? null, subtotal, discount, fx.rate, fx.id, input.idempotencyKey, input.notes ?? null, null, input.discountReason ?? null] // created_by is stamped by the database from the verified actor
     )).rows[0];
 
     let n = 0;
@@ -120,17 +123,15 @@ export async function createInvoice(db: Pool, input: CreateInvoiceInput): Promis
       await tx.query("UPDATE items SET invoice_id = $1 WHERE carton_id = ANY($2::uuid[]) AND invoice_id IS NULL", [inv.id, cartonIds]);
       await tx.query("UPDATE cartons SET status = 'invoiced', invoice_id = $1 WHERE id = ANY($2::uuid[])", [inv.id, cartonIds]);
       for (const id of cartonIds) {
-        await tx.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id, reason) VALUES ('carton', $1, 'open', 'invoiced', $2, $3)`,
-          [id, input.actorUserId, `invoiced on ${ref}`]);
+        await recordStatusEvent(tx, { entityType: "carton", entityId: id, from: "open", to: "invoiced", reason: `invoiced on ${ref}` });
       }
     }
-    await tx.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id) VALUES ('invoice', $1, NULL, $3, $2)`, [inv.id, input.actorUserId, inv.status]); // 'Paid' for a zero-total invoice (the database settles it)
-    await tx.query(
-      `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, after_data, request_id, ip_address, user_agent)
-       VALUES ($1, 'invoice.create', 'invoice', $2, $3, $4, $5, $6)`,
-      [input.actorUserId, inv.id, JSON.stringify({ invoice_ref: ref, customer_id: input.customerId, subtotal_usd: subtotal, discount_usd: discount, fx_rate: String(fx.rate), total_ghs: inv.total_ghs, lines: lines.length }),
-       input.request?.requestId ?? null, input.request?.ip ?? null, input.request?.userAgent ?? null]
-    );
+    // 'Paid' for a zero-total invoice (the database settles it)
+    await recordStatusEvent(tx, { entityType: "invoice", entityId: inv.id, from: null, to: inv.status });
+    await recordAudit(tx, {
+      action: "invoice.create", entityType: "invoice", entityId: inv.id, request: input.request,
+      after: { invoice_ref: ref, customer_id: input.customerId, subtotal_usd: subtotal, discount_usd: discount, fx_rate: String(fx.rate), total_ghs: inv.total_ghs, lines: lines.length },
+    });
     // Keepup is created later by a worker from this row (never inline): the state machine starts at 'pending'.
     // A zero-total invoice is Movezz-only (docs/DECISIONS.md A2): no Keepup sale, sync state 'not_required'.
     await tx.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key, sync_state) VALUES ('invoice', $1, $2, $3)`,
@@ -154,9 +155,9 @@ export interface RecordPaymentInput {
   externalReference?: string;
   keepupReference?: string;
   usdEquivalent?: string;           // historical snapshot only
-  actorUserId: string | null;
+  actor: ActorAssertion;
   idempotencyKey: string;
-  request?: { requestId?: string; ip?: string; userAgent?: string };
+  request?: { ip?: string; userAgent?: string };
 }
 
 export async function recordPayment(db: Pool, input: RecordPaymentInput) {
@@ -164,8 +165,9 @@ export async function recordPayment(db: Pool, input: RecordPaymentInput) {
     throw new DomainError("INVALID_INPUT", "Payment amount must be a positive GHS amount with at most 2 decimals");
   }
   const requestHash = fingerprint({ i: input.invoiceId, a: input.amountGhs, m: input.method ?? null, s: input.source ?? null, e: input.externalReference ?? null, k: input.keepupReference ?? null });
-  return withTransaction(db, async (tx) => {
-    const idem = await beginIdempotent(tx, { scope: "payment.create", actorUserId: input.actorUserId, key: input.idempotencyKey, requestHash });
+  return withActorTransaction(db, input.actor, async (tx) => {
+    const actorId = await currentActorId(tx);
+    const idem = await beginIdempotent(tx, { scope: "payment.create", actorUserId: actorId, key: input.idempotencyKey, requestHash });
     if (idem.state === "replay") {
       const p = (await tx.query("SELECT * FROM payments WHERE id = $1", [idem.resultEntityId])).rows[0];
       const inv = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [p.invoice_id])).rows[0];
@@ -176,52 +178,47 @@ export async function recordPayment(db: Pool, input: RecordPaymentInput) {
       `INSERT INTO payments (invoice_id, amount_ghs, usd_equivalent, method, source, external_reference, keepup_reference, idempotency_key, created_by)
        VALUES ($1, $2::numeric, $3::numeric, coalesce($4, 'other'), coalesce($5, 'manual'), $6, $7, $8, $9) RETURNING *`,
       [input.invoiceId, input.amountGhs, input.usdEquivalent ?? null, input.method ?? null, input.source ?? null, input.externalReference ?? null,
-       input.keepupReference ?? null, input.idempotencyKey, input.actorUserId]
+       input.keepupReference ?? null, input.idempotencyKey, null] // created_by is stamped by the database from the verified actor
     )).rows[0];
     const invoice = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [input.invoiceId])).rows[0];
-    await tx.query(
-      `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, after_data, request_id, ip_address, user_agent)
-       VALUES ($1, 'payment.create', 'payment', $2, $3, $4, $5, $6)`,
-      [input.actorUserId, payment.id, JSON.stringify({ invoice_id: input.invoiceId, amount_ghs: input.amountGhs, method: payment.method, source: payment.source, invoice_status: invoice.status }),
-       input.request?.requestId ?? null, input.request?.ip ?? null, input.request?.userAgent ?? null]
-    );
+    await recordAudit(tx, {
+      action: "payment.create", entityType: "payment", entityId: payment.id, request: input.request,
+      after: { invoice_id: input.invoiceId, amount_ghs: input.amountGhs, method: payment.method, source: payment.source, invoice_status: invoice.status },
+    });
     await completeIdempotent(tx, idem.id, { entityType: "payment", entityId: payment.id });
     return { payment, invoice, replayed: false };
   });
 }
 
 /** Reversal: marks the payment voided (never deletes it); the invoice's paid amount, balance and status follow. */
-export async function voidPayment(db: Pool, input: { paymentId: string; reason: string; actorUserId: string | null }) {
+export async function voidPayment(db: Pool, input: { paymentId: string; reason: string; actor: ActorAssertion }) {
   if (!input.reason.trim()) throw new DomainError("INVALID_INPUT", "A void reason is required");
-  return withTransaction(db, async (tx) => {
+  return withActorTransaction(db, input.actor, async (tx) => {
     const p = (await tx.query(
-      `UPDATE payments SET status = 'voided', voided_at = now(), voided_by = $2, void_reason = $3 WHERE id = $1 AND status = 'completed' RETURNING *`,
-      [input.paymentId, input.actorUserId, input.reason]
+      `UPDATE payments SET status = 'voided', voided_at = now(), void_reason = $2 WHERE id = $1 AND status = 'completed' RETURNING *`, // voided_by is stamped by the database
+      [input.paymentId, input.reason]
     )).rows[0];
     if (!p) throw new DomainError("INVALID_STATE", "Payment not found or already voided");
-    await tx.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id, reason) VALUES ('payment', $1, 'completed', 'voided', $2, $3)`,
-      [p.id, input.actorUserId, input.reason]);
-    await tx.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, after_data) VALUES ($1, 'payment.void', 'payment', $2, $3)`,
-      [input.actorUserId, p.id, JSON.stringify({ invoice_id: p.invoice_id, amount_ghs: String(p.amount_ghs), reason: input.reason })]);
+    await recordStatusEvent(tx, { entityType: "payment", entityId: p.id, from: "completed", to: "voided", reason: input.reason });
+    await recordAudit(tx, { action: "payment.void", entityType: "payment", entityId: p.id,
+      after: { invoice_id: p.invoice_id, amount_ghs: String(p.amount_ghs), reason: input.reason } });
     const invoice = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [p.invoice_id])).rows[0];
     return { payment: p, invoice };
   });
 }
 
 /** Cancels an invoice (never deletes). Refused while completed payments exist. Releasing items/cartons is a later-phase rule. */
-export async function cancelInvoice(db: Pool, input: { invoiceId: string; reason: string; actorUserId: string | null }) {
+export async function cancelInvoice(db: Pool, input: { invoiceId: string; reason: string; actor: ActorAssertion }) {
   if (!input.reason.trim()) throw new DomainError("INVALID_INPUT", "A cancel reason is required");
-  return withTransaction(db, async (tx) => {
+  return withActorTransaction(db, input.actor, async (tx) => {
     const old = (await tx.query("SELECT status FROM invoices WHERE id = $1 FOR UPDATE", [input.invoiceId])).rows[0];
     if (!old) throw new DomainError("NOT_FOUND", "Invoice not found");
     const inv = (await tx.query<InvoiceRow>(
-      `UPDATE invoices SET status = 'Cancelled', cancelled_at = now(), cancelled_by = $2, cancel_reason = $3 WHERE id = $1 RETURNING *`,
-      [input.invoiceId, input.actorUserId, input.reason]
+      `UPDATE invoices SET status = 'Cancelled', cancelled_at = now(), cancel_reason = $2 WHERE id = $1 RETURNING *`, // cancelled_by is stamped by the database
+      [input.invoiceId, input.reason]
     )).rows[0];
-    await tx.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id, reason) VALUES ('invoice', $1, $2, 'Cancelled', $3, $4)`,
-      [input.invoiceId, old.status, input.actorUserId, input.reason]);
-    await tx.query(`INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, after_data) VALUES ($1, 'invoice.cancel', 'invoice', $2, $3)`,
-      [input.actorUserId, input.invoiceId, JSON.stringify({ reason: input.reason })]);
+    await recordStatusEvent(tx, { entityType: "invoice", entityId: input.invoiceId, from: old.status, to: "Cancelled", reason: input.reason });
+    await recordAudit(tx, { action: "invoice.cancel", entityType: "invoice", entityId: input.invoiceId, after: { reason: input.reason } });
     return inv;
   });
 }

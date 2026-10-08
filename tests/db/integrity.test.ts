@@ -1,8 +1,10 @@
 // Keepup sync state, notification outbox, history/audit append-only guarantees, idempotency scoping,
 // ownership representation and legacy-identity preservation.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { dbDescribe, createTestDb, customer, item, staffUser, fxRate, packageRates, sqlstate, type TestDb } from "./helpers";
+import { dbDescribe, createTestDb, customer, item, staffUser, fxRate, packageRates, sqlstate, actorQuery, type TestDb } from "./helpers";
 import { createInvoice } from "../../src/lib/db/invoices";
+import { user, withActorTransaction } from "../../src/lib/db/actor";
+import { recordAudit, recordStatusEvent } from "../../src/lib/db/audit";
 import { beginIdempotent, completeIdempotent, fingerprint } from "../../src/lib/db/idempotency";
 import { DomainError } from "../../src/lib/db/errors";
 
@@ -16,7 +18,7 @@ dbDescribe("history, integrations and ownership (PostgreSQL)", () => {
 
   const newInvoice = async () => {
     const c = await customer(db.admin); const i = await item(db.admin, c);
-    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() });
+    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
     return { c, i, invoice };
   };
 
@@ -38,8 +40,8 @@ dbDescribe("history, integrations and ownership (PostgreSQL)", () => {
     });
     it("one Keepup sale per invoice and one external sale id per sale (duplicates are impossible)", async () => {
       const a = await newInvoice(); const b = await newInvoice();
-      await db.admin.query(`UPDATE invoices SET keepup_sale_id='KU-DUP' WHERE id=$1`, [a.invoice.id]);
-      expect(await sqlstate(db.admin.query(`UPDATE invoices SET keepup_sale_id='KU-DUP' WHERE id=$1`, [b.invoice.id]))).toBe("23505");
+      await actorQuery(db.admin).query(`UPDATE invoices SET keepup_sale_id='KU-DUP' WHERE id=$1`, [a.invoice.id]);
+      expect(await sqlstate(actorQuery(db.admin).query(`UPDATE invoices SET keepup_sale_id='KU-DUP' WHERE id=$1`, [b.invoice.id]))).toBe("23505");
       expect(await sqlstate(db.admin.query(`INSERT INTO keepup_sync (kind, invoice_id, idempotency_key) VALUES ('invoice',$1,'another-key-1')`, [a.invoice.id]))).toBe("23505");
     });
     it("state values and payment linkage are constrained; errors are length-limited", async () => {
@@ -74,19 +76,19 @@ dbDescribe("history, integrations and ownership (PostgreSQL)", () => {
     it("a status change appends a new event; the old one is untouched", async () => {
       const c = await customer(db.admin); const i = await item(db.admin, c);
       for (const [from, to] of [[null, "Arrived at Transit Warehouse"], ["Arrived at Transit Warehouse", "Shipped to Ghana"]] as const) {
-        await db.app.query(`INSERT INTO status_events (entity_type, entity_id, old_status, new_status, actor_user_id) VALUES ('item',$1,$2,$3,$4)`, [i, from, to, actor]);
+        await withActorTransaction(db.app, user(actor), (tx) => recordStatusEvent(tx, { entityType: "item", entityId: i, from, to }));
       }
       const r = await db.admin.query(`SELECT old_status, new_status FROM status_events WHERE entity_id=$1 ORDER BY id`, [i]);
       expect(r.rows).toEqual([{ old_status: null, new_status: "Arrived at Transit Warehouse" }, { old_status: "Arrived at Transit Warehouse", new_status: "Shipped to Ghana" }]);
-      expect(await sqlstate(db.admin.query(`INSERT INTO status_events (entity_type, new_status) VALUES ('item','x')`))).toBe("23514"); // needs a target
+      expect(await sqlstate(actorQuery(db.admin, { type: "system" }).query(`INSERT INTO status_events (entity_type, new_status, actor_type) VALUES ('item','x','system')`))).toBe("23514"); // needs a target
     });
     it("audit records have secrets scrubbed by the database, nested too", async () => {
-      await db.app.query(
-        `INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, before_data, after_data, request_id, ip_address, user_agent)
-         VALUES ($1,'user.create','user','u1',$2,$3,'req-1','203.0.113.9','jest')`,
-        [actor, JSON.stringify({ email: "a@example.invalid", password: "hunter2" }),
-         JSON.stringify({ role: "customer", nested: { apiKey: "k-123", ok: 1 }, list: [{ Authorization: "Bearer abc" }], token: "t" })]
-      );
+      await withActorTransaction(db.app, user(actor), (tx) => recordAudit(tx, {
+        action: "user.create", entityType: "user", entityId: "u1",
+        before: { email: "a@example.invalid", password: "hunter2" },
+        after: { role: "customer", nested: { apiKey: "k-123", ok: 1 }, list: [{ Authorization: "Bearer abc" }], token: "t" },
+        request: { ip: "203.0.113.9", userAgent: "jest" },
+      }));
       const r = (await db.admin.query(`SELECT before_data, after_data, host(ip_address) AS ip FROM audit_logs WHERE entity_id='u1'`)).rows[0];
       expect(r.before_data).toEqual({ email: "a@example.invalid", password: "[REDACTED]" });
       expect(r.after_data).toEqual({ role: "customer", nested: { apiKey: "[REDACTED]", ok: 1 }, list: [{ Authorization: "[REDACTED]" }], token: "[REDACTED]" });
@@ -100,26 +102,33 @@ dbDescribe("history, integrations and ownership (PostgreSQL)", () => {
       const other = await staffUser(db.admin);
       const k = key();
       const hash = fingerprint({ a: 1 });
-      const mine = await beginIdempotent(db.admin, { scope: "invoice.create", actorUserId: actor, key: k, requestHash: hash });
+      const begin = (who: string, scope: string) => withActorTransaction(db.admin, user(who), async (tx) => beginIdempotent(tx, { scope, actorUserId: who, key: k, requestHash: hash }));
+      const mine = await begin(actor, "invoice.create");
       expect(mine.state).toBe("new");
-      const theirs = await beginIdempotent(db.admin, { scope: "invoice.create", actorUserId: other, key: k, requestHash: hash });
+      const theirs = await begin(other, "invoice.create");
       expect(theirs.state).toBe("new");
-      const otherScope = await beginIdempotent(db.admin, { scope: "payment.create", actorUserId: actor, key: k, requestHash: hash });
+      const otherScope = await begin(actor, "payment.create");
       expect(otherScope.state).toBe("new");
     });
     it("an unfinished key cannot be replayed as if it had succeeded", async () => {
       const k = key();
-      await beginIdempotent(db.admin, { scope: "x.op", actorUserId: actor, key: k, requestHash: "h" });
-      await expect(beginIdempotent(db.admin, { scope: "x.op", actorUserId: actor, key: k, requestHash: "h" })).rejects.toBeInstanceOf(DomainError);
+      const begin = () => withActorTransaction(db.admin, user(actor), (tx) => beginIdempotent(tx, { scope: "x.op", actorUserId: actor, key: k, requestHash: "h" }));
+      await begin();
+      await expect(begin()).rejects.toBeInstanceOf(DomainError);
     });
     it("completed results are stored and replayed; keys have a minimum length and an expiry", async () => {
       const k = key();
-      const s = await beginIdempotent(db.admin, { scope: "x.done", actorUserId: null, key: k, requestHash: "h" });
-      if (s.state !== "new") throw new Error("expected new");
-      await completeIdempotent(db.admin, s.id, { entityType: "invoice", entityId: "11111111-1111-1111-1111-111111111111", response: { ok: true } });
-      const again = await beginIdempotent(db.admin, { scope: "x.done", actorUserId: null, key: k, requestHash: "h" });
+      const sys = { type: "system" } as const;   // a service actor: no user id
+      const s = await withActorTransaction(db.admin, sys, async (tx) => {
+        const st = await beginIdempotent(tx, { scope: "x.done", actorUserId: null, key: k, requestHash: "h" });
+        if (st.state !== "new") throw new Error("expected new");
+        await completeIdempotent(tx, st.id, { entityType: "invoice", entityId: "11111111-1111-1111-1111-111111111111", response: { ok: true } });
+        return st;
+      });
+      expect(s.state).toBe("new");
+      const again = await withActorTransaction(db.admin, sys, (tx) => beginIdempotent(tx, { scope: "x.done", actorUserId: null, key: k, requestHash: "h" }));
       expect(again).toMatchObject({ state: "replay", resultEntityType: "invoice", response: { ok: true } });
-      expect(await sqlstate(db.admin.query(`INSERT INTO idempotency_keys (scope, key) VALUES ('s','short')`))).toBe("23514");
+      expect(await sqlstate(actorQuery(db.admin, { type: "system" }).query(`INSERT INTO idempotency_keys (scope, key) VALUES ('s','short')`))).toBe("23514");
       expect((await db.admin.query(`SELECT expires_at > now() AS future FROM idempotency_keys WHERE key=$1`, [k])).rows[0].future).toBe(true);
     });
   });

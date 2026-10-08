@@ -11,6 +11,7 @@ export type DomainErrorCode =
   | "NOT_FOUND"
   | "IDEMPOTENCY_CONFLICT"
   | "DUPLICATE"
+  | "ACTOR_INVALID"
   | "INTEGRITY";
 
 export class DomainError extends Error {
@@ -27,6 +28,7 @@ const SQLSTATE_MAP: Record<string, DomainErrorCode> = {
   MV004: "IMMUTABLE_RECORD",
   MV005: "INVALID_STATE",
   MV006: "INVALID_INPUT",
+  MV007: "ACTOR_INVALID", // no/unknown/inactive/forged/replayed actor
   "23505": "DUPLICATE", // unique_violation
   "23503": "INTEGRITY", // foreign_key_violation
   "23514": "INTEGRITY", // check_violation

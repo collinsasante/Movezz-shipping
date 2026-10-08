@@ -1,9 +1,9 @@
 // Invoice creation (atomic, frozen snapshots), payments (GHS, append-only, no overpayment) and their immutability rules.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, specialRate, sqlstate, type TestDb } from "./helpers";
+import { dbDescribe, createTestDb, customer, item, carton, staffUser, fxRate, packageRates, specialRate, sqlstate, actorQuery, TEST_ACTOR_KEY, type TestDb } from "./helpers";
 import { createInvoice, recordPayment, voidPayment, cancelInvoice } from "../../src/lib/db/invoices";
 import { priceItem } from "../../src/lib/db/pricing";
-import { withTransaction } from "../../src/lib/db/client";
+import { withActorTransaction, user, beginActor } from "../../src/lib/db/actor";
 import { DomainError } from "../../src/lib/db/errors";
 
 async function code(p: Promise<unknown>) {
@@ -22,7 +22,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
     const c = await customer(db.admin);
     const itemIds: string[] = [];
     for (const p of opts.prices ?? ["100.00"]) itemIds.push(await item(db.admin, c, { tier_price_usd: p }));
-    const r = await createInvoice(db.app, { customerId: c, itemIds, discountUsd: opts.discount, discountReason: opts.discount ? "Approved test discount" : undefined, actorUserId: actor, idempotencyKey: key("inv") });
+    const r = await createInvoice(db.app, { customerId: c, itemIds, discountUsd: opts.discount, discountReason: opts.discount ? "Approved test discount" : undefined, actor: user(actor), idempotencyKey: key("inv") });
     return { c, itemIds, ...r };
   };
 
@@ -49,16 +49,16 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
         const a = await staffUser(f.admin); await packageRates(f.admin);
         const c = await customer(f.admin); const i = await item(f.admin, c);
         const k = key("nofx");
-        expect(await code(createInvoice(f.app, { customerId: c, itemIds: [i], actorUserId: a, idempotencyKey: k }))).toBe("FX_RATE_MISSING");
+        expect(await code(createInvoice(f.app, { customerId: c, itemIds: [i], actor: user(a), idempotencyKey: k }))).toBe("FX_RATE_MISSING");
         expect((await f.admin.query("SELECT invoice_id FROM items WHERE id=$1", [i])).rows[0].invoice_id).toBeNull();
         expect((await f.admin.query("SELECT count(*)::int AS n FROM idempotency_keys WHERE key=$1", [k])).rows[0].n).toBe(0);
         expect((await f.admin.query("SELECT count(*)::int AS n FROM reference_counters WHERE ref_type='invoice'")).rows[0].n).toBe(0);
         await fxRate(f.admin); // once configured, the same request works with the same key
-        expect((await createInvoice(f.app, { customerId: c, itemIds: [i], actorUserId: a, idempotencyKey: k })).replayed).toBe(false);
+        expect((await createInvoice(f.app, { customerId: c, itemIds: [i], actor: user(a), idempotencyKey: k })).replayed).toBe(false);
         // a deactivated rate is as good as none
         await f.admin.query("UPDATE fx_rates SET is_active = false");
         const i2 = await item(f.admin, c);
-        expect(await code(createInvoice(f.app, { customerId: c, itemIds: [i2], actorUserId: a, idempotencyKey: key() }))).toBe("FX_RATE_MISSING");
+        expect(await code(createInvoice(f.app, { customerId: c, itemIds: [i2], actor: user(a), idempotencyKey: key() }))).toBe("FX_RATE_MISSING");
       } finally { await f.close(); }
     });
 
@@ -85,7 +85,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
         const { rows } = await f.admin.query("SELECT rate::text FROM current_fx_rate('USD','GHS','2026-02-01T00:00:00Z')");
         expect(rows[0].rate).toBe("10.00000000");
         const c = await customer(f.admin); const i = await item(f.admin, c);
-        const { invoice } = await createInvoice(f.app, { customerId: c, itemIds: [i], actorUserId: a, idempotencyKey: key() });
+        const { invoice } = await createInvoice(f.app, { customerId: c, itemIds: [i], actor: user(a), idempotencyKey: key() });
         expect((await f.admin.query("SELECT fx_rate_id FROM invoices WHERE id=$1", [invoice.id])).rows[0].fx_rate_id).toBe(second);
         expect(invoice.total_ghs).toBe("4200.00"); // 350 USD x 12
       } finally { await f.close(); }
@@ -96,8 +96,8 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       const c = await customer(db.admin);
       const i = await item(db.admin, c, { package_tier: null, tier_rate_usd: null, tier_price_usd: null });
       const card = await specialRate(db.admin, { name: "Bulk Lagos", sea_rate_usd: 300 });
-      await withTransaction(db.app, (tx) => priceItem(tx, i, { specialRateId: card }));
-      const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: key() });
+      await withActorTransaction(db.app, user(actor), (tx) => priceItem(tx, i, { specialRateId: card }));
+      const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: key() });
       expect(invoice.subtotal_usd).toBe("300.00");
       const l = (await db.admin.query("SELECT * FROM invoice_lines WHERE invoice_id=$1", [invoice.id])).rows[0];
       expect(l).toMatchObject({ billing_basis: "special", special_rate_id: card, special_rate_name: "Bulk Lagos", unit_price_usd: "300.00", rate_usd: "300.0000" });
@@ -110,7 +110,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       const c = await customer(db.admin);
       const ct = await carton(db.admin, c, { price_usd: "175.00" });
       const member = await item(db.admin, c, { carton_id: ct });
-      const { invoice } = await createInvoice(db.app, { customerId: c, cartonIds: [ct], actorUserId: actor, idempotencyKey: key() });
+      const { invoice } = await createInvoice(db.app, { customerId: c, cartonIds: [ct], actor: user(actor), idempotencyKey: key() });
       expect(invoice.subtotal_usd).toBe("175.00");
       expect((await db.admin.query("SELECT carton_id, item_id FROM invoice_lines WHERE invoice_id=$1", [invoice.id])).rows).toEqual([{ carton_id: ct, item_id: null }]);
       expect((await db.admin.query("SELECT invoice_id FROM items WHERE id=$1", [member])).rows[0].invoice_id).toBe(invoice.id);
@@ -126,15 +126,15 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       await fxRate(db.admin);
       const a = await customer(db.admin), b = await customer(db.admin);
       const ib = await item(db.admin, b);
-      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ib], actorUserId: actor, idempotencyKey: key() }))).toBe("INVALID_INPUT");
+      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ib], actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
       const unpriced = await item(db.admin, a, { tier_price_usd: null });
-      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [unpriced], actorUserId: actor, idempotencyKey: key() }))).toBe("ITEM_UNPRICED");
+      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [unpriced], actor: user(actor), idempotencyKey: key() }))).toBe("ITEM_UNPRICED");
       const ia = await item(db.admin, a);
-      await createInvoice(db.app, { customerId: a, itemIds: [ia], actorUserId: actor, idempotencyKey: key() });
-      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia], actorUserId: actor, idempotencyKey: key() }))).toBe("INVALID_INPUT");
+      await createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() });
+      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia], actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
       const ia2 = await item(db.admin, a);
-      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia2], discountUsd: "400.00", actorUserId: actor, idempotencyKey: key() }))).toBe("INVALID_INPUT");
-      expect(await code(createInvoice(db.app, { customerId: a, actorUserId: actor, idempotencyKey: key() }))).toBe("INVALID_INPUT");
+      expect(await code(createInvoice(db.app, { customerId: a, itemIds: [ia2], discountUsd: "400.00", actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
+      expect(await code(createInvoice(db.app, { customerId: a, actor: user(actor), idempotencyKey: key() }))).toBe("INVALID_INPUT");
       expect((await db.admin.query("SELECT invoice_id FROM items WHERE id=$1", [ia2])).rows[0].invoice_id).toBeNull();
     });
 
@@ -142,11 +142,11 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       await fxRate(db.admin);
       const c = await customer(db.admin); const i = await item(db.admin, c); const i2 = await item(db.admin, c);
       const k = key("idem");
-      const first = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: k });
-      const again = await createInvoice(db.app, { customerId: c, itemIds: [i], actorUserId: actor, idempotencyKey: k });
+      const first = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: k });
+      const again = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(actor), idempotencyKey: k });
       expect(again.replayed).toBe(true);
       expect(again.invoice.id).toBe(first.invoice.id);
-      expect(await code(createInvoice(db.app, { customerId: c, itemIds: [i2], actorUserId: actor, idempotencyKey: k }))).toBe("IDEMPOTENCY_CONFLICT");
+      expect(await code(createInvoice(db.app, { customerId: c, itemIds: [i2], actor: user(actor), idempotencyKey: k }))).toBe("IDEMPOTENCY_CONFLICT");
       expect((await db.admin.query("SELECT count(*)::int AS n FROM invoices WHERE customer_id=$1", [c])).rows[0].n).toBe(1);
     });
   });
@@ -158,7 +158,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
         expect(await sqlstate(db.admin.query(`UPDATE invoices SET ${set} WHERE id=$1`, [invoice.id])), set).toMatch(/MV004|23/);
       }
       expect(await sqlstate(db.admin.query("UPDATE invoices SET amount_paid_ghs = 10 WHERE id=$1", [invoice.id]))).toBe("MV004");
-      expect(await sqlstate(db.admin.query("UPDATE invoices SET status = 'Paid' WHERE id=$1", [invoice.id]))).toBe("MV004");
+      expect(await sqlstate(actorQuery(db.admin).query("UPDATE invoices SET status = 'Paid' WHERE id=$1", [invoice.id]))).toBe("MV004");
       expect(await sqlstate(db.admin.query("UPDATE invoices SET balance_ghs = 0 WHERE id=$1", [invoice.id]))).toBe("428C9");
       await db.admin.query("UPDATE invoices SET notes='fine', keepup_link='https://x.invalid/s' WHERE id=$1", [invoice.id]); // non-financial fields stay editable
     });
@@ -174,15 +174,16 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
       const bad = db.admin.connect().then(async (cl) => {
         try {
           await cl.query("BEGIN");
+          await beginActor(cl, { type: "import" }, TEST_ACTOR_KEY);
           const inv = (await cl.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X1',$1,100,12.5,1250) RETURNING id`, [c])).rows[0];
           await cl.query(`INSERT INTO invoice_lines (invoice_id, line_no, description, unit_price_usd, line_total_usd, billing_basis) VALUES ($1,1,'x',60,60,'tier')`, [inv.id]);
           await cl.query("COMMIT");
         } finally { cl.release(); }
       });
       await expect(bad).rejects.toMatchObject({ code: "MV006" });
-      expect(await sqlstate(db.admin.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X2',$1,100,12.5,1249.99)`, [c]))).toBe("23514");
+      expect(await sqlstate(actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, total_ghs) VALUES ('ORD-X2',$1,100,12.5,1249.99)`, [c]))).toBe("23514");
       // an estimated (reconstructed) legacy invoice is exempt from the exact-GHS rule, and may have no lines
-      await db.admin.query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, fx_estimated, total_ghs, legacy_airtable_id, provenance, provenance_note) VALUES ('ORD-X3',$1,100,12.5,true,1300,'recLEG1','estimated','historic rate unknown')`, [c]);
+      await actorQuery(db.admin).query(`INSERT INTO invoices (invoice_ref, customer_id, subtotal_usd, fx_rate, fx_estimated, total_ghs, legacy_airtable_id, provenance, provenance_note) VALUES ('ORD-X3',$1,100,12.5,true,1300,'recLEG1','estimated','historic rate unknown')`, [c]);
     });
     it("a line cannot reference another customer's item", async () => {
       const { invoice } = await invoiceFor();
@@ -203,7 +204,7 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
 
   describe("payments", () => {
     const pay = (invoiceId: string, amount: string, over: Record<string, unknown> = {}) =>
-      recordPayment(db.app, { invoiceId, amountGhs: amount, actorUserId: actor, idempotencyKey: key("pay"), ...over });
+      recordPayment(db.app, { invoiceId, amountGhs: amount, actor: user(actor), idempotencyKey: key("pay"), ...over });
 
     it("partial then full payment: exact NUMERIC arithmetic, derived paid/balance/status, status events", async () => {
       const { invoice } = await invoiceFor({ prices: ["100.00"] });        // GHS 1250.00
@@ -230,34 +231,34 @@ dbDescribe("invoices and payments (PostgreSQL)", () => {
     it("rejects non-positive and over-precise amounts (service) and non-positive amounts (database)", async () => {
       const { invoice } = await invoiceFor();
       for (const bad of ["0", "-5", "1.005", "abc"]) expect(await code(pay(invoice.id, bad)), bad).toBe("INVALID_INPUT");
-      expect(await sqlstate(db.admin.query("INSERT INTO payments (invoice_id, amount_ghs) VALUES ($1, 0)", [invoice.id]))).toBe("23514");
+      expect(await sqlstate(actorQuery(db.admin).query("INSERT INTO payments (invoice_id, amount_ghs) VALUES ($1, 0)", [invoice.id]))).toBe("23514");
     });
     it("payments are append-only: no delete, no truncate, no edits; a void is the only correction and restores the balance", async () => {
       const { invoice } = await invoiceFor({ prices: ["100.00"] });
       const { payment } = await pay(invoice.id, "1250.00");
       expect(await sqlstate(db.admin.query("DELETE FROM payments WHERE id=$1", [payment.id]))).toBe("MV004");
       expect(await sqlstate(db.admin.query("TRUNCATE payments"))).toMatch(/MV004|0A000/); // blocked by the trigger, and by the FK from keepup_sync
-      expect(await sqlstate(db.admin.query("UPDATE payments SET amount_ghs = 1 WHERE id=$1", [payment.id]))).toBe("MV005");
-      expect(await sqlstate(db.admin.query("UPDATE payments SET status='voided', voided_at=now(), void_reason='r', amount_ghs=1 WHERE id=$1", [payment.id]))).toBe("MV004");
+      expect(await sqlstate(actorQuery(db.admin).query("UPDATE payments SET amount_ghs = 1 WHERE id=$1", [payment.id]))).toBe("MV005");
+      expect(await sqlstate(actorQuery(db.admin).query("UPDATE payments SET status='voided', voided_at=now(), void_reason='r', amount_ghs=1 WHERE id=$1", [payment.id]))).toBe("MV004");
       expect(await sqlstate(db.app.query("DELETE FROM payments WHERE id=$1", [payment.id]))).toBe("42501");
-      const v = await voidPayment(db.app, { paymentId: payment.id, reason: "entered twice", actorUserId: actor });
+      const v = await voidPayment(db.app, { paymentId: payment.id, reason: "entered twice", actor: user(actor) });
       expect(v.invoice).toMatchObject({ amount_paid_ghs: "0.00", balance_ghs: "1250.00", status: "Pending" });
       expect((await db.admin.query("SELECT status, void_reason FROM payments WHERE id=$1", [payment.id])).rows[0]).toEqual({ status: "voided", void_reason: "entered twice" });
-      expect(await code(voidPayment(db.app, { paymentId: payment.id, reason: "again", actorUserId: actor }))).toBe("INVALID_STATE");
-      expect(await sqlstate(db.admin.query("UPDATE payments SET status='completed', voided_at=NULL, void_reason=NULL WHERE id=$1", [payment.id]))).toBe("MV005");
+      expect(await code(voidPayment(db.app, { paymentId: payment.id, reason: "again", actor: user(actor) }))).toBe("INVALID_STATE");
+      expect(await sqlstate(actorQuery(db.admin).query("UPDATE payments SET status='completed', voided_at=NULL, void_reason=NULL WHERE id=$1", [payment.id]))).toBe("MV005");
     });
     it("a voided payment frees its amount: the balance can be paid again", async () => {
       const { invoice } = await invoiceFor({ prices: ["100.00"] });
       const { payment } = await pay(invoice.id, "1250.00");
-      await voidPayment(db.app, { paymentId: payment.id, reason: "bounced", actorUserId: actor });
+      await voidPayment(db.app, { paymentId: payment.id, reason: "bounced", actor: user(actor) });
       expect((await pay(invoice.id, "1250.00")).invoice.status).toBe("Paid");
     });
     it("cancelled invoices accept no payments; an invoice with completed payments cannot be cancelled; cancelled is terminal", async () => {
       const a = await invoiceFor({ prices: ["100.00"] });
       await pay(a.invoice.id, "10.00");
-      expect(await code(cancelInvoice(db.app, { invoiceId: a.invoice.id, reason: "x", actorUserId: actor }))).toBe("INVALID_STATE");
+      expect(await code(cancelInvoice(db.app, { invoiceId: a.invoice.id, reason: "x", actor: user(actor) }))).toBe("INVALID_STATE");
       const b = await invoiceFor({ prices: ["100.00"] });
-      const cancelled = await cancelInvoice(db.app, { invoiceId: b.invoice.id, reason: "customer cancelled", actorUserId: actor });
+      const cancelled = await cancelInvoice(db.app, { invoiceId: b.invoice.id, reason: "customer cancelled", actor: user(actor) });
       expect(cancelled.status).toBe("Cancelled");
       expect(await code(pay(b.invoice.id, "5.00"))).toBe("INVALID_STATE");
       expect(await sqlstate(db.admin.query("UPDATE invoices SET notes='x' WHERE id=$1", [b.invoice.id]))).toBe("MV004");

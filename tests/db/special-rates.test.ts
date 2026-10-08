@@ -1,9 +1,9 @@
 // Special rate cards are OPTIONAL named USD price lists that staff select explicitly; the server validates the selection.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { dbDescribe, createTestDb, customer, item, specialRate, packageRates, sqlstate, type TestDb } from "./helpers";
+import { dbDescribe, createTestDb, customer, item, specialRate, packageRates, sqlstate, staffUser, type TestDb } from "./helpers";
 import { priceItem } from "../../src/lib/db/pricing";
 import { DomainError } from "../../src/lib/db/errors";
-import { withTransaction } from "../../src/lib/db/client";
+import { withActorTransaction, user } from "../../src/lib/db/actor";
 
 async function code(p: Promise<unknown>) {
   try { await p; return "OK"; } catch (e) { return e instanceof DomainError ? e.code : `RAW:${(e as Error).message}`; }
@@ -11,11 +11,12 @@ async function code(p: Promise<unknown>) {
 const row = async (db: TestDb, id: string) => (await db.admin.query("SELECT * FROM items WHERE id=$1", [id])).rows[0];
 const bare = (db: TestDb, c: string, over: Record<string, unknown> = {}) =>
   item(db.admin, c, { package_tier: null, tier_rate_usd: null, tier_price_usd: null, length: 100, width: 100, height: 100, ...over });
-const price = (db: TestDb, id: string, specialRateId?: string) => withTransaction(db.app, (tx) => priceItem(tx, id, { specialRateId }));
+let actor: string;
+const price = (db: TestDb, id: string, specialRateId?: string) => withActorTransaction(db.app, user(actor), (tx) => priceItem(tx, id, { specialRateId }));
 
 dbDescribe("special rates (PostgreSQL)", () => {
   let db: TestDb;
-  beforeAll(async () => { db = await createTestDb(); await packageRates(db.admin, "basic", "350", "8"); await packageRates(db.admin, "special", "280", "6"); });
+  beforeAll(async () => { db = await createTestDb(); actor = await staffUser(db.admin); await packageRates(db.admin, "basic", "350", "8"); await packageRates(db.admin, "special", "280", "6"); });
   afterAll(async () => { await db?.close(); });
 
   it("special rates are OPTIONAL: no card exists and items are priced at the tier rate", async () => {

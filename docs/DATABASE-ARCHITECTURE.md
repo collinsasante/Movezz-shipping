@@ -283,6 +283,55 @@ deactivation propagates to logins. Compatibility handling: the migration first r
 with counts if existing rows violate any new rule — it never rewrites financial values (one labelling-only update marks
 invoices that already had `fx_estimated = true` as provenance `estimated`).
 
+## 13b. Trusted actor context and audit integrity (Phase 7C, migration 0010)
+
+**Question answered:** *who is performing this operation?* — not *are they allowed?* (authorization is 7D–7G).
+
+**Mechanism: a signed, single-use, per-transaction actor assertion.**
+
+1. The server's auth layer verifies the Firebase token and resolves it to a `users.id`. Only that value (never a request
+   field) is passed to `withActorTransaction(db, user(id), fn)`.
+2. Inside the transaction, `movezz_sec.begin_actor(type, user, request_id, jti, exp, sig)` runs first. `sig` is
+   HMAC-SHA256 over `v1|type|user|request_id|jti|exp` with `ACTOR_CONTEXT_KEY`. PostgreSQL recomputes the MAC with keys
+   held in `movezz_sec.actor_keys` (not readable by `movezz_app`), requires `now <= exp <= now+5 min`, a never-seen `jti`,
+   and no other actor in this transaction. It then loads the user **from `users`** (must exist and be active; a customer
+   login also needs an active customer) and stores the role/customer link it found — the caller supplies no role.
+3. The verified actor is a row in `movezz_sec.actor_sessions` keyed by the transaction id (`pg_current_xact_id()`), so it
+   cannot outlive the transaction, cannot be seen by another transaction, and cannot leak through a pooled connection.
+   Session variables (`set_config`/`current_setting`) are deliberately **not** used: the runtime role can set them freely.
+4. Audit/status rows are written only by `movezz_sec.append_audit` / `append_status_event` (SECURITY DEFINER). They take **no
+   actor argument**; the actor is read from the session row. The runtime role has SELECT only on `audit_logs` and
+   `status_events`. Triggers on both tables (`actor_columns_guard`) additionally reject any row whose actor is not the
+   verified actor of the same transaction, even for the table owner. `invoices.created_by/cancelled_by`,
+   `payments.created_by/voided_by` and `idempotency_keys.actor_user_id` are stamped by triggers from the verified actor
+   (a supplied value that differs is rejected). Writing any of them without an actor fails with `MV007` / `ACTOR_INVALID`.
+5. Status events produced by database triggers (e.g. a payment settling an invoice) use the same session actor (or `system`).
+
+**SECURITY DEFINER hardening.** Owner = migrator; `SET search_path = pg_catalog, pg_temp`; every reference schema-qualified;
+EXECUTE revoked from PUBLIC and granted to `movezz_app` only for: `begin_actor`, `current_actor_id`, `current_actor_type`,
+`require_actor`, `append_audit`, `append_status_event` (plus the pre-existing reference allocators). Key management
+(`set_actor_key`, `retire_actor_key`, `prune_actor_sessions`) and the internal writer are owner-only. A test inventories every
+definer function for these properties. Invoker trigger functions in `public` pin `search_path = pg_catalog, public, pg_temp`,
+`TEMPORARY` on the database and `CREATE` on `public` are revoked from PUBLIC, closing the temp-table / shadow-object hijack.
+
+**Key operations (operator).** `SELECT movezz_sec.set_actor_key(decode('<64 hex chars>','hex'))` with the migration role;
+the same secret (base64) is the server's `ACTOR_CONTEXT_KEY`. Rotation: add the new key, deploy it, then
+`retire_actor_key(<old id>)`; several keys can be active during the window. Without an active key every actor is refused.
+Run `prune_actor_sessions()` periodically (spent assertions older than 7 days). No key value is stored in the repository.
+
+**What this does NOT protect against (honest limits).**
+* Code that holds `ACTOR_CONTEXT_KEY` (the application server) can sign for any active user. This is inherent to one service
+  holding both the auth decision and the database credentials; it is *not* an impersonation path for SQL run through the
+  runtime role alone (demonstrated by tests), and it cannot be removed without a separate signing service / per-user database
+  credentials (architectural, not planned). Keep the key out of logs, client bundles and the migration role's environment.
+* A compromised server can also `UPDATE users` (the runtime role keeps UPDATE on `users` for later services): it could change a
+  role or activate a user and then act as them. Narrowing `users` writes to the registration/user services is **7D/7E**.
+* `ip_address`/`user_agent` on audit rows are caller-supplied request metadata, not identity.
+* Reference-number allocation has no actor (it is not an audited business mutation).
+* Audit coverage is limited to mutations that exist in PostgreSQL today (invoice create, payment create/void, invoice cancel,
+  item pricing, status changes by triggers). Customer, item, carton, container, registration, rate, FX and user mutation
+  services do not exist yet; each must call `withActorTransaction` + `recordAudit` when built (7D–7G).
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |
