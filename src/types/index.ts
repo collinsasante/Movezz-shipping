@@ -538,3 +538,19 @@ export interface OrderFilterParams {
   page?: number;
   pageSize?: number;
 }
+
+/** Per-customer special sea/air rates (stored in PostgreSQL `special_rates`). */
+export interface SpecialRate {
+  id: string;
+  name: string;
+  sea: number;
+  air: number;
+}
+
+/** Default sea/air rate per customer package tier. */
+export interface PackageRates {
+  basic: { sea: number; air: number };
+  business: { sea: number; air: number };
+  enterprise: { sea: number; air: number };
+  special: { sea: number; air: number };
+}

@@ -174,7 +174,7 @@ export const itemDelete = (request: NextRequest, p: P) => pgRoute(request, p.par
 /** One place for item status changes: forward-only for staff, container rule, missing flag, history event with the verified actor. */
 async function moveItemStatus(c: RouteCtx, id: string, status: string, notes: string | undefined) {
   if (!STEPS.includes(status as (typeof STEPS)[number])) throw bad("Invalid status");
-  const cur = (await c.tx.query("SELECT status, container_id, item_ref, customer_id, description, tracking_number FROM items WHERE id = $1 AND archived_at IS NULL FOR UPDATE", [id])).rows[0];
+  const cur = (await c.tx.query("SELECT status, container_id, item_ref, customer_id, description, tracking_number, invoice_id FROM items WHERE id = $1 AND archived_at IS NULL FOR UPDATE", [id])).rows[0];
   if (!cur) throw notFound("Item");
   if (c.actor.role === "warehouse_staff" && STEPS.indexOf(status as (typeof STEPS)[number]) < STEPS.indexOf(cur.status)) throw bad("Status can only move forward in the pipeline");
   if (status === "Shipped to Ghana" && !cur.container_id) throw bad("Item must be assigned to a container before marking as 'Shipped to Ghana'");
@@ -188,8 +188,15 @@ export const itemStatusPatch = (request: NextRequest, p: P) => pgRoute(request, 
   if (!isUuid(c.params.id)) throw notFound("Item");
   const cur = await moveItemStatus(c, c.params.id, d.status, d.notes);
   const item = await loadItem(c.tx, c, c.params.id);
-  c.after(async () => {   // after COMMIT: customer e-mail (best effort, as before); WhatsApp stays disabled until the outbox worker is enabled
+  c.after(async () => {   // after COMMIT: customer e-mail (best effort, as before); WhatsApp only when requested
     const cust = (await (await import("@/lib/db/client")).getPool().query("SELECT email, name FROM customers WHERE id = $1", [cur.customer_id])).rows[0];
+    if (d.sendWhatsApp && cur.invoice_id) {   // opt-in per update, as in the Airtable flow; best effort
+      try {
+        const w = (await (await import("@/lib/db/client")).getPool().query("SELECT c.name, c.phone, v.invoice_ref FROM customers c JOIN invoices v ON v.id = $2 WHERE c.id = $1", [cur.customer_id, cur.invoice_id])).rows[0];
+        if (w?.phone) { const { whatsAppApi } = await import("@/lib/whatsapp"); const { buildWhatsAppMessage } = await import("@/lib/utils");
+          await whatsAppApi.sendNotification({ phone: w.phone, customerName: w.name, orderRef: w.invoice_ref, newStatus: d.status, message: buildWhatsAppMessage(w.name, w.invoice_ref, d.status) }); }
+      } catch { /* non-critical */ }
+    }
     if (cust?.email) await sendItemStatusEmail({ to: cust.email, customerName: cust.name, itemRef: cur.item_ref, description: cur.description ?? "", status: d.status, trackingNumber: cur.tracking_number ?? undefined });
   });
   return ok(item, { message: `Item status updated to: ${d.status}` });

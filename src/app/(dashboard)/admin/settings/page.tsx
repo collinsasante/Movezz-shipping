@@ -10,7 +10,7 @@ import type { CustomerPackage } from "@/types";
 import { DollarSign, Save, Package, Warehouse, Plus, Trash2, ToggleLeft, ToggleRight, Tag, Pencil, X, Check } from "lucide-react";
 import axios from "axios";
 import type { Warehouse as WarehouseType } from "@/types";
-import type { SpecialRate, PackageRates } from "@/lib/airtable";
+import type { SpecialRate, PackageRates } from "@/types";
 
 const RATES_KEY = "pakk_exchange_rates";
 
@@ -143,7 +143,7 @@ export default function AdminSettingsPage() {
       localStorage.setItem(RATES_KEY, JSON.stringify({ usdToGhs, shippingRatePerCbm: ratePerCbm }));
       success("Rates saved", `1 USD = ${usdToGhs} GHS · $${ratePerCbm}/CBM`);
     } catch {
-      error("Failed to save rates", "Could not save to Airtable");
+      error("Failed to save rates", "Could not save rates");
     } finally {
       setSavingRates(false);
     }
@@ -377,7 +377,7 @@ export default function AdminSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-5">
                 <p className="text-sm text-gray-500">
-                  Set custom sea and air rates per customer package tier. Saved to Airtable.
+                  Set custom sea and air rates per customer package tier. Saved to the database.
                 </p>
                 {loadingPkgRates ? (
                   <div className="flex justify-center py-4">

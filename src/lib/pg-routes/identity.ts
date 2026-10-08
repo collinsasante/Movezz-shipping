@@ -181,12 +181,17 @@ export async function customersPost(request: NextRequest): Promise<Response> {
       [name, phone, email, mark, shippingAddress || generateShippingAddress(mark), notes ?? null, "api"])).rows[0];
     await tx.query("SELECT movezz_sec.admin_create_user($1::text, $2::text, $3::text, 'customer', $4::uuid)", [firebaseUid, email, name, created.id]);
     await recordAudit(tx, { action: "customer.create", entityType: "customer", entityId: created.id, after: { shippingMark: mark } });
-    return { status: 201, body: { success: true, data: { customer: customerOut(created), emailSent: false, whatsAppSent: false }, message: `Customer ${mark} created successfully`, _c: { email, name, mark } } };
+    return { status: 201, body: { success: true, data: { customer: customerOut(created), emailSent: false, whatsAppSent: false }, message: `Customer ${mark} created successfully`, _c: { email, name, mark, phone } } };
   });
   if (res.status !== 201) { if (firebaseUid) await deleteFirebaseUser(firebaseUid).catch(() => {}); return res; }
-  const body = await res.json() as { data: { emailSent: boolean }; _c: { email: string; name: string; mark: string } };
+  const body = await res.json() as { data: { emailSent: boolean }; _c: { email: string; name: string; mark: string; phone?: string } };
   await setCustomClaims(firebaseUid!, { role: "customer" }).catch(() => {});
-  try { await sendWelcomeEmail(body._c.email, body._c.name, body._c.mark); await sendPasswordResetEmail(body._c.email, await generatePasswordResetLink(body._c.email)); body.data.emailSent = true; } catch { /* best effort */ }
+  try {
+    await sendWelcomeEmail(body._c.email, body._c.name, body._c.mark);
+    const resetUrl = await generatePasswordResetLink(body._c.email);
+    await sendPasswordResetEmail(body._c.email, resetUrl); body.data.emailSent = true;
+    if (body._c.phone) { const { whatsAppApi } = await import("@/lib/whatsapp"); await whatsAppApi.sendWelcome(body._c.phone, body._c.name, body._c.mark, resetUrl); }   // best effort; sender never throws
+  } catch { /* best effort */ }
   const { _c, ...rest } = body; void _c;
   return Response.json(rest, { status: 201 });
 }
