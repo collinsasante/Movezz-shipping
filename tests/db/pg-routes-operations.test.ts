@@ -196,5 +196,4 @@ dbDescribe("Group B on PostgreSQL: items, cartons, containers, sorting (real rou
       expect((await q("SELECT carton_id FROM items WHERE id = $1", [i1]))[0].carton_id).toBeNull();
     });
   });
-  void cb; void cardId;
 });
