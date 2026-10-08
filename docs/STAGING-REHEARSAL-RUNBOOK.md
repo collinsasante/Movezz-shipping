@@ -8,14 +8,14 @@ Safety built into the tool (VL, tests in `tests/db/import-*.test.ts`): a real ex
 export R=/path/to/this/repo
 mkdir -p ~/staging-rehearsal && cd ~/staging-rehearsal            # NOT inside the repository
 # 1  receive the export here (outside the repo); chmod 600 export.json; never commit it
-# 2  verify the source: fingerprint (offline) must equal the value recorded by whoever exported it
+# 2  verify the source (a snapshot that declares itself a real export is refused without --expect-fingerprint): fingerprint (offline) must equal the value recorded by whoever exported it
 node $R/scripts/db-import.mjs fingerprint --snapshot export.json
 export EXPECT=<the recorded fingerprint>
 # 3  fresh STAGING PostgreSQL (never an existing database), migrated, with a staging-only actor key
 psql "$STAGING_ADMIN_URL" -c "CREATE DATABASE mvz_rehearsal_1"
 MIGRATION_DATABASE_URL=$STAGING_ADMIN_URL_WITH_DB node $R/scripts/db-migrate.mjs up && … grants
 # 4  dry-run: offline first, then read-only against the target; both must match --expect-fingerprint
-export MOVEZZ_IMPORT_ENVIRONMENT=staging MOVEZZ_IMPORT_ALLOW_EXPORT=1 MOVEZZ_IMPORT_ALLOWED_HOSTS=<staging host> IMPORT_DATABASE_URL=<staging url>
+export MOVEZZ_IMPORT_ENVIRONMENT=staging MOVEZZ_IMPORT_ALLOW_EXPORT=1 MOVEZZ_IMPORT_ALLOWED_HOSTS=<staging host> MOVEZZ_IMPORT_CONFIRM_DATABASE=mvz_rehearsal_1 IMPORT_DATABASE_URL=<staging url>   # a remote target needs host allow-list AND the exact database name
 node $R/scripts/db-import.mjs dry-run --snapshot export.json --expect-fingerprint $EXPECT --report-json reports/dryrun.json
 # 5  quarantine review: every blocking/review category is read by a person; nothing is "fixed" by guessing.
 #    Decisions are recorded with scripts/db-quarantine.mjs (excluded | corrected_in_new_snapshot + reason + who). Orders without verified financials stay quarantined.

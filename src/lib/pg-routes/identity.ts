@@ -15,7 +15,7 @@ import { isUuid, ownerScope, selectItems, selectOrders } from "@/lib/db/app-quer
 import { updateCustomerSelf, updateCustomerAdmin } from "@/lib/db/ownership";
 import { isAllowed } from "@/lib/db/authz";
 import type { AppUser } from "@/types";
-import { pgRoute, ok, parseInput, readJson, apiError } from "@/lib/pg-api";
+import { pgRoute, ok, parseInput, readJson, readJsonOptional, apiError } from "@/lib/pg-api";
 
 type Params = Promise<{ id: string }>;
 const COOKIE_AGE = 3600;
@@ -46,7 +46,7 @@ export async function verifyPost(request: NextRequest): Promise<Response> {
   const sizeErr = checkBodySize(request, 16_384); if (sizeErr) return sizeErr;
   if (!checkRateLimit(`verify:${getClientIp(request)}`, 20, 60_000)) return rateLimitedResponse(60);
   try {
-    const { idToken } = (await request.json().catch(() => ({}))) as { idToken?: string };
+    const { idToken } = (await readJsonOptional(request)) as { idToken?: string };
     if (!idToken) return Response.json({ success: false, error: "idToken is required" }, { status: 400 });
     let decoded: { uid: string; email?: string };
     try { decoded = await verifyIdToken(idToken); } catch { return Response.json({ success: false, error: "Invalid or expired token" }, { status: 401 }); }

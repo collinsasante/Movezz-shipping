@@ -11,7 +11,7 @@ import { retryKeepupSync } from "@/lib/db/integration-admin";
 import { recordAudit } from "@/lib/db/audit";
 import { DomainError } from "@/lib/db/errors";
 import { isUuid, ownerScope, selectItems, selectOrders, countOrders, selectOrdersPage } from "@/lib/db/app-queries";
-import { pgRoute, pgServiceRoute, readAs, ok, parseInput, readJson, throttle, type RouteCtx } from "@/lib/pg-api";
+import { pgRoute, pgServiceRoute, readAs, ok, parseInput, readJson, readJsonOptional, throttle, type RouteCtx } from "@/lib/pg-api";
 
 type P = { params: Promise<Record<string, string>> };
 const bad = (m: string) => new DomainError("INVALID_INPUT", m);
@@ -121,7 +121,7 @@ export const orderPatch = (request: NextRequest, p: P) => pgServiceRoute(request
 
 export const orderDelete = (request: NextRequest, p: P) => pgServiceRoute(request, p.params, async (c) => {
   const id = c.params.id; if (!isUuid(id)) throw notFound();
-  const body = (await c.request.json().catch(() => ({}))) as { reason?: string };
+  const body = (await readJsonOptional(c.request)) as { reason?: string };
   const reason = typeof body.reason === "string" && /\S/.test(body.reason) ? body.reason : "Deleted by an administrator from the orders screen";
   await cancelInvoice(getPool(), { invoiceId: id, reason, actor: c.actor, idempotencyKey: c.idempotencyKey });
   return { body: { success: true, message: "Order deleted" } };
@@ -132,7 +132,7 @@ export const createInvoicePost = (request: NextRequest, p: P) => pgServiceRoute(
   await adminOnly(c.actor);
   throttle(c.actor.userId ?? null, "create-invoice", 10);
   const id = c.params.id; if (!isUuid(id)) throw notFound();
-  const regenerate = ((await c.request.json().catch(() => ({}))) as { regenerate?: boolean }).regenerate === true;
+  const regenerate = ((await readJsonOptional(c.request)) as { regenerate?: boolean }).regenerate === true;
   const row = await readAs(c.actor, async (tx) => {
     const inv = (await tx.query("SELECT v.status, v.keepup_sale_id, v.keepup_link, k.id AS sync_id, k.sync_state FROM invoices v LEFT JOIN keepup_sync k ON k.invoice_id = v.id AND k.kind = 'invoice' WHERE v.id = $1", [id])).rows[0];
     return inv;

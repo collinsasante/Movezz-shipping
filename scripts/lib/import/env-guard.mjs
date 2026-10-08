@@ -46,6 +46,10 @@ export function evaluateEnvironment({ env = process.env, targetUrl, mode, snapsh
       const allowed = (env.MOVEZZ_IMPORT_ALLOWED_HOSTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
       const hostOk = loopback || (cls === "staging" && allowed.includes(host));
       add("target host is loopback or an explicitly allow-listed staging host", hostOk, hostOk ? `host=${host}` : `host ${host} is neither loopback nor allow-listed for staging`);
+      if (!loopback) {   // a remote (staging) target must be named explicitly: allow-listing a host alone is not enough to pick a database
+        const confirmed = env.MOVEZZ_IMPORT_CONFIRM_DATABASE === dbName && dbName !== "";
+        add("remote target database is explicitly confirmed", confirmed, confirmed ? `database=${dbName}` : "set MOVEZZ_IMPORT_CONFIRM_DATABASE to the exact database name");
+      }
       const looksProd = PRODUCTION_WORDS.test(host) || PRODUCTION_WORDS.test(dbName);
       add("target does not look like production", !looksProd, looksProd ? "host or database name contains prod/production/live" : "no production marker in host or database name");
     } catch {

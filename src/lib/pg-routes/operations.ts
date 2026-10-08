@@ -213,7 +213,7 @@ export const sortingGet = (request: NextRequest) => pgRoute(request, undefined, 
   const sorting = await f("i.status = 'Sorting'");
   const wantMissing = sp.has("missing"); const showMissing = sp.get("missing") === "true";
   const missing = wantMissing ? await f("i.is_missing") : { rows: [], total: 0 };
-  return ok({ sorting: sorting.rows, missing: showMissing ? missing.rows : undefined, sortingCount: sorting.total, missingCount: missing.total });
+  return ok({ sorting: sorting.rows, missing: showMissing ? missing.rows : undefined, sortingCount: sorting.total, missingCount: missing.total, truncated: sorting.total > sorting.rows.length || (showMissing && missing.total > missing.rows.length) });
 });
 export const sortingPost = (request: NextRequest) => pgRoute(request, undefined, [...STAFF], async (c) => {
   const d = parseInput(z.object({ itemId: z.string().min(1), action: z.enum(["found", "missing"]), notes: z.string().optional() }), await readJson(c.request));
@@ -280,9 +280,10 @@ export const cartonsGet = (request: NextRequest) => pgRoute(request, undefined, 
   const cid = new URL(c.request.url).searchParams.get("customerId");
   if (cid && !isUuid(cid)) return ok([]);
   // two queries however many cartons exist (the newest 200 open ones), instead of one query per carton
+  const total = Number((await c.tx.query("SELECT count(*) AS n FROM cartons WHERE status = 'open' AND ($1::uuid IS NULL OR customer_id = $1)", [cid])).rows[0].n);
   const { rows } = await c.tx.query("SELECT id, carton_ref, cbm FROM cartons WHERE status = 'open' AND ($1::uuid IS NULL OR customer_id = $1) ORDER BY created_at DESC, id LIMIT 200", [cid]);
   const items = rows.length ? await selectItems(c.tx, "i.carton_id = ANY($1::uuid[])", [rows.map((r) => r.id)]) : [];
-  return ok(rows.map((r) => ({ cartonNumber: r.carton_ref, items: items.filter((i) => i.cartonNumber === r.carton_ref), cbm: r.cbm === null ? 0 : Number(r.cbm) })));
+  return ok(rows.map((r) => ({ cartonNumber: r.carton_ref, items: items.filter((i) => i.cartonNumber === r.carton_ref), cbm: r.cbm === null ? 0 : Number(r.cbm) })), { total, truncated: total > rows.length });   // never silently short: the count and a flag say when the newest-200 cap applied
 });
 
 export const cartonsPost = (request: NextRequest) => pgRoute(request, undefined, [...STAFF], async (c) => {

@@ -62,10 +62,51 @@ dbDescribe("hardening (PostgreSQL backend)", () => {
     const ids: string[] = [];
     for (let i = 0; i < 25; i++) { const c = await carton(db.admin, a); const it = await item(db.admin, a, { carton_id: c }); ids.push(it); }
     const list = await json(await cartonsGet(req("/api/cartons", "GET", "t-staff")));
-    expect(list.status).toBe(200); expect(list.body.data.length).toBe(25);
+    expect(list.status).toBe(200); expect(list.body.data.length).toBe(25); expect(list.body).toMatchObject({ total: 25, truncated: false });
     expect(list.body.data.every((c: { items: unknown[]; cartonNumber: string }) => c.items.length === 1 && /^CTN-/.test(c.cartonNumber))).toBe(true);
     await db.admin.query(`INSERT INTO items (item_ref, customer_id, status) SELECT 'SRT-' || g, $1, 'Sorting' FROM generate_series(1, 520) g`, [a]);
     const s = await json(await sortingGet(req("/api/sorting", "GET", "t-staff")));
-    expect(s.body.data.sorting.length).toBe(500); expect(s.body.data.sortingCount).toBe(520);
+    expect(s.body.data.sorting.length).toBe(500); expect(s.body.data.sortingCount).toBe(520); expect(s.body.data.truncated).toBe(true);
+  });
+});
+
+dbDescribe("hardening: body streaming cap, optional bodies, error classes", () => {
+  let db: TestDb;
+  beforeAll(async () => {
+    process.env.MOVEZZ_DATA_BACKEND = "postgres";
+    db = await createTestDb(); setPoolForTests(db.app);
+    await db.admin.query(`INSERT INTO users (auth_uid,email,role) VALUES ('fb-admin3','admin3@example.invalid','super_admin')`);
+    tokens.set("t-admin3", { uid: "fb-admin3", emailVerified: true });
+  });
+  afterAll(async () => { delete process.env.MOVEZZ_DATA_BACKEND; setPoolForTests(undefined); await db?.close(); });
+
+  it("a chunked body with no Content-Length is cut off at the cap, before any transaction or write", async () => {
+    const chunk = new TextEncoder().encode("x".repeat(64 * 1024));
+    let sent = 0;
+    const stream = new ReadableStream({ pull(ctrl) { if (sent >= 40) return ctrl.close(); sent++; ctrl.enqueue(chunk); } });   // would be 2.5 MB if fully read
+    const r = new NextRequest("http://localhost/api/containers", { method: "POST", headers: { authorization: "Bearer t-admin3", "content-type": "application/json", "x-forwarded-for": "198.51.100.61" }, body: stream, duplex: "half" } as never);
+    const res = await json(await containersPost(r));
+    expect(res.status).toBe(400); expect(res.body.error).toMatch(/too large/);
+    expect(sent).toBeLessThan(10);                                                                   // reading stopped near the 256 KB cap
+    expect((await db.admin.query("SELECT count(*)::int AS n FROM containers")).rows[0].n).toBe(0);
+  });
+  it("unauthenticated callers cannot make the server read a body at all", async () => {
+    const r = new NextRequest("http://localhost/api/containers", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.62" }, body: "x".repeat(1000) });
+    expect((await containersPost(r)).status).toBe(401);
+  });
+  it("optional-body routes tolerate an empty or invalid body but still refuse an oversized one", async () => {
+    const { DELETE: orderDelete } = await import("../../src/app/api/orders/[id]/route");
+    const ctx = { params: Promise.resolve({ id: "00000000-0000-4000-8000-000000000001" }) };
+    const mk = (body?: string) => new NextRequest("http://localhost/api/orders/x", { method: "DELETE", headers: { authorization: "Bearer t-admin3", "content-type": "application/json", "x-forwarded-for": "198.51.100.63" }, body });
+    expect((await orderDelete(mk(), ctx)).status).toBe(404);                                         // no body: reaches the handler (order does not exist)
+    expect((await orderDelete(mk("{oops"), ctx)).status).toBe(404);
+    expect((await orderDelete(mk("x".repeat(300_000)), ctx)).status).toBe(400);
+  });
+  it("only malformed-value errors become 400: constraint, timeout, deadlock and connection failures keep their own handling", async () => {
+    const { toDomainError } = await import("../../src/lib/db/errors");
+    expect((toDomainError({ code: "22P02", message: "invalid input syntax for type uuid: \"zz\"" }) as { code: string }).code).toBe("INVALID_INPUT");
+    expect((toDomainError({ code: "22007", message: "x" }) as Error).message).not.toMatch(/invalid input syntax|zz/);   // no SQL detail leaks
+    for (const code of ["57014", "40P01", "40001", "53300", "08006", "42P01", "XX000"]) { const e = { code, message: "boom" }; expect(toDomainError(e), code).toBe(e); }   // unmapped: stays a server error
+    expect((toDomainError({ code: "23505", message: "dup", constraint: "c" }) as { code: string }).code).toBe("DUPLICATE");
   });
 });

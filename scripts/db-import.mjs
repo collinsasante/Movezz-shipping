@@ -27,7 +27,8 @@ async function main() {
   const env = { ...process.env, MOVEZZ_IMPORT_MODE: mode };
   const targetUrl = process.env.IMPORT_DATABASE_URL;
   const snapshot = await readSnapshotFile(file, { allowedRoot: process.cwd() });
-  const expected = opt("--expect-fingerprint");   // source integrity: the export must be exactly the one that was approved
+  const expected = opt("--expect-fingerprint");
+  if (snapshot.source?.kind === "export" && !expected) throw new Error("A real export must be run with --expect-fingerprint <the fingerprint recorded by whoever exported it>; nothing was read from or written to the database");   // source integrity: the export must be exactly the one that was approved
   if (expected !== undefined && expected !== snapshotFingerprint(snapshot)) throw new Error("The snapshot does not match --expect-fingerprint; nothing was read from or written to the database");
   let pool;
   if (targetUrl) {

@@ -27,4 +27,13 @@ describe("export fingerprint check", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "mvz-cwd-"));
     const r = run(dir, ["fingerprint", "--snapshot", FIX]); expect(r.status).toBe(1);
   });
+  it("a snapshot that declares itself a real export is refused without --expect-fingerprint (and with a wrong one), before any database access", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "mvz-exp-")); const j = JSON.parse(readFileSync(FIX, "utf8")); j.source = { ...j.source, kind: "export" };
+    writeFileSync(path.join(dir, "e.json"), JSON.stringify(j));
+    const env = { MOVEZZ_IMPORT_ENVIRONMENT: "staging", MOVEZZ_IMPORT_ALLOW_EXPORT: "1", NODE_ENV: "test" };
+    const none = run(dir, ["dry-run", "--snapshot", "e.json"], env); expect(none.status).toBe(1); expect(none.stderr).toMatch(/--expect-fingerprint/);
+    const wrong = run(dir, ["dry-run", "--snapshot", "e.json", "--expect-fingerprint", "f".repeat(64)], env); expect(wrong.status).toBe(1); expect(wrong.stderr).toMatch(/does not match/);
+    const fp = run(dir, ["fingerprint", "--snapshot", "e.json"]).stdout.trim();
+    expect(run(dir, ["dry-run", "--snapshot", "e.json", "--expect-fingerprint", fp], env).status).not.toBe(1);
+  });
 });

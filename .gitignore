@@ -45,3 +45,8 @@ next-env.d.ts
 # receive exports OUTSIDE the repository; if one is ever staged here by mistake it must not be committed
 staging-exports/
 *.airtable-export.json
+*.dump
+*.dump.age
+*.dump.gpg
+reports/
+.env.staging*

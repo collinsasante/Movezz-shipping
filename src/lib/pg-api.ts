@@ -45,14 +45,43 @@ export function parseInput<S extends ZodTypeAny>(schema: S, value: unknown): z.i
 }
 
 const MAX_BODY_BYTES = 256 * 1024;
-/** Parses a JSON body with a hard size cap (checked on the header and on the real text), so a request cannot make the Worker buffer an arbitrary body. */
-export async function readJson(request: NextRequest): Promise<unknown> {
+const bodyCache = new WeakMap<object, string>();
+
+/** Reads the request body as a stream and aborts as soon as it exceeds the cap, whatever Content-Length says (or omits). */
+async function readCapped(request: NextRequest): Promise<string> {
   const declared = Number(request.headers.get("content-length") ?? 0);
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw new DomainError("INVALID_INPUT", "Request body is too large");
-  let text: string;
-  try { text = await request.text(); } catch { throw new DomainError("INVALID_INPUT", "Request body could not be read"); }
-  if (text.length > MAX_BODY_BYTES) throw new DomainError("INVALID_INPUT", "Request body is too large");
+  if (!request.body) return "";
+  const reader = request.body.getReader(); const chunks: Uint8Array[] = []; let n = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      n += value.byteLength;
+      if (n > MAX_BODY_BYTES) { await reader.cancel().catch(() => {}); throw new DomainError("INVALID_INPUT", "Request body is too large"); }
+      chunks.push(value);
+    }
+  } catch (e) { if (e instanceof DomainError) throw e; throw new DomainError("INVALID_INPUT", "Request body could not be read"); }
+  const all = new Uint8Array(n); let o = 0; for (const c of chunks) { all.set(c, o); o += c.byteLength; }
+  return new TextDecoder().decode(all);
+}
+
+/** Called by pgRoute/pgServiceRoute AFTER authentication and BEFORE a database transaction is opened: a slow or huge body never holds a connection. */
+async function preloadBody(request: NextRequest): Promise<void> {
+  if (request.method === "GET" || request.method === "HEAD") return;
+  bodyCache.set(request, await readCapped(request));
+}
+
+/** Parses the (already size-capped) JSON body. */
+export async function readJson(request: NextRequest): Promise<unknown> {
+  const text = bodyCache.get(request) ?? await readCapped(request);
   try { return JSON.parse(text); } catch { throw new DomainError("INVALID_INPUT", "Request body must be valid JSON"); }
+}
+
+/** Like readJson, but an empty or invalid body is `{}` (routes whose body is optional). Oversized bodies are still refused. */
+export async function readJsonOptional(request: NextRequest): Promise<Record<string, unknown>> {
+  const text = bodyCache.get(request) ?? await readCapped(request);
+  try { const v = JSON.parse(text); return v && typeof v === "object" ? v as Record<string, unknown> : {}; } catch { return {}; }
 }
 
 /** Per-user throttle for expensive operations (same limits the Airtable routes had). Throws RATE_LIMITED -> 429. */
@@ -70,6 +99,7 @@ export async function pgRoute(
     const a = await pgActorFromRequest(request);
     if (!a) return Response.json({ success: false, error: "Authentication required" }, { status: 401 });
     const actor: ActorAssertion = { ...a, requestId };
+    await preloadBody(request);
     const p = (await params) ?? {};
     const later: Array<() => Promise<unknown>> = [];
     const reply = await withActorTransaction(getPool(), actor, async (tx) => {
@@ -92,6 +122,7 @@ export async function pgServiceRoute(request: NextRequest, params: Record<string
   try {
     const a = await pgActorFromRequest(request);
     if (!a) return Response.json({ success: false, error: "Authentication required" }, { status: 401 });
+    await preloadBody(request);
     const given = request.headers.get("idempotency-key");
     const reply = await fn({ actor: { ...a, requestId }, request, params: (await params) ?? {}, requestId, idempotencyKey: given && given.length >= 8 ? given : `ui-${randomUUID()}` });
     return Response.json(reply.body, { status: reply.status ?? 200, headers: reply.headers });
