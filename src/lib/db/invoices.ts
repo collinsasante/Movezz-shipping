@@ -243,11 +243,27 @@ export async function recordPayment(db: Pool, input: RecordPaymentInput) {
   });
 }
 
-/** Reversal: marks the payment voided (never deletes it); the invoice's paid amount, balance and status follow. */
-export async function voidPayment(db: Pool, input: { paymentId: string; reason: string; actor: ActorAssertion }) {
+/**
+ * Reversal: marks the payment voided (never deletes it); the invoice's paid amount, balance and status follow.
+ * Without an idempotency key a repeat is INVALID_STATE (the payment is already voided - state-based, never a second void).
+ * With a key, the same key + same request replays the stored result (no second status event / audit row), and the same key with a
+ * different request is IDEMPOTENCY_CONFLICT.
+ */
+export async function voidPayment(db: Pool, input: { paymentId: string; reason: string; actor: ActorAssertion; idempotencyKey?: string }) {
   if (!input.reason.trim()) throw new DomainError("INVALID_INPUT", "A void reason is required");
+  const requestHash = fingerprint({ p: input.paymentId, r: input.reason });
   return withActorTransaction(db, input.actor, async (tx) => {
     await authorize(tx, "payment.void");
+    let idemId: string | null = null;
+    if (input.idempotencyKey) {
+      const idem = await beginIdempotent(tx, { scope: "payment.void", actorUserId: await currentActorId(tx), key: input.idempotencyKey, requestHash });
+      if (idem.state === "replay") {
+        const p0 = (await tx.query("SELECT * FROM payments WHERE id = $1", [idem.resultEntityId])).rows[0];
+        const inv0 = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [p0.invoice_id])).rows[0];
+        return { payment: p0, invoice: inv0, replayed: true };
+      }
+      idemId = idem.id;
+    }
     const p = (await tx.query(
       `UPDATE payments SET status = 'voided', voided_at = now(), void_reason = $2 WHERE id = $1 AND status = 'completed' RETURNING *`, // voided_by is stamped by the database
       [input.paymentId, input.reason]
@@ -257,7 +273,8 @@ export async function voidPayment(db: Pool, input: { paymentId: string; reason: 
     await recordAudit(tx, { action: "payment.void", entityType: "payment", entityId: p.id,
       after: { invoice_id: p.invoice_id, amount_ghs: String(p.amount_ghs), reason: input.reason } });
     const invoice = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [p.invoice_id])).rows[0];
-    return { payment: p, invoice };
+    if (idemId) await completeIdempotent(tx, idemId, { entityType: "payment", entityId: p.id });
+    return { payment: p, invoice, replayed: false };
   });
 }
 

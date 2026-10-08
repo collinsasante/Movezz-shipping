@@ -58,7 +58,7 @@ export async function updateCustomerAdmin(tx: Queryable, id: string, patch: Reco
     packageTier: "package_tier", preferredWarehouseId: "preferred_warehouse_id", status: "status",
   };
   const keys = Object.keys(patch);
-  const bad = keys.filter((k) => !(k in cols));
+  const bad = keys.filter((k) => !Object.hasOwn(cols, k));
   if (bad.length) throw new DomainError("INVALID_INPUT", `Fields not editable here: ${bad.join(", ")}`);
   if (!keys.length) throw new DomainError("INVALID_INPUT", "Nothing to update");
   const set = keys.map((k, i) => `${cols[k]} = $${i + 2}`).join(", ");
