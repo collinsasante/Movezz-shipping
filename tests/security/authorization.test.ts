@@ -1,0 +1,98 @@
+// Table-driven authorization characterization: every route handler x every role, against the CURRENT guards.
+// Allowed means "got past authentication/authorization" (status is neither 401 nor 403); the handler may still
+// legitimately answer 400/404/500 because the request body is intentionally minimal.
+import { describe, it, expect } from "vitest";
+import { standardWorld, listRouteMethods, type Role } from "../helpers/world";
+import { MATRIX } from "./authz-matrix";
+import { KNOWN_BUG } from "../helpers/known";
+
+const ROLES: Role[] = ["super_admin", "warehouse_staff", "customer"];
+
+describe("authorization matrix: completeness", () => {
+  it("covers every exported route handler, and nothing that no longer exists", async () => {
+    await standardWorld(); // module registry with mocks in place
+    const actual = (await listRouteMethods()).map((e) => `${e.method} ${e.route}`);
+    const declared = MATRIX.map((e) => `${e.method} ${e.route}`).sort();
+    expect(actual.sort()).toEqual(declared);
+  });
+});
+
+describe("authorization matrix: current behavior", () => {
+  const PARAMS = { id: "recMissing", cartonNumber: "CTN-9999" };
+  // GET/PATCH /api/customers/[id] check ownership before looking anything up, so the customer role
+  // must be given its OWN id to reach the handler. DELETE keeps the missing id so nothing real is deleted.
+  const paramsFor = (route: string, method: string) =>
+    route === "customers/[id]" && (method === "GET" || method === "PATCH") ? { ...PARAMS, id: "recCustA" } : PARAMS;
+
+  for (const entry of MATRIX) {
+    const label = `${entry.method} /api/${entry.route}`;
+
+    if (entry.guard === "public") {
+      it(`${label} is public (no 401/403 for an anonymous caller${entry.route === "auth/verify-cookie" ? ", except its own 401 for a missing cookie" : ""})`, async () => {
+        const { w } = await standardWorld();
+        const res = await w.call(entry.route, entry.method, { params: PARAMS, body: entry.method === "GET" ? undefined : {} });
+        if (entry.route === "auth/verify-cookie") expect(res.status).toBe(401);
+        else expect([401, 403]).not.toContain(res.status);
+      });
+      continue;
+    }
+
+    it(`${label} -> anonymous 401; allowed: ${entry.guard.join(", ")}`, async () => {
+      const s = await standardWorld();
+      const tokens: Record<Role, string> = { super_admin: s.admin, warehouse_staff: s.staff, customer: s.custA };
+      const anon = await s.w.call(entry.route, entry.method, { params: PARAMS, body: entry.method === "GET" ? undefined : {} });
+      expect(anon.status, "anonymous").toBe(401);
+      for (const role of ROLES) {
+        const res = await s.w.call(entry.route, entry.method, { token: tokens[role], params: paramsFor(entry.route, entry.method), body: entry.method === "GET" ? undefined : {} });
+        if (entry.guard.includes(role)) expect([401, 403], `${role} should be allowed`).not.toContain(res.status);
+        else expect(res.status, `${role} should be denied`).toBe(403);
+      }
+    });
+  }
+});
+
+describe(KNOWN_BUG("current permissions that differ from the Phase 3 default recommendation"), () => {
+  // The Phase 3 authorization matrix (section F) recommends narrower rights. Decisions Q9 (staff powers) and
+  // Q10 (customer self-edit) are still PENDING, so these tests record what is allowed TODAY. They must be
+  // replaced when the authorization phase implements the approved matrix.
+  it("documents that warehouse staff can WRITE package rates", async () => {
+    const { w, staff } = await standardWorld();
+    const res = await w.call("package-rates", "PUT", { token: staff, body: { basic: { sea: 1, air: 1 } } });
+    expect(res.status).toBe(200);
+  });
+  it("documents that warehouse staff can create, edit and delete special rates", async () => {
+    const { w, staff } = await standardWorld();
+    const created = await w.call("special-rates", "POST", { token: staff, body: { name: "Bulk", sea: 100, air: 5 } });
+    expect(created.status).toBe(201);
+    const id = created.json?.data.id as string;
+    expect((await w.call("special-rates/[id]", "PATCH", { token: staff, params: { id }, body: { name: "Bulk", sea: 1, air: 1 } })).status).toBe(200);
+    expect((await w.call("special-rates/[id]", "DELETE", { token: staff, params: { id } })).status).toBe(200);
+  });
+  it("documents that warehouse staff can create and edit warehouses", async () => {
+    const { w, staff } = await standardWorld();
+    const created = await w.call("warehouses", "POST", { token: staff, body: { name: "Depot", address: "1 Main St" } });
+    expect(created.status).toBe(201);
+    const patched = await w.call("warehouses/[id]", "PATCH", { token: staff, params: { id: created.json?.data.id }, body: { address: "2 Main St" } });
+    expect(patched.status).toBe(200);
+  });
+  it("documents that warehouse staff can read revenue reports and the exchange rate", async () => {
+    const { w, staff } = await standardWorld();
+    expect((await w.call("reports", "GET", { token: staff })).status).toBe(200);
+    expect((await w.call("settings", "GET", { token: staff })).status).toBe(200);
+  });
+  it("documents that customers can read ALL special rates and ALL package tiers", async () => {
+    const { w, custA } = await standardWorld();
+    w.seed.specialRate("recSR1", "VIP Confidential", 1, 1);
+    const sr = await w.call("special-rates", "GET", { token: custA });
+    expect(sr.json?.data.map((x: { name: string }) => x.name)).toEqual(["VIP Confidential"]);
+    const pr = await w.call("package-rates", "GET", { token: custA });
+    expect(Object.keys(pr.json?.data).sort()).toEqual(["basic", "business", "enterprise", "special"]);
+  });
+  it("documents that a customer can change their own name and phone, which regenerates their shipping mark", async () => {
+    const { w, custA } = await standardWorld();
+    const res = await w.call("customers/[id]", "PATCH", { token: custA, params: { id: "recCustA" }, body: { name: "Zed Zulu", phone: "0200009876" } });
+    expect(res.status).toBe(200);
+    expect(res.json?.data.name).toBe("Zed Zulu");
+    expect(res.json?.data.shippingMark).not.toBe("MOVEZZ-AM1111"); // the mark printed on their goods changed
+  });
+});
