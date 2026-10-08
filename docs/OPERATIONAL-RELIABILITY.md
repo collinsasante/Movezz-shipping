@@ -165,3 +165,9 @@ via `authorize`; customers cannot read `keepup_sync`, `notification_outbox`, `id
 * In-memory rate limits (`src/lib/rate-limit.ts`) are per instance; registration has a database-enforced throttle; there is no CAPTCHA.
 * Back-off timing and `max_attempts` are defaults chosen here, not business rules agreed with the owner.
 * Reaping depends on a worker pass running; with no worker scheduled, `creating`/`sending` rows simply wait.
+
+
+## Phase 7J — Observability (VL)
+Structured JSON events (`src/lib/db/log.ts`): `actor.rejected`, `authorization.denied`, `operation.rejected`, `db.transaction_failed`, `route.rejected`, `route.failed`, `keepup.claimed/synced/outcome_unknown/…`, `outbox.claimed/sent/retry_scheduled/…`.
+Active only with a sink or `MOVEZZ_LOG=json`. Correlation id = request id (actor events) or `keepup:<id>` / `outbox:<id>`. Secret-like keys and personal fields (email, phone, name, payload) are redacted. Workers were rehearsed with mocks only
+(crash/restart, outcome-unknown, retry) and no real notification or Keepup call; they remain disabled by default.

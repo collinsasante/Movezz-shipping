@@ -246,3 +246,77 @@ exports); that `Orders.Items` and `Items.Order` agree in real data; the real vol
 **Deferred** — a dedicated least-privilege import role; streaming snapshot reader; a repair/resolution tool for quarantined records; importing
 pending registrations; Cloudinary/attachment verification of photo URLs; a rehearsal on a staging copy (D21: extract → … → rehearse → explicit
 cutover approval); enabling workers/Keepup/notifications; DNS, Firebase and environment switches (7J).
+
+---
+
+# Phase 7J — Staging rehearsal, real-shape validation, cutover readiness
+
+Label legend: **VL** verified locally · **VS** verified in staging (a disposable local PostgreSQL stands in; no shared staging environment exists) ·
+**SCD** source-code derived (NOT production validation) · **RPV** requires production verification · **BDR** business decision required · **CO** cutover only.
+
+## 14. Source-shape validation (SCD)
+* `tests/fixtures/migration/source-shape.mjs` parses `src/lib/airtable.ts` (mappers and literal create/update keys) into a per-table census of the fields the application
+  reads and writes. `tests/fixtures/migration/realistic.mjs` generates a deterministic snapshot from it (`scale`, `seed`) and **throws if it drifts from the census**.
+* Modelled Airtable behaviour: empty values omitted; links/lookups as arrays; attachments with thumbnails; a ghost warehouse id; deleted-customer items; history of deleted items;
+  carton members that sometimes span containers; staff formula fields; legacy package names; numeric strings; float noise; 3-decimal dimensions; duplicate customer/container/special-rate
+  names; an item with two order links; malformed dates; invalid numbers; orders never "Cancelled".
+* Findings: `Customers.CreatedBy` was unknown to the importer (now carried into `legacy_data`); float noise (`0.1+0.2`) is normalised to 15 significant digits before decimal checks;
+  more than 2 decimals on a dimension is quarantined, not rounded.
+* **Financial fail-closed under realistic data (VL):** with no `Verified*` supplement, all 90 orders (both "amount is GHS" and "amount is USD" conventions) are quarantined; no currency,
+  FX, discount, total or payment is guessed; the quarantined id sets are identical under both conventions. With a consistent `Verified*` stand-in (test data only) the invoices import.
+* Limits: this is not production validation. Real field names/shapes, precision, volume and referential quality are **RPV**.
+
+## 15. Staging rehearsal (VS, disposable local PostgreSQL 16, mocks only)
+Reproduce (nothing here touches a live system; the guard refuses live-integration env vars and non-local hosts):
+```
+scripts/db-local.sh start
+MOVEZZ_IMPORT_ENVIRONMENT=local ACTOR_CONTEXT_KEY=<fresh base64 32-byte key, not a production key> \
+MOVEZZ_REHEARSAL_ADMIN_URL=postgres://postgres@127.0.0.1:54329/postgres \
+node scripts/staging-rehearsal.mjs --scale 1,2,5,10 --verified none --repeat 2
+```
+Each cycle: generate snapshot → create `mvz_rehearsal_*` DB → migrate (16/16) → dry-run (writes nothing) → import → reconcile → duplicate import (0 new) → `pg_dump -Fc` (actor signing keys excluded)
+→ restore into a new DB → verify migrations, signature equality and reconciliation → drop. Only databases named `mvz_rehearsal_*` are ever dropped.
+
+| scale | items | orders | snapshot | import | rec/s | peak RSS | max tx | reconcile |
+|---|---|---|---|---|---|---|---|---|
+| 1x | 400 | 90 | 0.7 MB | 1.9 s | 483 | 95 MB | 433 ms | 44/44 |
+| 2x | 800 | 180 | 1.3 MB | 3.6 s | 535 | 119 MB | 430 ms | 44/44 |
+| 5x | 2000 | 450 | 3.3 MB | 7.7 s | 616 | 185 MB | 347 ms | 44/44 |
+| 10x | 4000 | 900 | 6.7 MB | 13.0 s | 731 | 248 MB | 343 ms | 44/44 |
+
+Memory grows roughly linearly (whole snapshot in memory) and is safe at these sizes; streaming is not built. **The real volume is unknown (RPV)** — no production-scale claim is made.
+Import exits 2 / verdict NOT_READY in every rehearsal because every order is quarantined for the missing verified financials: that is the correct fail-closed outcome.
+Also verified (VL): resume after a crash, replay, duplicate import, quarantine of cross-record problems, rollback of a failed record, backup contents, restore fidelity (`databaseSignature` equal), reconcile on the restored DB.
+
+## 16. Authentication / authorization rehearsal on imported data (VL, Firebase mocked)
+Chain tested: mocked Firebase token → Movezz user → signed actor → authorization → ownership (RLS) → operation, for super_admin, warehouse_staff, customer; plus inactive user, inactive customer
+(and that reactivating a customer does **not** reactivate its login), unknown uid, invalid token, forged role/customer headers (ignored), forged/stale/expired/other-user assertions (MV007),
+cross-site cookie POST (403), wrong-customer reads (null/empty). **Finding:** imported customers have no login (users are not imported) and registration refuses them (MV015); the only path is an
+explicit `admin_create_user` by a super_admin with a verified Firebase uid. **BDR / blocks production cutover.**
+
+## 17. Observability (VL)
+`src/lib/db/log.ts` and `scripts/lib/import/log.mjs` emit one JSON line per event (only with a sink or `MOVEZZ_LOG=json`), with a stable `correlationId` (request id / batch id / `keepup:`/`outbox:` id) and
+redaction of secret-like keys and personal fields (email, phone, name, payload). Events: `import.started/stage/completed/failed/record_rejected/slow_transaction`, `actor.rejected`, `authorization.denied`,
+`operation.rejected`, `db.transaction_failed`, `route.rejected/failed`, `keepup.*`, `outbox.*`. Tested for presence, correlation ids and absence of secrets.
+
+## 18. Backup and recovery (VL)
+Backup → drop → restore → verify (schema 16/16, record signature, reconciliation) passes. **Finding:** a plain dump contains `movezz_sec.actor_keys` (the HMAC signing keys); the rehearsal excludes the
+table data, and the restored DB has no keys (a new key must be provisioned before any actor can act). A real backup must therefore be encrypted or exclude that table. Production backup tooling/inspectability is **RPV / CO**.
+
+## 19. Decision classification (no answers invented)
+| # | Item | Classification |
+|---|---|---|
+| B1 | Verified invoice financials source (subtotal, discount, FX, GHS total) | **BDR — blocks production cutover** (also blocks any staging run that needs invoices; staging runs with test stand-ins only) |
+| B1b | Historical payments source | **BDR — blocks production cutover** |
+| B2 | Historical logins not imported | **BDR — blocks production cutover**; new finding: customer↔login linking process required (§16) |
+| B3a | Tier shown on derived legacy cartons | can remain unresolved for staging; BDR before cutover (display only, marked as derived) |
+| B3b | Cancellation reason/time when the source has none | can remain unresolved; cancelled invoices are unrecoverable from Airtable (orders are never "Cancelled") — BDR |
+| B4 | Quarantine resolution process | can remain unresolved for staging; blocks production cutover (no repair tool exists) |
+
+## 20. Rollback readiness
+Application: redeploy the previous build (documented, not executed). Database: forward-only migrations; recovery is restore-from-backup into a new database. Data: the import is additive and traceable
+(`import_records`); Airtable remains untouched and authoritative until explicit cutover approval. Integrations: workers are mock-only and disabled by default. DNS: documented only (`docs/CUTOVER-CHECKLIST.md`), **CO**.
+
+## 21. Remaining risks
+Only 4 routes are PostgreSQL-backed; all others are still Airtable-only (the application is not ready to run on PostgreSQL). Real data shape/volume (RPV). Owner-level import role. Whole-snapshot memory.
+Signing-key residual risk: see `docs/DECISIONS.md` Addendum C.

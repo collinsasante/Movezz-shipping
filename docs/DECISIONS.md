@@ -345,3 +345,14 @@ explicit owner decision before a production import (details and the behaviour im
 * **B2** — confirmation that historical logins are not imported (people re-activate through the registration flow).
 * **B3** — the legacy cancellation reason/time when the source records none; the tier shown on derived legacy cartons.
 * **B4** — how a quarantined record is resolved (corrected snapshot vs a separate repair tool).
+
+
+---
+
+## Addendum C — Phase 7J classification (nothing here is a locked decision; no business rule was invented)
+
+* **B1 / B1b (verified invoice financials, historical payments):** BDR — **blocks production cutover**. The importer stays fail-closed (all Airtable orders quarantined).
+* **B2 (historical logins):** BDR — **blocks production cutover**. New finding: imported customers cannot obtain a login through registration (MV015); a super_admin-run `admin_create_user` with a verified Firebase uid is the only path. A linking process must be designed and approved.
+* **B3 (legacy carton tier, cancellation reason/time):** may remain unresolved for staging; BDR before cutover.
+* **B4 (quarantine resolution process):** may remain unresolved for staging; blocks production cutover.
+* **Phase 7C signing-key residual risk** (the actor HMAC key is held by the application and by whoever can run the importer): **acceptable for staging** with disposable, non-production keys; **blocking for production** until the key is provisioned from a secrets store, is separate from the migration key, is rotated/retired after import, and backups are encrypted or exclude `movezz_sec.actor_keys` (verified: the rehearsal dump excludes it). Moving signing out of the application process would be an architecture change and is not required for staging.

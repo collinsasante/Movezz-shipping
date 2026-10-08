@@ -580,3 +580,7 @@ concurrency scenarios listed in §10; the runtime role's lack of delete/DDL righ
 8. Remaining Phase 5 items this schema supports but does not yet implement (cross-instance atomic payments, reference
    sequences, FX snapshots, special-rate customer scope) are now *possible*, but only after the application is moved onto
    these tables.
+
+
+## Phase 7J — Staging rehearsal summary
+Migrations 0001–0016 apply cleanly to a fresh database and restore from a `pg_dump -Fc` that excludes `movezz_sec.actor_keys`. Import bookkeeping tables (0016) are not accessible to the runtime role. See `docs/MIGRATION-IMPORT.md` §14–§21 and `docs/CUTOVER-CHECKLIST.md`.
