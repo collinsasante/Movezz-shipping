@@ -1,17 +1,19 @@
-// PATCH  /api/special-rates/[id]  — update a special rate
-// DELETE /api/special-rates/[id]  — delete a special rate
+// PATCH  /api/special-rates/[id]  — update a special rate   (super_admin ONLY)
+// DELETE /api/special-rates/[id]  — delete a special rate   (super_admin ONLY)
 import { NextRequest } from "next/server";
 import { specialRatesApi } from "@/lib/airtable";
-import { requireAuth, serverErrorResponse } from "@/lib/auth";
+import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
+import { SpecialRateSchema } from "@/lib/schemas";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { id } = await params;
 
   try {
-    const body = await request.json();
-    const rate = await specialRatesApi.update(id, { name: body.name, sea: body.sea, air: body.air });
+    const parsed = SpecialRateSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return badRequestResponse(parsed.error.errors.map((e) => e.message).join(", "));
+    const rate = await specialRatesApi.update(id, parsed.data);
     return Response.json({ success: true, data: rate });
   } catch {
     return serverErrorResponse("Failed to update special rate");
@@ -19,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { id } = await params;
 

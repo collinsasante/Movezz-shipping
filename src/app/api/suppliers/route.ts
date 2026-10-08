@@ -1,5 +1,5 @@
 // GET  /api/suppliers  — list suppliers
-// POST /api/suppliers  — create supplier (admin only)
+// POST /api/suppliers  — create supplier (super_admin and warehouse_staff)
 import { NextRequest } from "next/server";
 import { suppliersApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";

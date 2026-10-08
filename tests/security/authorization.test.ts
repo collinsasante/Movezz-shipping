@@ -4,7 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { standardWorld, listRouteMethods, type Role } from "../helpers/world";
 import { MATRIX } from "./authz-matrix";
-import { KNOWN_BUG } from "../helpers/known";
+import { KNOWN_BUG, FIXED } from "../helpers/known";
 
 const ROLES: Role[] = ["super_admin", "warehouse_staff", "customer"];
 
@@ -55,18 +55,17 @@ describe(KNOWN_BUG("current permissions that differ from the Phase 3 default rec
   // The Phase 3 authorization matrix (section F) recommends narrower rights. Decisions Q9 (staff powers) and
   // Q10 (customer self-edit) are still PENDING, so these tests record what is allowed TODAY. They must be
   // replaced when the authorization phase implements the approved matrix.
-  it("documents that warehouse staff can WRITE package rates", async () => {
-    const { w, staff } = await standardWorld();
-    const res = await w.call("package-rates", "PUT", { token: staff, body: { basic: { sea: 1, air: 1 } } });
-    expect(res.status).toBe(200);
-  });
-  it("documents that warehouse staff can create, edit and delete special rates", async () => {
-    const { w, staff } = await standardWorld();
-    const created = await w.call("special-rates", "POST", { token: staff, body: { name: "Bulk", sea: 100, air: 5 } });
-    expect(created.status).toBe(201);
+  it(FIXED("warehouse staff can NOT write package rates or special rates (they decide every price)"), async () => {
+    const { w, staff, admin } = await standardWorld();
+    const rates = { basic: { sea: 1, air: 1 }, business: { sea: 1, air: 1 }, enterprise: { sea: 1, air: 1 }, special: { sea: 1, air: 1 } };
+    expect((await w.call("package-rates", "PUT", { token: staff, body: rates })).status).toBe(403);
+    expect((await w.call("special-rates", "POST", { token: staff, body: { name: "Bulk", sea: 100, air: 5 } })).status).toBe(403);
+    const created = await w.call("special-rates", "POST", { token: admin, body: { name: "Bulk", sea: 100, air: 5 } });
     const id = created.json?.data.id as string;
-    expect((await w.call("special-rates/[id]", "PATCH", { token: staff, params: { id }, body: { name: "Bulk", sea: 1, air: 1 } })).status).toBe(200);
-    expect((await w.call("special-rates/[id]", "DELETE", { token: staff, params: { id } })).status).toBe(200);
+    expect((await w.call("special-rates/[id]", "PATCH", { token: staff, params: { id }, body: { name: "Bulk", sea: 1, air: 1 } })).status).toBe(403);
+    expect((await w.call("special-rates/[id]", "DELETE", { token: staff, params: { id } })).status).toBe(403);
+    expect(w.db.get("SpecialRates", id)?.fields).toMatchObject({ Sea: 100, Air: 5 });
+    expect(w.db.all("PackageRates")).toHaveLength(0);
   });
   it("documents that warehouse staff can create and edit warehouses", async () => {
     const { w, staff } = await standardWorld();

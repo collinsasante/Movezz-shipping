@@ -1,8 +1,9 @@
-// GET /api/package-rates  — get all package tier rates
-// PUT /api/package-rates  — save all package tier rates
+// GET /api/package-rates  — get all package tier rates (all roles; customers see the full rate card - decision Q9)
+// PUT /api/package-rates  — save all package tier rates (super_admin ONLY: it drives every price)
 import { NextRequest } from "next/server";
 import { packageRatesApi } from "@/lib/airtable";
-import { requireAuth, serverErrorResponse } from "@/lib/auth";
+import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
+import { PackageRatesSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
@@ -17,12 +18,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 
   try {
-    const body = await request.json();
-    await packageRatesApi.saveAll(body);
+    const body = await request.json().catch(() => null);
+    const parsed = PackageRatesSchema.safeParse(body);
+    if (!parsed.success) {
+      return badRequestResponse(parsed.error.errors.map((e) => `${e.path.join(".") || "body"}: ${e.message}`).join(", "));
+    }
+    await packageRatesApi.saveAll(parsed.data);
     const rates = await packageRatesApi.getAll();
     return Response.json({ success: true, data: rates });
   } catch {

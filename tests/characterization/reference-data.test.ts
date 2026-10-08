@@ -1,7 +1,7 @@
 // Customers (list/search/cache), suppliers, warehouses and special rates: the remaining CRUD behavior to preserve.
 import { describe, it, expect, vi } from "vitest";
 import { standardWorld } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 describe("customers: listing and search", () => {
   async function people() {
@@ -98,21 +98,41 @@ describe("warehouses", () => {
     expect((await w.call("warehouses/[id]", "DELETE", { token: staff, params: { id } })).status).toBe(403);
     expect((await w.call("warehouses/[id]", "DELETE", { token: admin, params: { id } })).status).toBe(200);
   });
-  it(KNOWN_BUG("customers receive the full warehouse list, including deactivated warehouses"), async () => {
-    const { w, custA } = await standardWorld();
+  it(FIXED("customers see only ACTIVE warehouses; admin and staff still see every warehouse (history is preserved)"), async () => {
+    const { w, custA, staff, admin } = await standardWorld();
     w.db.insert("Warehouses", { Name: "Open", Address: "1 St", IsActive: true });
     w.db.insert("Warehouses", { Name: "Closed", Address: "2 St", IsActive: false });
-    const res = await w.call("warehouses", "GET", { token: custA });
-    expect(res.json?.data.map((x: { name: string }) => x.name).sort()).toEqual(["Closed", "Open"]);
+    const names = async (token: string) => ((await w.call("warehouses", "GET", { token })).json?.data as { name: string }[]).map((x) => x.name).sort();
+    expect(await names(custA)).toEqual(["Open"]);
+    expect(await names(staff)).toEqual(["Closed", "Open"]);
+    expect(await names(admin)).toEqual(["Closed", "Open"]);
+  });
+  it(PRESERVE("deactivating a warehouse does not delete it or alter customers that referenced it"), async () => {
+    const { w, admin } = await standardWorld();
+    w.db.insert("Warehouses", { Name: "Open", Address: "1 St", IsActive: true }, "recWh1");
+    w.db.update("Customers", "recCustA", { PreferredWarehouse: "recWh1" });
+    await w.call("warehouses/[id]", "PATCH", { token: admin, params: { id: "recWh1" }, body: { isActive: false } });
+    expect(w.db.get("Warehouses", "recWh1")?.fields["Name"]).toBe("Open");
+    expect(w.db.get("Customers", "recCustA")?.fields["PreferredWarehouse"]).toBe("recWh1");
   });
 });
 
 describe("special rates", () => {
-  it(PRESERVE("create trims the name and coerces unparseable sea/air values to 0"), async () => {
+  it(PRESERVE("create trims the name and accepts numeric strings for sea/air (like the old parseFloat)"), async () => {
     const { w, admin } = await standardWorld();
-    const res = await w.call("special-rates", "POST", { token: admin, body: { name: " Bulk ", sea: "abc", air: "7.5" } });
+    const res = await w.call("special-rates", "POST", { token: admin, body: { name: " Bulk ", sea: "12.5", air: "7.5" } });
     expect(res.status).toBe(201);
-    expect(res.json?.data).toMatchObject({ name: "Bulk", sea: 0, air: 7.5 });
-    expect((await w.call("special-rates", "POST", { token: admin, body: { name: "  " } })).status).toBe(400);
+    expect(res.json?.data).toMatchObject({ name: "Bulk", sea: 12.5, air: 7.5 });
+  });
+  it(FIXED("unparseable, negative or unknown values are rejected (400) instead of being stored as 0"), async () => {
+    const { w, admin } = await standardWorld();
+    const post = (body: unknown) => w.call("special-rates", "POST", { token: admin, body });
+    expect((await post({ name: "  " })).status).toBe(400);
+    expect((await post({ name: "X", sea: "abc" })).status).toBe(400);
+    expect((await post({ name: "X", sea: -1 })).status).toBe(400);
+    expect((await post({ name: "X", sea: 1e9 })).status).toBe(400);
+    expect((await post({ name: "X", evil: true })).status).toBe(400);
+    expect((await post(null)).status).toBe(400);
+    expect(w.db.all("SpecialRates")).toHaveLength(0);
   });
 });

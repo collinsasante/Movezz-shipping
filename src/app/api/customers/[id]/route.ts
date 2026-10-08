@@ -2,7 +2,7 @@
 // PATCH  /api/customers/[id]  — update customer
 // DELETE /api/customers/[id]  — deactivate customer
 import { NextRequest } from "next/server";
-import { customersApi, itemsApi, ordersApi, usersApi } from "@/lib/airtable";
+import { customersApi, itemsApi, ordersApi, usersApi, BusinessError } from "@/lib/airtable";
 import { deleteFirebaseUser, getFirebaseUserByEmail } from "@/lib/firebase-admin";
 import {
   requireAuth,
@@ -70,14 +70,18 @@ export async function GET(
   }
 }
 
-// Fields a customer is allowed to update on their own profile
-// NOTE: package tier is intentionally excluded — only admins can change it (billing tier)
-const CustomerSelfUpdateSchema = z.object({
-  name: z.string().min(2).max(200).optional(),
-  phone: z.string().min(7).max(30).optional(),
-  notes: z.string().max(2000).optional(),
-  shippingAddress: z.string().max(500).optional(),
-});
+// Fields a customer is allowed to update on their own profile - an allow-list.
+// STRICT: any other key (package tier, status, e-mail, shipping mark/type, exchange rate, role, ...)
+// is rejected with 400 instead of being silently dropped, so a client can never believe a protected
+// field was accepted. Administrators use UpdateCustomerSchema above.
+const CustomerSelfUpdateSchema = z
+  .object({
+    name: z.string().min(2).max(200).optional(),
+    phone: z.string().min(7).max(30).optional(),
+    notes: z.string().max(2000).optional(),
+    shippingAddress: z.string().max(500).optional(),
+  })
+  .strict();
 
 // PATCH /api/customers/[id]
 export async function PATCH(
@@ -115,7 +119,8 @@ export async function PATCH(
       data: customer,
       message: "Customer updated successfully",
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof BusinessError) return badRequestResponse(err.message);
     return serverErrorResponse("Failed to update customer");
   }
 }

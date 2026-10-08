@@ -1,8 +1,9 @@
 // GET  /api/special-rates  — list all special rates
-// POST /api/special-rates  — create a special rate
+// POST /api/special-rates  — create a special rate (super_admin ONLY: it changes what customers are charged)
 import { NextRequest } from "next/server";
 import { specialRatesApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
+import { SpecialRateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
@@ -17,15 +18,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
+  const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 
   try {
-    const body = await request.json();
-    if (!body.name?.trim()) return badRequestResponse("Rate name is required");
-    const sea = parseFloat(body.sea) || 0;
-    const air = parseFloat(body.air) || 0;
-    const rate = await specialRatesApi.create({ name: body.name.trim(), sea, air });
+    const parsed = SpecialRateSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) return badRequestResponse(parsed.error.errors.map((e) => e.message).join(", "));
+    const rate = await specialRatesApi.create(parsed.data);
     return Response.json({ success: true, data: rate }, { status: 201 });
   } catch {
     return serverErrorResponse("Failed to create special rate");

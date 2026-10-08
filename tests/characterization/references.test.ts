@@ -1,7 +1,7 @@
 // Reference-number generation (ITM / ORD / PMX-CON / SUP) and customer creation, against the real data layer.
 import { describe, it, expect } from "vitest";
 import { freshWorld } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 const itemInput = (customerId: string, description = "Box") => ({
   customerId,
@@ -124,12 +124,14 @@ describe("customer creation (data layer)", () => {
     expect(c.shippingAddress).toBe("East Legon, Accra");
   });
 
-  it(KNOWN_BUG("customer creation does not enforce unique shipping marks"), async () => {
-    // Future behavior (Phase 3 R-2): numeric suffix on collision. This documents current behavior only.
+  it(FIXED("customer creation never hands out an existing shipping mark (-2, -3 ... suffix on collision)"), async () => {
+    // Phase 3 rule R-2. The pure generator still collides (see utils.test.ts); the data layer resolves it.
     const w = await freshWorld();
     const a = await w.airtable.customersApi.create({ name: "Ada Mensah", phone: "0244001234", email: "a@example.invalid" }, "x@example.invalid");
     const b = await w.airtable.customersApi.create({ name: "Alice Mills", phone: "0200001234", email: "b@example.invalid" }, "x@example.invalid");
-    expect(a.shippingMark).toBe(b.shippingMark);
+    const c = await w.airtable.customersApi.create({ name: "Amy Moore", phone: "0555551234", email: "c@example.invalid" }, "x@example.invalid");
+    expect([a.shippingMark, b.shippingMark, c.shippingMark]).toEqual(["MOVEZZ-AM1234", "MOVEZZ-AM1234-2", "MOVEZZ-AM1234-3"]);
+    expect(b.shippingAddress).toContain("MOVEZZ-AM1234-2");
   });
 
   it(PRESERVE("changing the name regenerates the mark and address (unless an explicit mark is supplied)"), async () => {
@@ -142,14 +144,13 @@ describe("customer creation (data layer)", () => {
     expect(pinned.shippingMark).toBe("CUSTOM-1");
   });
 
-  it(KNOWN_BUG("changing name AND phone in one update builds the mark from the OLD name"), async () => {
-    // The phone branch re-reads the stored (old) name and overwrites the mark computed by the name branch.
-    // Future behavior (Phase 3 R-2): one regeneration from the final name and phone. Documents current behavior only.
+  it(FIXED("changing name AND phone in one update derives the mark from the FINAL name and phone"), async () => {
     const w = await freshWorld();
     const c = await w.airtable.customersApi.create({ name: "Ada Mensah", phone: "0244001234", email: "a@example.invalid" }, "x@example.invalid");
     const updated = await w.airtable.customersApi.update(c.id, { name: "Kofi Boateng", phone: "0244009999" }, "x@example.invalid");
     expect(updated.name).toBe("Kofi Boateng");
-    expect(updated.shippingMark).toBe("MOVEZZ-AM9999"); // initials of "Ada Mensah", not "Kofi Boateng" (would be KB9999)
+    expect(updated.shippingMark).toBe("MOVEZZ-KB9999");
+    expect(updated.shippingAddress).toContain("MOVEZZ-KB9999");
   });
 
   it(PRESERVE("changing the phone regenerates the mark from the new last 4 digits"), async () => {

@@ -380,6 +380,18 @@ let _customerListCache: { data: Customer[]; expiresAt: number } | null = null;
 const CUSTOMER_LIST_CACHE_TTL = 60_000;
 function invalidateCustomerCache() { _customerListCache = null; }
 
+// Returns `base`, or `base-2`, `base-3`, ... when another customer already holds the mark.
+// (The mark is printed on physical goods, so two customers must never share one.)
+// Not atomic: two simultaneous creations can still race; the PostgreSQL unique constraint closes that gap.
+async function uniqueShippingMark(base: string, excludeId?: string): Promise<string> {
+  for (let n = 1; n <= 99; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    const holders = await getAllRecords(TABLES.CUSTOMERS, `{ShippingMark} = '${escapeFormula(candidate)}'`);
+    if (holders.every((r) => r.id === excludeId)) return candidate;
+  }
+  throw new BusinessError("Could not allocate a unique shipping mark");
+}
+
 export const customersApi = {
   async list(params: CustomerFilterParams = {}): Promise<Customer[]> {
     const isUnfiltered = !params.status && !params.search;
@@ -453,10 +465,9 @@ export const customersApi = {
     input: CreateCustomerInput,
     createdByEmail: string
   ): Promise<Customer> {
-    const shippingMark = generateShippingMark(input.name, input.phone);
+    const shippingMark = await uniqueShippingMark(generateShippingMark(input.name, input.phone));
     const shippingAddress = input.shippingAddress || generateShippingAddress(shippingMark);
 
-    // Get current count for potential future use
     const record = await createRecord(TABLES.CUSTOMERS, {
       Name: input.name,
       Phone: input.phone,
@@ -478,30 +489,28 @@ export const customersApi = {
     input: UpdateCustomerInput,
     updatedByEmail: string
   ): Promise<Customer> {
+    // Read the record ONCE and derive the final state from it, so name and phone changes can never
+    // clobber each other (the old code re-read the stale record in each branch).
+    const current = mapCustomer(await getRecord(TABLES.CUSTOMERS, id));
+    const finalName = input.name ?? current.name;
+    const finalPhone = input.phone ?? current.phone;
+
     const fields: FieldSet = {};
+    if (input.name !== undefined) fields["Name"] = input.name;
+    if (input.phone !== undefined) fields["Phone"] = input.phone;
+
+    // true when the mark is derived from name + phone (as opposed to an explicit administrator override)
+    let derivedMark = false;
     if (input.shippingMark !== undefined) {
-      // Explicit shipping mark override — skip auto-generation
+      // Explicit override: must not duplicate another customer's mark.
+      const holders = await getAllRecords(TABLES.CUSTOMERS, `{ShippingMark} = '${escapeFormula(input.shippingMark)}'`);
+      if (holders.some((r) => r.id !== id)) throw new BusinessError("That shipping mark is already used by another customer");
       fields["ShippingMark"] = input.shippingMark;
-      if (input.name !== undefined) fields["Name"] = input.name;
-      if (input.phone !== undefined) fields["Phone"] = input.phone;
-    } else {
-      if (input.name !== undefined) {
-        fields["Name"] = input.name;
-        // Regenerate shipping mark if name changed
-        const existing = await getRecord(TABLES.CUSTOMERS, id);
-        const phone = (existing.fields["Phone"] as string) ?? "";
-        const newMark = generateShippingMark(input.name, phone);
-        fields["ShippingMark"] = newMark;
-        fields["ShippingAddress"] = generateShippingAddress(newMark);
-      }
-      if (input.phone !== undefined) {
-        fields["Phone"] = input.phone;
-        const existing = await getRecord(TABLES.CUSTOMERS, id);
-        const name = (existing.fields["Name"] as string) ?? "";
-        const newMark = generateShippingMark(name, input.phone);
-        fields["ShippingMark"] = newMark;
-        fields["ShippingAddress"] = generateShippingAddress(newMark);
-      }
+    } else if (input.name !== undefined || input.phone !== undefined) {
+      const newMark = await uniqueShippingMark(generateShippingMark(finalName, finalPhone), id);
+      fields["ShippingMark"] = newMark;
+      fields["ShippingAddress"] = generateShippingAddress(newMark);
+      derivedMark = true;
     }
     if (input.email !== undefined) fields["Email"] = input.email;
     if (input.notes !== undefined) fields["Notes"] = input.notes;
@@ -512,7 +521,20 @@ export const customersApi = {
     if (input.exchangeRate !== undefined) fields["ExchangeRate"] = input.exchangeRate as any;
     if (input.shippingAddress !== undefined) fields["ShippingAddress"] = input.shippingAddress;
 
-    const record = await updateRecord(TABLES.CUSTOMERS, id, fields);
+    let record = await updateRecord(TABLES.CUSTOMERS, id, fields);
+
+    // Airtable has no compare-and-set. If a simultaneous update changed the other field between our read
+    // and our write, the stored mark no longer matches the stored name + phone: repair it once from the
+    // record Airtable returned (it reflects the merged result). PostgreSQL transactions replace this.
+    if (derivedMark) {
+      const merged = mapCustomer(record);
+      const expected = await uniqueShippingMark(generateShippingMark(merged.name, merged.phone), id);
+      if (merged.shippingMark !== expected) {
+        const repair: FieldSet = { ShippingMark: expected };
+        if (input.shippingAddress === undefined) repair["ShippingAddress"] = generateShippingAddress(expected);
+        record = await updateRecord(TABLES.CUSTOMERS, id, repair);
+      }
+    }
     invalidateCustomerCache();
     return mapCustomer(record);
   },

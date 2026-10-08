@@ -1,7 +1,7 @@
 // PATCH /api/customers/me/warehouse — save preferred warehouse for the logged-in customer
 import { NextRequest } from "next/server";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
-import { customersApi } from "@/lib/airtable";
+import { customersApi, warehousesApi } from "@/lib/airtable";
 
 export async function PATCH(request: NextRequest) {
   const authResult = await requireAuth(request, ["customer"]);
@@ -10,7 +10,10 @@ export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
     const { warehouseId } = body;
-    if (!warehouseId) return badRequestResponse("warehouseId is required");
+    if (!warehouseId || typeof warehouseId !== "string") return badRequestResponse("warehouseId is required");
+    // Only an existing, ACTIVE warehouse can be chosen (deactivated ones remain for history/admin use).
+    const active = await warehousesApi.listActive();
+    if (!active.some((w) => w.id === warehouseId)) return badRequestResponse("Choose one of the available warehouses");
 
     const customerId = authResult.user.customerId;
     if (!customerId) return badRequestResponse("No customer record linked to this account");

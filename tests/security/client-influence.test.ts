@@ -2,7 +2,7 @@
 // Every test documents current behavior; the Phase 3 specification makes all of these server-authoritative.
 import { describe, it, expect, vi } from "vitest";
 import { standardWorld } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 describe(KNOWN_BUG("item prices are accepted from the client exactly as sent"), () => {
   // Future behavior (Phase 3 R-9 / ADR-7): the server computes price; price/rate/tier fields from the client are rejected.
@@ -87,23 +87,36 @@ describe("exchange rate", () => {
   });
 });
 
-describe(KNOWN_BUG("package rate writes are not validated"), () => {
-  it("documents that PUT /api/package-rates writes ANY tier name with ANY values (negative, non-numeric)", async () => {
+describe(FIXED("package rate writes are validated"), () => {
+  const tier = (sea: number, air: number) => ({ sea, air });
+  const all = (over: Record<string, unknown> = {}) => ({ basic: tier(350, 8), business: tier(280, 6), enterprise: tier(450, 12), special: tier(500, 15), ...over });
+  it("rejects unknown tiers, negative / non-numeric / absurd values, missing tiers and unknown keys (400) without writing", async () => {
     const { w, admin } = await standardWorld();
-    const res = await w.call("package-rates", "PUT", { token: admin, body: { evil: { sea: -5, air: "free" } } });
+    const put = (body: unknown) => w.call("package-rates", "PUT", { token: admin, body });
+    for (const body of [
+      all({ evil: tier(-5, 0) }), all({ basic: tier(-1, 8) }), all({ basic: { sea: "free", air: 8 } }), all({ basic: tier(1e9, 8) }),
+      all({ basic: { sea: 1, air: 1, extra: 1 } }), { basic: tier(1, 1) }, null, [], "x",
+    ]) {
+      expect((await put(body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect(w.db.all("PackageRates")).toHaveLength(0);
+  });
+  it(PRESERVE("an administrator can still save a valid rate card"), async () => {
+    const { w, admin } = await standardWorld();
+    const res = await w.call("package-rates", "PUT", { token: admin, body: all({ basic: tier(400, 9) }) });
     expect(res.status).toBe(200);
-    const row = w.db.all("PackageRates").find((r) => r.fields["Tier"] === "evil");
-    expect(row?.fields).toMatchObject({ Tier: "evil", Sea: -5, Air: "free" });
+    expect(res.json?.data.basic).toEqual({ sea: 400, air: 9 });
   });
-  it("documents that a malformed body is a 500, not a 400", async () => {
-    const { w, admin } = await standardWorld();
-    expect((await w.call("package-rates", "PUT", { token: admin, body: null })).status).toBe(500);
+  it("only a super_admin may write it (staff 403, customer 403)", async () => {
+    const { w, staff, custA } = await standardWorld();
+    expect((await w.call("package-rates", "PUT", { token: staff, body: all() })).status).toBe(403);
+    expect((await w.call("package-rates", "PUT", { token: custA, body: all() })).status).toBe(403);
+    expect(w.db.all("PackageRates")).toHaveLength(0);
   });
-  it("documents that the customer tier can be set to a customer by an admin without any pricing audit", async () => {
+  it("(unchanged, pending decision Q9) an admin can set any customer's tier and per-customer exchangeRate field without an audit trail", async () => {
     const { w, admin } = await standardWorld();
     const res = await w.call("customers/[id]", "PATCH", { token: admin, params: { id: "recCustA" }, body: { package: "special", exchangeRate: 0.0001 } });
     expect(res.status).toBe(200);
-    expect(w.db.get("Customers", "recCustA")?.fields).toMatchObject({ CustomerPackage: "special", ExchangeRate: 0.0001 });
   });
 });
 

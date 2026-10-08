@@ -32,22 +32,37 @@ describe("customer A -> customer data", () => {
     expect((await s.w.call("customers/[id]", "PATCH", { token: s.custA, params: { id: "recCustB" }, body: { notes: "pwned" } })).status).toBe(403);
     expect(s.w.db.get("Customers", "recCustB")?.fields["Notes"]).toBeUndefined();
   });
-  it(PRESERVE("a customer's self-update silently strips privileged fields (package, status, email, shippingMark) and returns 200"), async () => {
+  it(FIXED("a customer's self-update with ANY protected field is rejected (400) and changes nothing"), async () => {
     const s = await seeded();
-    const res = await s.w.call("customers/[id]", "PATCH", {
-      token: s.custA,
-      params: { id: "recCustA" },
-      body: { notes: "hello", package: "special", status: "inactive", email: "evil@example.invalid", shippingMark: "HACK-1" },
-    });
-    expect(res.status).toBe(200);
-    expect(s.w.db.get("Customers", "recCustA")?.fields).toMatchObject({ Notes: "hello", Status: "active", CustomerPackage: "basic", ShippingMark: "MOVEZZ-AM1111" });
-    expect(s.w.db.get("Customers", "recCustA")?.fields["Email"]).not.toBe("evil@example.invalid");
+    const before = JSON.stringify(s.w.db.get("Customers", "recCustA")?.fields);
+    const attempts: Record<string, unknown>[] = [
+      { package: "special" }, { status: "inactive" }, { email: "evil@example.invalid" }, { shippingMark: "HACK-1" }, { shippingType: "air" },
+      { exchangeRate: 0.0001 }, { role: "super_admin" }, { firebaseUid: "x" }, { customerId: "recCustB" }, { id: "recCustB" }, { preferredWarehouseId: "x" },
+      { createdAt: "2000-01-01" }, { notes: "ok", package: "special" }, // a legitimate field cannot smuggle a protected one
+    ];
+    for (const body of attempts) {
+      const res = await s.w.call("customers/[id]", "PATCH", { token: s.custA, params: { id: "recCustA" }, body });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+    expect(JSON.stringify(s.w.db.get("Customers", "recCustA")?.fields)).toBe(before);
   });
-  it(KNOWN_BUG("a customer can set their preferred warehouse to ANY string (no existence/active check)"), async () => {
+  it(PRESERVE("a customer can still update their own name, phone, notes and address"), async () => {
     const s = await seeded();
-    const res = await s.w.call("customers/me/warehouse", "PATCH", { token: s.custA, body: { warehouseId: "recDoesNotExist" } });
+    const res = await s.w.call("customers/[id]", "PATCH", { token: s.custA, params: { id: "recCustA" }, body: { notes: "hello", shippingAddress: "East Legon" } });
     expect(res.status).toBe(200);
-    expect(s.w.db.get("Customers", "recCustA")?.fields["PreferredWarehouse"]).toBe("recDoesNotExist");
+    expect(s.w.db.get("Customers", "recCustA")?.fields).toMatchObject({ Notes: "hello", ShippingAddress: "East Legon", Status: "active", CustomerPackage: "basic" });
+  });
+  it(FIXED("a customer can only choose an existing, ACTIVE warehouse"), async () => {
+    const s = await seeded();
+    s.w.db.insert("Warehouses", { Name: "Open", Address: "1 St", IsActive: true }, "recWhOpen");
+    s.w.db.insert("Warehouses", { Name: "Closed", Address: "2 St", IsActive: false }, "recWhClosed");
+    const call = (warehouseId: unknown) => s.w.call("customers/me/warehouse", "PATCH", { token: s.custA, body: { warehouseId } });
+    expect((await call("recDoesNotExist")).status).toBe(400);
+    expect((await call("recWhClosed")).status).toBe(400);
+    expect((await call(12345)).status).toBe(400);
+    expect(s.w.db.get("Customers", "recCustA")?.fields["PreferredWarehouse"]).toBeUndefined();
+    expect((await call("recWhOpen")).status).toBe(200);
+    expect(s.w.db.get("Customers", "recCustA")?.fields["PreferredWarehouse"]).toBe("recWhOpen");
   });
 });
 

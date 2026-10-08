@@ -52,10 +52,9 @@ describe(PRESERVE("generateShippingMark: MOVEZZ-{first initial}{second-word init
   });
 });
 
-describe(KNOWN_BUG("shipping marks are NOT guaranteed unique"), () => {
-  // Phase 3 rule R-2: unique marks, with a numeric suffix on collision.
-  // This test documents current behavior only. It must be inverted when the collision fix lands.
-  it("documents that two different people can receive an identical mark", () => {
+describe(PRESERVE("the pure shipping-mark generator is NOT unique by itself"), () => {
+  // Uniqueness is enforced by customersApi (numeric suffix on collision) - see references.test.ts (FIXED).
+  it("documents that two different people can generate an identical base mark", () => {
     const a = generateShippingMark("Ada Mensah", "0244001234");
     const b = generateShippingMark("Alice Mills", "0200001234");
     expect(a).toBe(b);
