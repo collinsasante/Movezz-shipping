@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+// Import / dry-run / reconcile CLI for the LOCAL snapshot importer (Phase 7I). It never contacts Airtable, Firebase, Keepup, Cloudinary or
+// Cloudflare: it reads a local snapshot file and talks to ONE PostgreSQL database that must pass the environment guard.
+//
+//   MOVEZZ_IMPORT_ENVIRONMENT=local|test|staging  IMPORT_DATABASE_URL=postgres://...  ACTOR_CONTEXT_KEY=<base64>   (import only)
+//   node scripts/db-import.mjs dry-run   --snapshot FILE [--report-json OUT.json]
+//   node scripts/db-import.mjs import    --snapshot FILE --initiated-by LABEL [--report-json OUT.json]
+//   node scripts/db-import.mjs reconcile --snapshot FILE [--report-json OUT.json]
+// A dry-run without IMPORT_DATABASE_URL is fully offline. Exit codes: 0 READY / READY_WITH_REVIEW, 2 NOT_READY, 1 refused or failed.
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import pg from "pg";
+import { ImportRefusal } from "./lib/import/errors.mjs";
+import { dryRun, importSnapshot, reconcileSnapshot, readSnapshotFile, renderReport, reportToJson } from "./lib/import/index.mjs";
+
+const [mode, ...rest] = process.argv.slice(2);
+const opt = (name) => { const i = rest.indexOf(name); return i >= 0 ? rest[i + 1] : undefined; };
+
+async function main() {
+  if (!["dry-run", "import", "reconcile"].includes(mode)) throw new Error("usage: db-import.mjs <dry-run|import|reconcile> --snapshot FILE [--initiated-by LABEL] [--report-json FILE]");
+  const file = opt("--snapshot"); if (!file) throw new Error("--snapshot FILE is required");
+  const env = { ...process.env, MOVEZZ_IMPORT_MODE: mode };
+  const targetUrl = process.env.IMPORT_DATABASE_URL;
+  const snapshot = await readSnapshotFile(file, { allowedRoot: process.cwd() });
+  let pool;
+  if (targetUrl) {
+    // read-only modes also get a READ ONLY session at the connection level, on top of the READ ONLY transactions
+    pool = new pg.Pool({ connectionString: targetUrl, max: 2, ...(mode === "import" ? {} : { options: "-c default_transaction_read_only=on" }) });
+    pool.on("error", () => {});
+  } else if (mode !== "dry-run") throw new Error("IMPORT_DATABASE_URL is required for import and reconcile");
+  try {
+    const initiatedBy = opt("--initiated-by") ?? "";
+    const r = mode === "dry-run" ? await dryRun({ snapshot, pool, env, targetUrl })
+      : mode === "import" ? await importSnapshot({ snapshot, pool, env, targetUrl, initiatedBy })
+      : await reconcileSnapshot({ snapshot, pool, env, targetUrl });
+    process.stdout.write(renderReport(r.report) + "\n");
+    const out = opt("--report-json");
+    if (out) {
+      const p = path.resolve(out);
+      if (path.relative(process.cwd(), p).startsWith("..")) throw new Error("--report-json must be inside the working directory");
+      await writeFile(p, reportToJson(r.report) + "\n", { flag: "wx" });          // never overwrites an existing file
+    }
+    process.exitCode = r.report.verdict === "NOT_READY" ? 2 : 0;
+  } finally { await pool?.end(); }
+}
+main().catch((e) => {
+  console.error(e instanceof ImportRefusal ? `REFUSED: ${e.message}` : `import failed: ${e.message}`);
+  process.exitCode = 1;
+});

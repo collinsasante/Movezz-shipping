@@ -14,6 +14,8 @@
     "test:db": "vitest run --config vitest.db.config.mts",
     "db:migrate": "node scripts/db-migrate.mjs up",
     "db:status": "node scripts/db-migrate.mjs status",
+    "db:import": "node scripts/db-import.mjs",
+    "db:import:fixtures": "node tests/fixtures/migration/generate.mjs",
     "db:local:start": "scripts/db-local.sh start",
     "db:local:reset": "scripts/db-local.sh reset",
     "admin:bootstrap": "node scripts/bootstrap-admin.mjs",
