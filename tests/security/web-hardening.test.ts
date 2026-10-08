@@ -113,3 +113,22 @@ describe(FIXED("expensive endpoints are rate limited per user"), () => {
     expect(checkRateLimit("k", 1, 1000)).toBe(false);
   });
 });
+
+describe(FIXED("internal error text is not returned to clients outside development"), () => {
+  it("a failing public /api/onboard returns a generic message and no 'detail'", async () => {
+    const { freshWorld } = await import("../helpers/world");
+    const w = await freshWorld();
+    w.db.beforeWrite = ({ table, op }) => {
+      if (table === "Customers" && op === "create") throw new Error("AIRTABLE_INTERNAL: base appSECRET table tblXYZ");
+    };
+    const res = await w.call("onboard", "POST", { body: { name: "Ada Mensah", phone: "0244001234", email: "ada@example.invalid", location: "Accra" } });
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(res.json)).not.toMatch(/AIRTABLE_INTERNAL|appSECRET|tblXYZ|"detail"/);
+  });
+  it("source anchor: no route returns a raw error message without a development guard", () => {
+    for (const f of ["src/app/api/onboard/route.ts", "src/app/api/customers/route.ts"]) {
+      const src = readSource(f);
+      expect(src).not.toMatch(/\{ success: false, error: "[^"]*", detail(: msg)? \}/);
+    }
+  });
+});

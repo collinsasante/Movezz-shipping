@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/onboard]", detail);
     return Response.json(
-      { success: false, error: "Something went wrong. Please try again.", detail },
+      { success: false, error: "Something went wrong. Please try again.", ...(process.env.NODE_ENV === "development" && { detail }) },
       { status: 500 }
     );
   }

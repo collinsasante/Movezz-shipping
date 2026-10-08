@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       if (msg.includes("EMAIL_EXISTS") || msg.includes("email-already-in-use") || msg.includes("already exists")) {
         return badRequestResponse("A user with this email already exists");
       }
-      return Response.json({ success: false, error: "Failed to create login account. Please try again.", detail: msg }, { status: 500 });
+      return Response.json({ success: false, error: "Failed to create login account. Please try again.", ...(process.env.NODE_ENV === "development" && { detail: msg }) }, { status: 500 });
     }
 
     // 2. Create customer in Airtable
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/customers] unhandled error:", detail);
     return Response.json(
-      { success: false, error: "Failed to create customer", detail },
+      { success: false, error: "Failed to create customer", ...(process.env.NODE_ENV === "development" && { detail }) },
       { status: 500 }
     );
   }
