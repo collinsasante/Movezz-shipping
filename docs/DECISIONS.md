@@ -279,3 +279,35 @@ Final decisions recorded at the second gate (no open questions remain from the P
 Implementation changes these require (not done at the decision gates): zero-price rejection in pricing and invoicing,
 zero-rate rejection for special-rate cards, `discount_reason` storage plus a `super_admin` check and audit of the reason
 in invoice creation, plus the items listed as Conflict/Gap above.
+
+---
+
+## Addendum A — Phase 7A answers (final, approved)
+
+The four questions left open by the Phase 7A audit are closed. These refine D3, D4, D6, D14 and D16.
+
+**A1 — Re-invoicing after cancellation (refines D3).** When a cancelled invoice's items/cartons are released and
+invoiced again, the **new invoice prices them independently, at the moment it is created**: current package/tier
+price, a currently valid and *explicitly selected* special-rate card (if any), current pricing snapshots, the current
+FX rate, a newly authorized discount and new totals. Pricing is NEVER copied from the cancelled invoice. The cancelled
+invoice keeps its original prices, tier and special-rate snapshots, discount, FX, totals, lines and history, untouched.
+The new invoice is a new financial transaction. This MUST be covered by an explicit test.
+
+**A2 — Zero-value invoices and Keepup (refines D4/D14).** A zero-total invoice produced by an explicit authorized
+discount is created, marked `Paid`, recorded with a status event and an audit event, and has **no payment record**.
+It stays **Movezz-only**: **no Keepup sale is created** for a zero-total invoice until Keepup's zero-value behavior is
+verified. This is an explicit supported state: `Movezz invoice = Paid`, `total = 0`, `Keepup sale = not required / not
+created` (sync state `not_required`). No zero-value request is sent to Keepup, and none is guessed.
+
+**A3 — Discount reason (refines D16).** A reason is mandatory **only when `discount_usd > 0`**. `discount_usd = 0`
+needs no reason (`NULL` is valid). A discount above zero requires a non-empty, non-whitespace reason, validated on the
+server, granted by `super_admin`, written into the audit entry, and stored immutably on the invoice. The server — never
+the client — decides whether a reason is required.
+
+**A4 — Manual Keepup synchronization (refines D6/D14).** Manually triggering Keepup synchronization is a
+financial/integration administration action: **only `super_admin`** may do it. Warehouse/staff users MUST NOT manually
+create Keepup financial records, force invoice or payment synchronization, retry financial synchronization, alter Keepup
+sync state, or mark a failed sync successful. Automated background processing may run under its own controlled service
+identity. Staff may *view* operational sync status where appropriate.
+
+No business-rule questions remain from Phase 7A.
