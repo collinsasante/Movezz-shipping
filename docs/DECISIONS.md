@@ -39,7 +39,9 @@ invoice with the corrected values. Historical financial records are never mutate
 
 Cancelling never deletes or rewrites financial data.
 
-* The invoice stays in the database with status `cancelled`.
+* The invoice stays in the database with status **`Cancelled`** (capital C: the authoritative, final spelling, matching
+  the existing status convention `Pending / Partial / Paid / Cancelled`; it is NOT renamed to lowercase and no
+  migration is needed for capitalization).
 * Lines, pricing snapshots, original totals and the original FX snapshot are unchanged.
 * Audit history and status history remain.
 * Payments are not silently deleted or changed; they can only be corrected through an explicit **void/reversal**, and
@@ -59,11 +61,22 @@ rate, total GHS 0.00, paid GHS 0.00, balance GHS 0.00).
   MUST NOT be created to make a status work.
 * It MUST still have an invoice number, lines, pricing snapshots, an audit trail and status history.
 
+A zero-value **invoice** (reached through an explicit, authorized discount, see D16) is a different thing from a zero
+**item price**, which is invalid (D5).
+
 ## D5 — Unpriced items
 
 An item cannot be invoiced unless its **authoritative server-side pricing was successfully determined**. If pricing is
 missing, invalid, ambiguous or unavailable, invoice creation MUST fail safely. No invented price, **no zero fallback**,
 no client-supplied price. The user must resolve pricing first.
+
+**A computed zero price is a pricing failure (final rule).** An item's or carton's authoritative calculated price MUST
+NOT be `USD 0.00`. If the calculation yields zero — because the volume/CBM or weight is zero, a rate is missing, a rate
+card contains an unintended zero, a special-rate card returns zero, a lookup falls back to zero, or the calculation is
+incomplete — that is *invalid pricing*, not a "determined" price. The server MUST reject invoicing until valid pricing
+exists. `0.00` is never a valid fallback and never an implicit "free" price. Genuinely free items would need a separate,
+explicitly approved business rule; it MUST NOT be inferred from a zero rate. (Zero-value *invoices* via discount, D4, are
+unaffected.)
 
 ## D6 — Staff permissions
 
@@ -107,8 +120,10 @@ Special rates are **optional** and never assumed. Two separate concepts:
    normal pricing on its own.
 
 On selection the server MUST verify: (1) the card exists; (2) it is active; (3) it is effective for the relevant date;
-(4) it applies to the customer when customer-specific; (5) it applies to the item/rate context; (6) the price is valid.
-If valid → `billing_basis = special` and the special USD price is frozen onto the item/invoice snapshot. Otherwise →
+(4) it applies to the customer when customer-specific; (5) it applies to the item/rate context; (6) the price is valid — in particular the card's rate for the item's freight type, and the resulting price, are
+**greater than zero**.
+A special-rate card with a zero effective price is invalid for normal billable items and MUST NOT produce a `special`
+billing basis with a zero price (D5). If valid → `billing_basis = special` and the special USD price is frozen onto the item/invoice snapshot. Otherwise →
 `billing_basis = tier` with normal package-tier pricing. The system MUST NOT assume a customer has a special rate,
 MUST NOT auto-pick the cheapest or highest card, and MUST NOT trust a client-provided `billing_basis` or price.
 
@@ -153,6 +168,23 @@ silently manufacture historical values.
 The server is the sole pricing authority. The browser may display prices and request a quote; it MUST NEVER decide the
 final invoice price. Client-supplied unit price, total, billing basis, **discount**, FX rate, special rate and package
 rate are never trusted; the server recalculates and validates all financial values.
+
+**Invoice discounts (final rule).** A discount is financial authority.
+
+* Only **`super_admin`** may grant an invoice discount. Warehouse/operational staff cannot create or modify one.
+* The discount is in **USD** and MUST satisfy `0 <= discount_usd <= subtotal_usd`. Negative → rejected. Greater than the
+  subtotal → rejected. A 100% discount is allowed when explicitly authorized.
+* `subtotal_usd − discount_usd = total_usd`, computed server-side. The client may *request* a discount; its value is
+  never authoritative.
+* A **non-empty discount reason is mandatory** whenever a discount greater than zero is granted. Missing, empty or
+  whitespace-only reasons are rejected. Example: `discount_usd: 100.00`, `discount_reason: "Approved promotional waiver
+  by management"`.
+* Required server sequence: (1) authenticate the actor; (2) verify `super_admin`; (3) validate the discount; (4) compute
+  the final total; (5) require the reason; (6) record the discount **and reason** in the audit history; (7) freeze the
+  resulting financial values on the invoice.
+* The discount and its reason are part of the immutable invoice record (D2). Changing a discount later means the
+  cancel-and-reissue workflow (D2/D3); historical discounts are never edited.
+
 
 ## D17 — Cartons
 
@@ -225,11 +257,10 @@ current Phase 6 PostgreSQL implementation contradicts the decision and must be c
 |---|---|---|---|
 | D1 | Container sequence | **Conflict** | `allocate_reference('container', <year>)` keeps one counter **per year**, so the sequence restarts each January (`PMX-CON-2027-001`). Required: one global container counter; the year is only printed from the creation date. DATABASE-ARCHITECTURE §8 and the concurrency test that asserts `PMX-CON-2027-001` describe the superseded behavior. |
 | D4 | Zero-value invoice status | **Conflict** | `recompute_invoice_payments()` and `createInvoice()` leave a zero-total invoice `Pending` (status needs a payment). Required: such an invoice is settled/paid with no payment record. |
-| D3 | Status label | Conflict (naming) | The schema stores the label `Cancelled` (the Airtable-style capitalised labels); the decision text says `cancelled`. Pick one spelling in the implementation phase and keep the API stable. |
+| D3 | Status label | Aligned | `Cancelled` is final and is what the schema already stores. Nothing to change; the earlier lowercase wording was an error and is corrected above. |
 | D3 | Release on cancel | Gap | `cancelInvoice()` only flips the status. Items/cartons keep `invoice_id`, so they cannot be re-invoiced; no transactional "release" with its status/audit events and no guard against items that were since committed elsewhere. |
-| D10 | Rate-context validity | Conflict | `priceItem()` accepts a valid card whose rate for the item's freight type is `0` (the column default), producing a special price of `0.00`. D10(5)/(6) require the card to apply to the rate context with a valid price. |
-| D5 / D16 | Zero as a price | Ambiguity | Pricing that evaluates to `0.00` (e.g. zero volume, or the case above) is currently storable and invoiceable. D5 forbids a zero fallback; whether a *computed* zero is "determined" needs an explicit rule. |
-| D16 | Discount authority | Ambiguity | `createInvoice()` takes `discountUsd` from its caller (only checked `<= subtotal`). D16 lists discount as never client-trusted. The schema has no rule for who may grant a discount, a reason, or limits. |
+| D5 / D10 | Computed zero price | **Conflict** | `priceItem()` stores a computed `0.00` (zero volume or weight, a missing/zero rate) and accepts a special card whose rate for the freight type is `0` (the column default), yielding a `special` basis at `0.00`; `createInvoice()` only rejects a `NULL` price, so a stored `0.00` is invoiceable. Final rule: a computed zero is a pricing failure; reject at pricing time and at invoicing time. Table constraints (`>= 0`) permit zero and should be tightened (while still allowing legacy imports to be quarantined rather than loaded). |
+| D16 | Discount authority and reason | **Conflict / Gap** | `createInvoice()` accepts `discountUsd` from its caller with no role check (only `<= subtotal`), no mandatory reason, and the reason is not stored or audited (`invoices` has no `discount_reason` column; the audit entry records only the amount). Final rule: `super_admin` only, non-empty reason, recorded in the audit history and frozen on the invoice. Needs a schema addition and service change in the implementation phase. |
 | D25 | Audit coverage | Gap | Audit/status events exist for invoice creation/cancel, payment create/void. Missing because the services do not exist yet: customer/item/carton changes, `priceItem()` (pricing change and special-rate usage), user/role changes, registration approval, operational status changes. |
 | D9 | Activation step | Minor gap | `registration_requests` has `pending/approved/rejected/cancelled`; "Account Activation" is only implied by `resulting_user_id`. No `activated` state or timestamp. |
 | D10 | Tier names | Note | The decision's `standard/premium/special` is an example; the schema (correctly) keeps the existing application tiers `basic/business/enterprise/special`. |
@@ -237,6 +268,14 @@ current Phase 6 PostgreSQL implementation contradicts the decision and must be c
 | D6, D7 | Current Airtable app | Gap (code) | Today's Airtable-backed routes still let staff create/edit warehouses and read revenue, and let customers edit name/phone (Phase 5 left these pending Q9/Q10). Both are now decided; they must be changed when the routes move to PostgreSQL. The schema does not obstruct either rule. |
 | D2, D5, D12, D13, D14, D15, D17–D20, D22–D24 | — | Aligned | Immutable invoice snapshot; unpriced items rejected; FX frozen and never defaulted; GHS append-only payments, overpayment rejected, void-only correction; Keepup sync-state model with no inline calls; no cascades; generated CBM; carton immutability; append-only history; roles/ownership representable. D24's `404` semantics belong to the (not yet written) repositories. |
 
-Open questions that remain for the owner after this gate: (a) the single spelling for the cancelled status (D3);
-(b) the rule for a computed `0.00` price (D5/D10); (c) discount authority — who may grant one, limits, required reason
-(D16).
+Final decisions recorded at the second gate (no open questions remain from the Phase 6 gate):
+
+* `Cancelled` is the authoritative status spelling (D3).
+* Zero-value invoices are allowed, only through an explicit authorized discount (D4/D16).
+* A computed zero item/carton price is a pricing failure, never a fallback (D5); a zero special-rate price is invalid (D10).
+* Only `super_admin` may grant a discount; USD, `0 <= discount <= subtotal`, mandatory reason, server-validated,
+  audited, immutable once the invoice exists (D16/D2).
+
+Implementation changes these require (not done at the decision gates): zero-price rejection in pricing and invoicing,
+zero-rate rejection for special-rate cards, `discount_reason` storage plus a `super_admin` check and audit of the reason
+in invoice creation, plus the items listed as Conflict/Gap above.
