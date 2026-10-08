@@ -1,5 +1,7 @@
 // GET /api/reports — revenue aggregates for admin reports page
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/reports";
 import { limitUser } from "@/lib/rate-limit";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 import { TABLES } from "@/lib/airtable";
@@ -22,6 +24,7 @@ async function getAllRecords(tableName: string): Promise<AirtableRecord<FieldSet
 }
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.reportsGet(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const limited = limitUser(authResult.user.id, "reports", 30);

@@ -1,5 +1,7 @@
 // GET /api/activity-logs — audit log (admin only)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/reports";
 import { activityLogsApi, customersApi, itemsApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse } from "@/lib/auth";
 
@@ -38,6 +40,7 @@ async function buildIdMap(logs: { details: string }[]): Promise<Map<string, stri
 }
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.activityLogsGet(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 

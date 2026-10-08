@@ -1,5 +1,7 @@
 // GET /api/dashboard/customer — customer dashboard stats
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/reports";
 import { dashboardApi } from "@/lib/airtable";
 import {
   requireAuth,
@@ -8,6 +10,7 @@ import {
 } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.customerDashboardGet(request);
   const authResult = await requireAuth(request, ["customer", "super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;
