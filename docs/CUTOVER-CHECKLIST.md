@@ -1,12 +1,12 @@
 # Cutover checklist (Phase 7K) — NOTHING BELOW HAS BEEN PERFORMED
 
 Labels: VL verified locally · RPV requires production verification · BDR business decision required · CO cutover-time action.
-**Verdict: BLOCKED: TECHNICAL ISSUE** (39 of 43 API routes are still Airtable-only), with business decisions also pending. Not ready for cutover.
+**Status after Phase 7L:** every Airtable-backed API route now has a PostgreSQL implementation behind `MOVEZZ_DATA_BACKEND=postgres` (`docs/ROUTE-MIGRATION.md`); production is still Airtable. Remaining blockers are business decisions (B1/B1b/B2) and production verification (Workers→PostgreSQL connectivity, real-export staging run, browser test of the UI on the PostgreSQL backend).
 
 ## 1. Blocker matrix
 | Issue | Blocks cutover? | Why | Minimal solution |
 |---|---|---|---|
-| Remaining Airtable routes | **YES (technical)** | 39 of 43 routes read/write Airtable only; items, containers, orders, customers, users, rates, settings, dashboards and auth/verify cannot run on PostgreSQL | Port the REQUIRED set in §3 onto the existing repository/service layer, or cut over module by module; this is the largest remaining work |
+| Remaining Airtable routes | **Resolved in code (VL)** | all 34 Airtable-backed routes ported (Phase 7L, `docs/ROUTE-MIGRATION.md`); the UI has not been exercised in a browser against PostgreSQL | browser/staging pass before cutover (RPV) |
 | Historical financials (B1) | **YES (BDR)** | Airtable orders hold only an ambiguous `InvoiceAmount`; no currency, FX, discount or total is derivable, so the importer quarantines every order (fail-closed, VL) | Owner chooses the verified source (recommended: a Keepup export of invoices with currency, discount, FX and GHS total) and supplies `Verified*` data |
 | Historical payments | **YES (BDR)** with B1 | Airtable has none; payments must not be fabricated | Same verified source; or import invoices only when the source gives payments |
 | Operational data without orders | Does NOT block by itself | customers, items, containers, rates, settings import independently; orders are quarantined | Owner may approve "orders/invoices stay in Airtable as a read-only archive" and `excluded` resolutions (BDR) |

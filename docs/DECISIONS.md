@@ -367,3 +367,11 @@ explicit owner decision before a production import (details and the behaviour im
 * **B3:** not required for post-cutover operation; unknown values stay unknown. **Still a business decision:** B1 (verified financial/payment source, or approval to leave orders/invoices in Airtable as a read-only archive).
 * **Actor key:** production now refuses a missing, short or non-random `ACTOR_CONTEXT_KEY`; secret-store provisioning remains a deployment requirement. Classification from Addendum C is unchanged.
 * **Finding that dominates readiness:** 39 of 43 API routes are Airtable-only (`docs/CUTOVER-CHECKLIST.md` §3).
+
+
+---
+
+## Addendum E — Phase 7L application port (no business rule invented)
+All API routes now run on PostgreSQL when `MOVEZZ_DATA_BACKEND=postgres`; Airtable remains the default and is hard-disabled under the PostgreSQL backend (no mixed sources). The differences from the Airtable behaviour are
+exactly the locked decisions (staff have no financial access, no super_admin creation via the API, immutable issued invoices, central FX, no deletion of financial/identity history) and are listed in `docs/ROUTE-MIGRATION.md`.
+Open: B1/B1b/B2 are unchanged and still block a production cutover.
