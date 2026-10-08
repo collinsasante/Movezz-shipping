@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && wrangler dev",
     "cf:deploy": "opennextjs-cloudflare build && node scripts/cf-pages-deploy.mjs",
@@ -59,8 +62,11 @@
     "@types/node": "^20.14.11",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^8.57.0",
     "eslint-config-next": "latest",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.11",
     "wrangler": "^4.69.0"
   }
 }
