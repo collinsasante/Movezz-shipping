@@ -17,6 +17,16 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Throwaway PostgreSQL 16 for the database integration tests (no secrets; trust auth on the job network only).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 3s --health-retries 30
     steps:
       - uses: actions/checkout@v4
 
@@ -35,6 +45,11 @@ jobs:
 
       - name: Tests
         run: npm test
+
+      - name: Database integration tests (PostgreSQL 16)
+        run: npm run test:db
+        env:
+          MOVEZZ_TEST_PG_URL: postgres://postgres@127.0.0.1:54329/postgres
 
       - name: Dependency audit (fails on critical advisories only)
         run: npm audit --audit-level=critical

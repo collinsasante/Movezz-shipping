@@ -27,3 +27,9 @@ npm run type-check
 [docs/SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md)). To create the first administrator use
 `npm run admin:bootstrap` (see DEPLOYMENT.md); there is no built-in account. Security status and open items:
 [docs/SECURITY-BASELINE.md](docs/SECURITY-BASELINE.md). Secret scan: `gitleaks git --log-opts="--all" --redact=100`.
+
+## PostgreSQL foundation (Phase 6)
+
+The target database schema, migrations and integration tests live in `db/` and `tests/db/`; the application still runs
+on Airtable. Local: `scripts/db-local.sh start`, `MOVEZZ_TEST_PG_URL=postgres://postgres@127.0.0.1:54329/postgres npm run test:db`.
+Design, money model, special rates, security and open questions: [docs/DATABASE-ARCHITECTURE.md](docs/DATABASE-ARCHITECTURE.md).
