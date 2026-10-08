@@ -1,6 +1,7 @@
 // Shared plumbing for the PostgreSQL implementations of the API routes (src/lib/pg-routes/*).
 // One request = authenticate (Firebase token -> users row) -> ONE actor transaction (role / customer / active flags re-read from
 // PostgreSQL) -> handler -> JSON in the same envelope the Airtable routes use ({ success, data, ... }).
+import { checkRateLimit } from "@/lib/rate-limit";
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import type { PoolClient } from "pg";
@@ -43,8 +44,20 @@ export function parseInput<S extends ZodTypeAny>(schema: S, value: unknown): z.i
   return r.data;
 }
 
+const MAX_BODY_BYTES = 256 * 1024;
+/** Parses a JSON body with a hard size cap (checked on the header and on the real text), so a request cannot make the Worker buffer an arbitrary body. */
 export async function readJson(request: NextRequest): Promise<unknown> {
-  try { return await request.json(); } catch { throw new DomainError("INVALID_INPUT", "Request body must be valid JSON"); }
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw new DomainError("INVALID_INPUT", "Request body is too large");
+  let text: string;
+  try { text = await request.text(); } catch { throw new DomainError("INVALID_INPUT", "Request body could not be read"); }
+  if (text.length > MAX_BODY_BYTES) throw new DomainError("INVALID_INPUT", "Request body is too large");
+  try { return JSON.parse(text); } catch { throw new DomainError("INVALID_INPUT", "Request body must be valid JSON"); }
+}
+
+/** Per-user throttle for expensive operations (same limits the Airtable routes had). Throws RATE_LIMITED -> 429. */
+export function throttle(userId: string | null, name: string, max: number, windowMs = 60_000): void {
+  if (!checkRateLimit(`user:${userId ?? "anon"}:${name}`, max, windowMs)) throw new DomainError("RATE_LIMITED", "Too many requests");
 }
 
 /** Runs `fn` as the authenticated actor. `roles` is an early gate only; the database remains the authority. */

@@ -208,11 +208,12 @@ export const itemHistoryGet = (request: NextRequest, p: P) => pgRoute(request, p
 // ================================================================ sorting
 export const sortingGet = (request: NextRequest) => pgRoute(request, undefined, [...STAFF], async (c) => {
   const sp = new URL(c.request.url).searchParams; const s = (sp.get("search") ?? "").trim().toLowerCase().replace(/[%_\\]/g, "");
-  const f = (cond: string) => selectItems(c.tx, `${cond} AND ($1 = '' OR lower(i.item_ref) LIKE '%'||$1||'%' OR lower(i.description) LIKE '%'||$1||'%' OR lower(c.name) LIKE '%'||$1||'%' OR lower(c.shipping_mark) LIKE '%'||$1||'%')`, [s]);
+  const pred = (cond: string) => `${cond} AND ($1 = '' OR lower(i.item_ref) LIKE '%'||$1||'%' OR lower(i.description) LIKE '%'||$1||'%' OR lower(c.name) LIKE '%'||$1||'%' OR lower(c.shipping_mark) LIKE '%'||$1||'%')`;
+  const f = async (cond: string) => ({ rows: await selectItems(c.tx, pred(cond), [s], "ORDER BY i.created_at DESC, i.id LIMIT 500"), total: await countItems(c.tx, pred(cond), [s]) });   // bounded; counts stay exact
   const sorting = await f("i.status = 'Sorting'");
   const wantMissing = sp.has("missing"); const showMissing = sp.get("missing") === "true";
-  const missing = wantMissing ? await f("i.is_missing") : [];
-  return ok({ sorting, missing: showMissing ? missing : undefined, sortingCount: sorting.length, missingCount: missing.length });
+  const missing = wantMissing ? await f("i.is_missing") : { rows: [], total: 0 };
+  return ok({ sorting: sorting.rows, missing: showMissing ? missing.rows : undefined, sortingCount: sorting.total, missingCount: missing.total });
 });
 export const sortingPost = (request: NextRequest) => pgRoute(request, undefined, [...STAFF], async (c) => {
   const d = parseInput(z.object({ itemId: z.string().min(1), action: z.enum(["found", "missing"]), notes: z.string().optional() }), await readJson(c.request));
@@ -278,9 +279,10 @@ export const cartonsGet = (request: NextRequest) => pgRoute(request, undefined, 
   await authorize(c.tx, "carton.read.any");
   const cid = new URL(c.request.url).searchParams.get("customerId");
   if (cid && !isUuid(cid)) return ok([]);
-  const { rows } = await c.tx.query("SELECT id FROM cartons WHERE status = 'open' AND ($1::uuid IS NULL OR customer_id = $1) ORDER BY created_at DESC, id", [cid]);
-  const out = []; for (const r of rows) { const x = await cartonResult(c.tx, r.id); out.push({ cartonNumber: x.cartonNumber, items: x.items, cbm: x.cbm }); }
-  return ok(out);
+  // two queries however many cartons exist (the newest 200 open ones), instead of one query per carton
+  const { rows } = await c.tx.query("SELECT id, carton_ref, cbm FROM cartons WHERE status = 'open' AND ($1::uuid IS NULL OR customer_id = $1) ORDER BY created_at DESC, id LIMIT 200", [cid]);
+  const items = rows.length ? await selectItems(c.tx, "i.carton_id = ANY($1::uuid[])", [rows.map((r) => r.id)]) : [];
+  return ok(rows.map((r) => ({ cartonNumber: r.carton_ref, items: items.filter((i) => i.cartonNumber === r.carton_ref), cbm: r.cbm === null ? 0 : Number(r.cbm) })));
 });
 
 export const cartonsPost = (request: NextRequest) => pgRoute(request, undefined, [...STAFF], async (c) => {

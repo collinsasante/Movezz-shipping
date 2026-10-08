@@ -11,7 +11,7 @@ import { retryKeepupSync } from "@/lib/db/integration-admin";
 import { recordAudit } from "@/lib/db/audit";
 import { DomainError } from "@/lib/db/errors";
 import { isUuid, ownerScope, selectItems, selectOrders, countOrders, selectOrdersPage } from "@/lib/db/app-queries";
-import { pgRoute, pgServiceRoute, readAs, ok, parseInput, readJson, type RouteCtx } from "@/lib/pg-api";
+import { pgRoute, pgServiceRoute, readAs, ok, parseInput, readJson, throttle, type RouteCtx } from "@/lib/pg-api";
 
 type P = { params: Promise<Record<string, string>> };
 const bad = (m: string) => new DomainError("INVALID_INPUT", m);
@@ -130,6 +130,7 @@ export const orderDelete = (request: NextRequest, p: P) => pgServiceRoute(reques
 // ---------------------------------------------------------------- Keepup state (the worker owns synchronisation; routes only report / request)
 export const createInvoicePost = (request: NextRequest, p: P) => pgServiceRoute(request, p.params, async (c) => {
   await adminOnly(c.actor);
+  throttle(c.actor.userId ?? null, "create-invoice", 10);
   const id = c.params.id; if (!isUuid(id)) throw notFound();
   const regenerate = ((await c.request.json().catch(() => ({}))) as { regenerate?: boolean }).regenerate === true;
   const row = await readAs(c.actor, async (tx) => {
@@ -155,6 +156,7 @@ export const createInvoiceDelete = (request: NextRequest, p: P) => pgServiceRout
   return { body: { success: true, message: "Nothing to clear: Keepup links are managed by the synchronisation worker" } };
 });
 export const keepupSyncPost = (request: NextRequest) => pgRoute(request, undefined, ["super_admin"], async (c) => {
+  throttle(c.actor.userId, "keepup-sync", 6);
   // PostgreSQL is the ledger and pushes to Keepup through the worker; there is nothing to pull back into the orders
   const r = (await c.tx.query(`SELECT count(*) FILTER (WHERE k.sync_state = 'synced')::int AS synced, count(*) FILTER (WHERE k.sync_state IN ('failed','needs_reconciliation','outcome_unknown'))::int AS errors FROM keepup_sync k WHERE k.kind = 'invoice'`)).rows[0];
   return { body: { success: true, synced: r.synced, updated: 0, errors: r.errors } };

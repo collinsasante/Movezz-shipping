@@ -54,6 +54,8 @@ const SQLSTATE_MAP: Record<string, DomainErrorCode> = {
   MV015: "REGISTRATION_CONFLICT", // an existing account/customer needs explicit super_admin resolution
   MV012: "NOT_AUTHORIZED", // operation reserved for staff (full permission matrix: Phase 7F)
   MV011: "FX_RATE_INVALID", // invoice FX is not the current authoritative USD->GHS rate
+  // data exceptions (class 22): a malformed or out-of-range value from the caller (bad date, bad uuid/number text, too long) is a 400, never a 500
+  "22P02": "INVALID_INPUT", "22007": "INVALID_INPUT", "22008": "INVALID_INPUT", "22003": "INVALID_INPUT", "22001": "INVALID_INPUT", "22023": "INVALID_INPUT",
   "23505": "DUPLICATE", // unique_violation
   "23503": "INTEGRITY", // foreign_key_violation
   "23514": "INTEGRITY", // check_violation
@@ -66,6 +68,6 @@ export function toDomainError(err: unknown): unknown {
   const code = e?.code ? SQLSTATE_MAP[e.code] : undefined;
   if (!code) return err;
   // Never leak SQL detail (table/column values) to callers; the constraint name is enough for logs.
-  const message = e.code?.startsWith("MV") ? String(e.message) : `Integrity rule violated${e.constraint ? ` (${e.constraint})` : ""}`;
+  const message = e.code?.startsWith("MV") ? String(e.message) : e.code?.startsWith("22") ? "A value is badly formatted or out of range" : `Integrity rule violated${e.constraint ? ` (${e.constraint})` : ""}`;
   return new DomainError(code, message);
 }

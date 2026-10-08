@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server";
 import { authorize, isAllowed } from "@/lib/db/authz";
 import { DomainError } from "@/lib/db/errors";
 import { isUuid, ownerScope, selectItems, selectOrders } from "@/lib/db/app-queries";
-import { pgRoute, ok } from "@/lib/pg-api";
+import { pgRoute, ok, throttle } from "@/lib/pg-api";
 
 const n = (v: unknown) => Number(v ?? 0);
 const MONTH = (col: string) => `to_char(${col}, 'YYYY-MM')`;
@@ -30,7 +30,7 @@ export const adminDashboardGet = (request: NextRequest) => pgRoute(request, unde
   const fin = await one(`SELECT COALESCE(sum(total_usd) FILTER (WHERE status = 'Paid'), 0) AS rev_usd, COALESCE(sum(total_usd) FILTER (WHERE status = 'Pending'), 0) AS pend_usd,
       COALESCE(sum(amount_paid_ghs), 0) AS received_ghs, COALESCE(sum(balance_ghs) FILTER (WHERE status IN ('Pending','Partial')), 0) AS owed_ghs,
       count(*) FILTER (WHERE date_trunc('month', invoice_date) = date_trunc('month', now()))::int AS this_month FROM invoices WHERE status <> 'Cancelled'`);
-  const pendingOrders = await selectOrders(t, "v.status = 'Pending'", []);
+  const pendingOrders = await selectOrders(t, "v.status = 'Pending'", [], "ORDER BY v.created_at DESC, v.id LIMIT 100");   // newest 100: the screen does not use this list, the cap keeps the response bounded
   const recent = (await selectOrders(t, "v.status <> 'Cancelled'", [], "ORDER BY v.created_at DESC, v.id LIMIT 5")).map((o) => ({ id: o.id, orderRef: o.orderRef, customerName: o.customerName, invoiceAmount: o.invoiceAmount, invoiceDate: o.invoiceDate, status: o.status, itemCount: o.itemIds.length }));
   return ok({ ...base, totalRevenue: n(fin.rev_usd), pendingRevenue: n(fin.pend_usd), totalRevenueGhs: n(fin.received_ghs), outstandingBalanceGhs: n(fin.owed_ghs), pendingOrders, ordersThisMonth: fin.this_month, recentOrders: recent });
 });
@@ -50,6 +50,7 @@ export const customerDashboardGet = (request: NextRequest) => pgRoute(request, u
 });
 
 export const reportsGet = (request: NextRequest) => pgRoute(request, undefined, ["super_admin"], async (c) => {
+  throttle(c.actor.userId, "reports", 30);
   await authorize(c.tx, "report.financial");
   const sp = new URL(c.request.url).searchParams; const t = c.tx;
   const from = sp.get("from") && !isNaN(Date.parse(sp.get("from")!)) ? sp.get("from")!.slice(0, 10) : null;

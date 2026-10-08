@@ -29,3 +29,4 @@ Labels: VL verified locally (real route handlers + PostgreSQL, Firebase/e-mail m
 * Business decisions B1/B1b/B2 (see `docs/CUTOVER-CHECKLIST.md`); customer-login linking and production backups/keys are cutover actions.
 * `Idempotency-Key` is honoured on order/payment/cancel routes and now sent by the UI for payments and invoice creation (Phase 7M).
 * Lists (`items`, `orders`) are paged in SQL (count + LIMIT/OFFSET, `limit` capped at 500): a request never loads a whole table into a Worker (lesson from the Airtable-side 1102 analysis; `tests/db/pg-routes-paging.test.ts`).
+* Hardening (7P): class-22 database errors (bad dates/numbers/uuids) are 400, JSON bodies are capped at 256 KB, reports/create-invoice/keepup-sync keep their per-user throttles, the open-carton list is two queries (newest 200), the sorting lists are capped at 500 with exact counts, and the dashboard pending-order list is capped at 100 (`tests/db/pg-routes-hardening.test.ts`).
