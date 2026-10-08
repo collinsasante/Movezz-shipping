@@ -521,6 +521,13 @@ read-only for the runtime role and visible only to a super_admin actor (row-leve
 **Limits.** No applicant e-mail is sent yet (outbox row only; a worker is later work) - the admin tells the applicant, or they find /activate
 from the form's success page. Cancelled requests have no endpoint. The `auth/verify` legacy claim-by-verified-e-mail of an admin-created Airtable customer remains until the cutover.
 
+## 13g. Operational reliability (Phase 7H, migration 0015)
+
+Keepup sync and the notification outbox are crash-safe state machines driven through `movezz_sec.keepup_*` / `outbox_*`
+functions (lease tokens, back-off, dead-letter, reconciliation); the idempotency ledger is tamper-proof; audit/status history
+has per-actor authority; operational writes need a verified actor. Full description, transition tables, the exact state left
+by each failure, the idempotency matrix, security findings and remaining risks: **`docs/OPERATIONAL-RELIABILITY.md`**.
+
 ## 14. Legacy (Airtable) mapping
 
 | Airtable table | PostgreSQL | Notes |
