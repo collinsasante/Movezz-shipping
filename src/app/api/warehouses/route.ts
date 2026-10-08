@@ -1,10 +1,13 @@
 // GET  /api/warehouses  — list warehouses (customers: ACTIVE ones only; admin/staff: all)
 // POST /api/warehouses  — create warehouse (super_admin AND warehouse_staff; see docs/SECURITY-BASELINE.md, decision Q9)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/config";
 import { warehousesApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.warehousesGet(request);
   // Customers can also access this to see warehouse shipping addresses
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
   if (authResult instanceof Response) return authResult;
@@ -21,6 +24,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.warehousesPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 

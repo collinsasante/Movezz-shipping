@@ -1,6 +1,8 @@
 // GET  /api/suppliers  — list suppliers
 // POST /api/suppliers  — create supplier (super_admin and warehouse_staff)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/config";
 import { suppliersApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
 import { z } from "zod";
@@ -17,6 +19,7 @@ const CreateSupplierSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.suppliersGet(request);
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
 
@@ -38,6 +41,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.suppliersPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { user } = authResult;

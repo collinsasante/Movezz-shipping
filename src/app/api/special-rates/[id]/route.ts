@@ -1,11 +1,14 @@
 // PATCH  /api/special-rates/[id]  — update a special rate   (super_admin ONLY)
 // DELETE /api/special-rates/[id]  — delete a special rate   (super_admin ONLY)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/config";
 import { specialRatesApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
 import { SpecialRateSchema } from "@/lib/schemas";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (isPostgresBackend()) return pg.specialRatePatch(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { id } = await params;
@@ -21,6 +24,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (isPostgresBackend()) return pg.specialRateDelete(request, { params });
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
   const { id } = await params;

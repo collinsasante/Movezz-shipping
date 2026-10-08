@@ -1,11 +1,14 @@
 // GET /api/package-rates  — get all package tier rates (all roles; customers see the full rate card - decision Q9)
 // PUT /api/package-rates  — save all package tier rates (super_admin ONLY: it drives every price)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/config";
 import { packageRatesApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
 import { PackageRatesSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.packageRatesGet(request);
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff", "customer"]);
   if (authResult instanceof Response) return authResult;
 
@@ -18,6 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  if (isPostgresBackend()) return pg.packageRatesPut(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 

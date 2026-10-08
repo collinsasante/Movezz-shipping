@@ -1,11 +1,14 @@
 // GET  /api/special-rates  — list all special rates
 // POST /api/special-rates  — create a special rate (super_admin ONLY: it changes what customers are charged)
 import { NextRequest } from "next/server";
+import { isPostgresBackend } from "@/lib/backend";
+import * as pg from "@/lib/pg-routes/config";
 import { specialRatesApi } from "@/lib/airtable";
 import { requireAuth, serverErrorResponse, badRequestResponse } from "@/lib/auth";
 import { SpecialRateSchema } from "@/lib/schemas";
 
 export async function GET(request: NextRequest) {
+  if (isPostgresBackend()) return pg.specialRatesGet(request);
   const authResult = await requireAuth(request, ["super_admin", "warehouse_staff"]);
   if (authResult instanceof Response) return authResult;
 
@@ -18,6 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isPostgresBackend()) return pg.specialRatesPost(request);
   const authResult = await requireAuth(request, ["super_admin"]);
   if (authResult instanceof Response) return authResult;
 
