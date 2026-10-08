@@ -1,7 +1,8 @@
 // GET  /api/items  — list items
 // POST /api/items  — create item (warehouse staff / admin)
 import { NextRequest } from "next/server";
-import { itemsApi, containersApi } from "@/lib/airtable";
+import { itemsApi, containersApi, specialRatesApi } from "@/lib/airtable";
+import { validateSpecialClaim } from "@/lib/pricing";
 import {
   requireAuth,
   serverErrorResponse,
@@ -113,7 +114,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const item = await itemsApi.create(parsed.data, user.email);
+    // The client may name a special rate but cannot assert one: it must exist, and the stored per-unit
+    // rate comes from the table, not from the request.
+    const { isSpecialItem, specialRateName, specialShippingRate, ...rest } = parsed.data;
+    const special = validateSpecialClaim(
+      { isSpecialItem, specialRateName, specialShippingRate },
+      await specialRatesApi.list(),
+      parsed.data.shippingType
+    );
+    if (!special.ok) return badRequestResponse(special.error);
+
+    const item = await itemsApi.create({ ...rest, ...special.fields }, user.email);
 
     return Response.json(
       {

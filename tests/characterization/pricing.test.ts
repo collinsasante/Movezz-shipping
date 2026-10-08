@@ -5,14 +5,15 @@ import { describe, it, expect } from "vitest";
 import { computeCbm } from "@/lib/cbm";
 import { loadFunction, readSource } from "../helpers/sourceFn";
 import { freshWorld } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { invoiceTotalUsd, billingFor } from "@/lib/pricing";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 import type { Item } from "@/types";
 
 const ITEMS_NEW = "src/app/(dashboard)/admin/items/new/page.tsx";
 const ORDERS_NEW = "src/app/(dashboard)/admin/orders/new/page.tsx";
 
 const getCbm = loadFunction<(l: number, w: number, h: number, unit: "cm" | "inches") => number>(ITEMS_NEW, "getCbm");
-const calcTotal = loadFunction<(items: Item[]) => number>(ORDERS_NEW, "calcTotal");
+const calcTotal = invoiceTotalUsd;
 
 describe("browser CBM (items/new page) vs server CBM (lib/cbm.ts)", () => {
   it(PRESERVE("agree exactly for centimeters"), () => {
@@ -81,7 +82,7 @@ describe("package rate card (server: packageRatesApi)", () => {
   });
 });
 
-describe("invoice total as computed by the browser (orders/new page calcTotal)", () => {
+describe("invoice total (lib/pricing.ts, used by the orders/new page and POST /api/orders)", () => {
   const item = (over: Partial<Item>): Item => ({ id: "i", ...over }) as Item;
 
   it(PRESERVE("sums each item's tier price (pkgEstShipping)"), () => {
@@ -98,23 +99,42 @@ describe("invoice total as computed by the browser (orders/new page calcTotal)",
     expect(calcTotal([item({ pkgEstShipping: 1.004 }), item({ pkgEstShipping: 1.004 })])).toBe(2.01); // per-item rounding would give 2.00
   });
 
-  describe(KNOWN_BUG("special-rate items are invoiced at the TIER price, not the special-rate price"), () => {
-    // Approved decision Q16: billing_basis='special' must use special_price_usd; billing_basis='tier' uses tier_price_usd.
+  describe(FIXED("special-rate items are invoiced at the special price (Q16)"), () => {
     // pkgEstShipping = tier price ; estShippingPrice = special-rate price.
-    // This test documents current behavior only. It must be inverted in Phase 7/9 when server-side pricing lands.
     const specialItem = item({ isSpecialItem: true, specialRateName: "Bulk Lagos", pkgEstShipping: 50, estShippingPrice: 80 });
 
-    it("documents current special-rate invoice behavior: the invoice uses pkgEstShipping (50), ignoring the special price (80)", () => {
-      expect(calcTotal([specialItem])).toBe(50);
+    it("billing basis 'special': the line is the special price (80), not the tier price (50)", () => {
+      expect(billingFor(specialItem)).toEqual({ basis: "special", priceUsd: 80 });
+      expect(calcTotal([specialItem])).toBe(80);
     });
-    it("documents that the special price only wins if the tier price is missing", () => {
-      expect(calcTotal([item({ isSpecialItem: true, estShippingPrice: 80 })])).toBe(80);
+    it("billing basis 'tier': an item with no special rate is billed its tier price", () => {
+      const plain = item({ pkgEstShipping: 50, estShippingPrice: 80 });
+      expect(billingFor(plain)).toEqual({ basis: "tier", priceUsd: 50 });
     });
-    it.todo("FUTURE (Q16, billing_basis='special'): the invoice line for this item is special_price_usd = 80, and a billing_basis='tier' item is billed tier_price_usd");
-    it.todo("FUTURE (Q16): historical invoices are NOT recalculated; the special rate is kept as a pricing snapshot on the item");
+    it("a special flag without a named rate does not change the basis (the client cannot force it)", () => {
+      expect(billingFor(item({ isSpecialItem: true, pkgEstShipping: 50, estShippingPrice: 80 })).basis).toBe("tier");
+      expect(billingFor(item({ specialRateName: "Bulk Lagos", pkgEstShipping: 50, estShippingPrice: 80 })).basis).toBe("tier");
+    });
+    it("a mixed invoice sums each item on its own basis", () => {
+      expect(calcTotal([specialItem, item({ pkgEstShipping: 20 })])).toBe(100);
+    });
+    it("a customer with no special rates is unaffected (pure tier pricing)", () => {
+      expect(calcTotal([item({ pkgEstShipping: 10 }), item({ pkgEstShipping: 5 })])).toBe(15);
+    });
+    it("the special price is the item's own stored snapshot: changing the rate card later does not alter a stored item's billing", async () => {
+      const w = await freshWorld();
+      w.seed.specialRate("recSR1", "Bulk Lagos", 300, 5);
+      w.seed.customer("recC1");
+      w.seed.item("recI1", "recC1", { IsSpecialItem: true, specialRateName: "Bulk Lagos", EstShippingPrice: 80, PkgEstShipping: 50 });
+      await w.airtable.specialRatesApi.update("recSR1", { name: "Bulk Lagos", sea: 999, air: 9 });
+      const stored = await w.airtable.itemsApi.getById("recI1");
+      expect(billingFor(stored)).toEqual({ basis: "special", priceUsd: 80 });
+    });
   });
 
-  it("source anchor: the expression is the whole rule (no other code path totals an invoice in the browser)", () => {
-    expect(readSource(ORDERS_NEW)).toContain("item.pkgEstShipping ?? item.estShippingPrice ?? 0");
+  it("source anchor: the order screen uses the shared pricing rule (no private copy of the formula)", () => {
+    const src = readSource(ORDERS_NEW);
+    expect(src).toContain("invoiceTotalUsd");
+    expect(src).not.toContain("item.pkgEstShipping ?? item.estShippingPrice ?? 0");
   });
 });

@@ -2,7 +2,7 @@
 // Keepup is mocked (tests/setup/setup.ts); the calls it receives are what the production code would send.
 import { describe, it, expect, vi } from "vitest";
 import { standardWorld, type World } from "../helpers/world";
-import { KNOWN_BUG, PRESERVE } from "../helpers/known";
+import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 type LineItem = { item_name: string; quantity: number; price: number; item_type: string };
 const sale = (w: World, n = 0) => vi.mocked(w.keepup.createKeepupSale).mock.calls[n][0];
@@ -187,14 +187,32 @@ describe("create-invoice: splitting the net GHS amount across lines and rounding
   });
 });
 
-describe(KNOWN_BUG("the invoice total is independent of the items' prices"), () => {
-  // Future behavior (Phase 3 R-17): totals are computed by the server from stored item/carton prices.
-  it("documents that the server accepts any invoiceAmount for any set of items", async () => {
+describe(FIXED("the invoice total must agree with the stored item prices"), () => {
+  const post = (w: World, admin: string, over: Record<string, unknown>) =>
+    w.call("orders", "POST", { token: admin, body: { customerId: "recCustA", itemIds: ["recI1"], invoiceAmount: 500, invoiceDate: "2026-03-10", ...over } });
+
+  it("rejects an amount that does not match the priced items", async () => {
     const { w, admin } = await standardWorld();
     w.seed.item("recI1", "recCustA", { PkgEstShipping: 500 });
-    const res = await w.call("orders", "POST", { token: admin, body: { customerId: "recCustA", itemIds: ["recI1"], invoiceAmount: 0.01, invoiceDate: "2026-03-10" } });
-    expect(res.status).toBe(201);
-    expect(w.db.all("Orders")[0].fields["InvoiceAmount"]).toBe(0.01);
+    const res = await post(w, admin, { invoiceAmount: 0.01 });
+    expect(res.status).toBe(400);
+    expect(w.db.all("Orders")).toHaveLength(0);
+  });
+  it("accepts the exact total and a 1-cent rounding difference", async () => {
+    const { w, admin } = await standardWorld();
+    w.seed.item("recI1", "recCustA", { PkgEstShipping: 500 });
+    expect((await post(w, admin, { invoiceAmount: 500.01 })).status).toBe(201);
+  });
+  it("bills a special-rate item at its special price, not the tier price", async () => {
+    const { w, admin } = await standardWorld();
+    w.seed.item("recI1", "recCustA", { PkgEstShipping: 50, EstShippingPrice: 80, IsSpecialItem: true, specialRateName: "Bulk Lagos" });
+    expect((await post(w, admin, { invoiceAmount: 50 })).status).toBe(400); // the old (tier) number
+    expect((await post(w, admin, { invoiceAmount: 80 })).status).toBe(201);
+  });
+  it("PRESERVE - an order over items that carry no stored price is still accepted (server-side pricing is a later phase)", async () => {
+    const { w, admin } = await standardWorld();
+    w.seed.item("recI1", "recCustA");
+    expect((await post(w, admin, { invoiceAmount: 123 })).status).toBe(201);
   });
 });
 
@@ -256,16 +274,18 @@ describe("POST /api/orders", () => {
     expect((await w.call("orders", "POST", { token: admin, body: body({ invoiceAmount: 1_000_000 }) })).status).toBe(201);
   });
 
-  it(KNOWN_BUG("invoiceDate is any string and ownership/uniqueness of the items is never checked"), async () => {
-    // Future behavior (Phase 3 R-17): validate dates; items must belong to the customer and be uninvoiced.
+  it(FIXED("items must exist, belong to the invoiced customer and not already be invoiced"), async () => {
     const { w, admin } = await standardWorld();
     w.seed.item("recBItem", "recCustB"); // belongs to ANOTHER customer
     w.seed.order("recOrdOld", "recCustB", { Items: ["recBItem"] });
     w.db.update("Items", "recBItem", { Order: ["recOrdOld"] }); // and is already invoiced
-    const res = await w.call("orders", "POST", { token: admin, body: body({ itemIds: ["recBItem"], invoiceDate: "not-a-date" }) });
-    expect(res.status).toBe(201);
-    expect(w.db.get("Items", "recBItem")?.fields["Order"]).toEqual([res.json?.data.id]); // moved from the old invoice
-    expect(w.db.get("Orders", "recOrdOld")?.fields["Items"]).toEqual(["recBItem"]); // old invoice still lists it
+    const wrongOwner = await w.call("orders", "POST", { token: admin, body: body({ itemIds: ["recBItem"] }) });
+    expect(wrongOwner.status).toBe(400);
+    w.seed.item("recAItem", "recCustA", { Order: ["recOrdOld"] });
+    expect((await w.call("orders", "POST", { token: admin, body: body({ itemIds: ["recAItem"] }) })).status).toBe(400);
+    expect((await w.call("orders", "POST", { token: admin, body: body({ itemIds: ["recNoSuch"] }) })).status).toBe(400);
+    expect(w.db.get("Items", "recBItem")?.fields["Order"]).toEqual(["recOrdOld"]);
+    expect(w.db.get("Orders", "recOrdOld")?.fields["Items"]).toEqual(["recBItem"]);
   });
 
   it(KNOWN_BUG("creating an order also creates a Keepup sale in raw USD numbers, and emails the customer its link"), async () => {

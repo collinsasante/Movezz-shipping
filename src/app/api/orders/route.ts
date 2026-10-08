@@ -8,6 +8,7 @@ import {
   badRequestResponse,
   forbiddenResponse,
 } from "@/lib/auth";
+import { invoiceTotalUsd } from "@/lib/pricing";
 import { createKeepupSale } from "@/lib/keepup";
 import { sendInvoiceCreatedEmail } from "@/lib/email";
 import { z } from "zod";
@@ -72,6 +73,20 @@ export async function POST(request: NextRequest) {
       return badRequestResponse(
         parsed.error.errors.map((e) => e.message).join(", ")
       );
+    }
+
+    // The invoice total is derived from the stored item prices (special price for special-rate items,
+    // tier price otherwise). The client's number must agree; it cannot choose the billing basis.
+    const stored = await Promise.all(parsed.data.itemIds.map((id) => itemsApi.getById(id).catch(() => null)));
+    if (stored.some((i) => i === null)) return badRequestResponse("One or more items do not exist");
+    const found = stored.filter((i): i is NonNullable<typeof i> => i !== null);
+    if (found.some((i) => i.customerId !== parsed.data.customerId)) {
+      return badRequestResponse("All items must belong to the invoiced customer");
+    }
+    if (found.some((i) => i.orderId)) return badRequestResponse("One or more items are already on an invoice");
+    const serverTotal = invoiceTotalUsd(found);
+    if (serverTotal > 0 && Math.abs(serverTotal - parsed.data.invoiceAmount) > 0.01) {
+      return badRequestResponse(`Invoice amount does not match the item prices (expected ${serverTotal.toFixed(2)})`);
     }
 
     const order = await ordersApi.create(parsed.data, user.email);

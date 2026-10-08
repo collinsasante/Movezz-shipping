@@ -6,25 +6,43 @@ import { KNOWN_BUG, PRESERVE, FIXED } from "../helpers/known";
 
 describe(KNOWN_BUG("item prices are accepted from the client exactly as sent"), () => {
   // Future behavior (Phase 3 R-9 / ADR-7): the server computes price; price/rate/tier fields from the client are rejected.
-  it("documents that POST /api/items stores client-supplied price, rate and special-rate fields verbatim, even if inconsistent with the dimensions", async () => {
+  it("PRESERVE - tier prices are still accepted as sent (server-side pricing is a later phase)", async () => {
     const { w, staff } = await standardWorld();
     const res = await w.call("items", "POST", {
       token: staff,
-      body: {
-        customerId: "recCustA", description: "Laptop", dateReceived: "2026-03-01", shippingType: "sea",
-        length: 100, width: 100, height: 100, // 1 m3 -> would be 350 at the basic rate
-        estPrice: 1, estShippingPrice: 0.01, pkgEstShipping: 0.01, pkgShippingRate: 0.01, specialShippingRate: 0.01, isSpecialItem: true, specialRateName: "Anything",
-      },
+      body: { customerId: "recCustA", description: "Laptop", dateReceived: "2026-03-01", shippingType: "sea", length: 100, width: 100, height: 100, estPrice: 1, estShippingPrice: 0.01, pkgEstShipping: 0.01, pkgShippingRate: 0.01 },
     });
     expect(res.status).toBe(201);
-    expect(w.db.all("Items")[0].fields).toMatchObject({ EstPrice: 1, EstShippingPrice: 0.01, PkgEstShipping: 0.01, PkgShippingRate: 0.01, SpecialShippingRate: 0.01, IsSpecialItem: true, specialRateName: "Anything" });
+    expect(w.db.all("Items")[0].fields).toMatchObject({ EstPrice: 1, EstShippingPrice: 0.01, PkgEstShipping: 0.01, PkgShippingRate: 0.01 });
   });
-  it("documents that PATCH /api/items/[id] lets staff overwrite the price of an item that is already invoiced", async () => {
+  it(FIXED("a special-rate claim must name an existing rate; the stored rate comes from the table, not the request"), async () => {
+    const { w, staff } = await standardWorld();
+    w.seed.specialRate("recSR1", "Bulk Lagos", 300, 5);
+    const base = { customerId: "recCustA", description: "Laptop", dateReceived: "2026-03-01", shippingType: "sea" };
+    // forced special, unknown rate name
+    expect((await w.call("items", "POST", { token: staff, body: { ...base, isSpecialItem: true, specialRateName: "Anything", estShippingPrice: 0.01 } })).status).toBe(400);
+    // forced special, no name at all
+    expect((await w.call("items", "POST", { token: staff, body: { ...base, isSpecialItem: true, estShippingPrice: 0.01 } })).status).toBe(400);
+    // a name or a rate without the flag
+    expect((await w.call("items", "POST", { token: staff, body: { ...base, specialRateName: "Bulk Lagos" } })).status).toBe(400);
+    expect((await w.call("items", "POST", { token: staff, body: { ...base, specialShippingRate: 0.01 } })).status).toBe(400);
+    expect(w.db.all("Items")).toHaveLength(0);
+    // a real rate: accepted, and the per-unit rate is the table's (300 sea), not the forged 0.01
+    const ok = await w.call("items", "POST", { token: staff, body: { ...base, isSpecialItem: true, specialRateName: "Bulk Lagos", specialShippingRate: 0.01, estShippingPrice: 90 } });
+    expect(ok.status).toBe(201);
+    expect(w.db.all("Items")[0].fields).toMatchObject({ IsSpecialItem: true, specialRateName: "Bulk Lagos", SpecialShippingRate: 300 });
+  });
+  it(FIXED("PATCH cannot set special-rate flags, and cannot change the prices of an invoiced item"), async () => {
     const { w, staff } = await standardWorld();
     w.seed.item("recI1", "recCustA", { PkgEstShipping: 100, Order: ["recO1"] });
     const res = await w.call("items/[id]", "PATCH", { token: staff, params: { id: "recI1" }, body: { pkgEstShipping: 1, estShippingPrice: 1 } });
-    expect(res.status).toBe(200);
-    expect(w.db.get("Items", "recI1")?.fields["PkgEstShipping"]).toBe(1);
+    expect(res.status).toBe(409);
+    expect(w.db.get("Items", "recI1")?.fields["PkgEstShipping"]).toBe(100);
+    w.seed.item("recI2", "recCustA", { PkgEstShipping: 100 });
+    const flag = await w.call("items/[id]", "PATCH", { token: staff, params: { id: "recI2" }, body: { isSpecialItem: true, specialRateName: "Forged", specialShippingRate: 0.01 } });
+    expect(flag.status).toBe(200);
+    expect(w.db.get("Items", "recI2")?.fields["IsSpecialItem"]).toBeUndefined();
+    expect(w.db.get("Items", "recI2")?.fields["specialRateName"]).toBeUndefined();
   });
   it("documents that staff can re-assign an invoiced item to a different customer, and to a container id that does not exist", async () => {
     const { w, staff } = await standardWorld();
@@ -36,11 +54,11 @@ describe(KNOWN_BUG("item prices are accepted from the client exactly as sent"), 
 });
 
 describe(KNOWN_BUG("invoice totals, discounts and payment status are accepted from the client"), () => {
-  it("documents that invoiceAmount is whatever the admin client sends (including 0.01 for expensive goods)", async () => {
+  it(FIXED("invoiceAmount must match the item prices (0.01 for expensive goods is rejected)"), async () => {
     const { w, admin } = await standardWorld();
     w.seed.item("recI1", "recCustA", { PkgEstShipping: 5000 });
     const res = await w.call("orders", "POST", { token: admin, body: { customerId: "recCustA", itemIds: ["recI1"], invoiceAmount: 0.01, invoiceDate: "2026-03-10" } });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
   });
   it("documents that the order status can be set straight to Paid with no payment", async () => {
     const { w, admin } = await standardWorld();

@@ -98,6 +98,22 @@ export async function PATCH(
       );
     }
 
+    // Prices on an item that is already on an invoice are frozen: changing them would silently
+    // disagree with what the customer was billed.
+    const touchesPrice = ["estPrice", "estShippingPrice", "pkgEstShipping", "pkgShippingRate"].some(
+      (k) => (parsed.data as Record<string, unknown>)[k] !== undefined
+    );
+    if (touchesPrice) {
+      const existing = await itemsApi.getById(id).catch(() => null);
+      if (!existing) return notFoundResponse("Item not found");
+      if (existing.orderId) {
+        return Response.json(
+          { success: false, error: "This item is already on an invoice; its prices can no longer be changed" },
+          { status: 409 }
+        );
+      }
+    }
+
     const item = await itemsApi.update(id, parsed.data, user.email);
 
     return Response.json({

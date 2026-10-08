@@ -9,12 +9,14 @@ import axios from "axios";
 import { useToast } from "@/components/ui/toast";
 import type { Customer, Item } from "@/types";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { invoiceTotalUsd, billingFor } from "@/lib/pricing";
 
 const DRAFT_LS_KEY = "pakk_new_order_draft";
 
+// Billing rule (special price for special-rate items, tier price otherwise) lives in lib/pricing.ts
+// so the server applies exactly the same rule.
 function calcTotal(items: Item[]): number {
-  const total = items.reduce((sum, item) => sum + (item.pkgEstShipping ?? item.estShippingPrice ?? 0), 0);
-  return Math.round(total * 100) / 100;
+  return invoiceTotalUsd(items);
 }
 
 export default function NewOrderPage() {
@@ -422,7 +424,7 @@ export default function NewOrderPage() {
                     </div>
                     <div className="text-right shrink-0">
                       {(() => {
-                        const price = item.pkgEstShipping ?? item.estShippingPrice;
+                        const price = item.pkgEstShipping == null && item.estShippingPrice == null && !item.isSpecialItem ? null : billingFor(item).priceUsd;
                         if (price == null) return null;
                         return (
                           <>
