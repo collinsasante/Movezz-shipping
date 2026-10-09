@@ -234,6 +234,10 @@ export async function recordPayment(db: Pool, input: RecordPaymentInput) {
        input.keepupReference ?? null, input.idempotencyKey, null] // created_by is stamped by the database from the verified actor
     )).rows[0];
     const invoice = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [input.invoiceId])).rows[0];
+    // Keepup is told about this payment later, by the worker, once the sale exists (never inline). Payments that came FROM Keepup are not pushed back.
+    if (payment.source !== "keepup") {
+      await tx.query(`INSERT INTO keepup_sync (kind, invoice_id, payment_id, idempotency_key, sync_state) VALUES ('payment', $1, $2, $3, 'pending')`, [input.invoiceId, payment.id, `payment:${payment.id}`]);
+    }
     await recordAudit(tx, {
       action: "payment.create", entityType: "payment", entityId: payment.id, request: input.request,
       after: { invoice_id: input.invoiceId, amount_ghs: input.amountGhs, method: payment.method, source: payment.source, invoice_status: invoice.status },
@@ -270,6 +274,14 @@ export async function voidPayment(db: Pool, input: { paymentId: string; reason: 
     )).rows[0];
     if (!p) throw new DomainError("INVALID_STATE", "Payment not found or already voided");
     await recordStatusEvent(tx, { entityType: "payment", entityId: p.id, from: "completed", to: "voided", reason: input.reason });
+    // Keepup: a payment that never left Movezz is simply not sent; one that was (or may have been) sent needs a person to reverse it in Keepup.
+    await tx.query(
+      `UPDATE keepup_sync SET
+         sync_state = CASE WHEN sync_state IN ('pending','failed') THEN 'cancelled' ELSE 'needs_reconciliation' END,
+         last_error = CASE WHEN sync_state IN ('pending','failed') THEN 'Payment voided in Movezz before it was sent to Keepup'
+                           ELSE 'Payment voided in Movezz after it was sent (or may have been sent) to Keepup; reverse it in Keepup manually' END,
+         next_retry_at = NULL
+       WHERE payment_id = $1 AND kind = 'payment' AND sync_state IN ('pending','failed','creating','synced')`, [p.id]);
     await recordAudit(tx, { action: "payment.void", entityType: "payment", entityId: p.id,
       after: { invoice_id: p.invoice_id, amount_ghs: String(p.amount_ghs), reason: input.reason } });
     const invoice = (await tx.query<InvoiceRow>("SELECT * FROM invoices WHERE id = $1", [p.invoice_id])).rows[0];
@@ -297,8 +309,9 @@ export interface CancelInvoiceResult { invoice: InvoiceRow; releasedItemIds: str
  *  - The invoice keeps every snapshot (lines, prices, FX, discount, payments). Release only clears the LIVE links: items.invoice_id
  *    becomes NULL and invoiced cartons return to 'open'; the item/carton price columns are untouched (a re-invoice recomputes
  *    them through the Phase 7D pricing function), and the cancelled invoice's lines remain the historical record.
- *  - Keepup: no verified cancellation API exists, so nothing is claimed. Without an external sale the sync row becomes 'cancelled'
- *    (no sale will ever be created); with a sale / unknown outcome it becomes 'needs_reconciliation' with the sale id preserved.
+ *  - Keepup: nothing is claimed here. Without an external sale the sync row becomes 'cancelled' (no sale will ever be created); with a sale / unknown
+ *    outcome it becomes 'needs_reconciliation' with the sale id preserved. When the sale exists a 'cancel' operation is also queued; the worker sends it
+ *    (docs/KEEPUP-OPERATIONS.md) and closes the invoice's sync row only when Keepup confirms (or a person resolves it).
  */
 export async function cancelInvoice(db: Pool, input: CancelInvoiceInput): Promise<CancelInvoiceResult> {
   if (!/\S/.test(input.reason ?? "")) throw new DomainError("INVALID_INPUT", "A cancellation reason is required");
@@ -347,7 +360,13 @@ export async function cancelInvoice(db: Pool, input: CancelInvoiceInput): Promis
       await recordStatusEvent(tx, { entityType: "item", entityId: it.id, from: it.status, to: it.status, reason: `released: ${old.invoice_ref} cancelled`, metadata: meta });
     }
 
-    // Keepup: record locally; do not claim an external cancellation that has not happened
+    // Keepup: when the sale exists, queue its cancellation (the worker sends it once every payment operation of this invoice is finished); the invoice's own
+    // sync row is parked for reconciliation below and closes automatically when the cancellation is confirmed. Nothing is claimed as done here.
+    await tx.query(
+      `INSERT INTO keepup_sync (kind, invoice_id, idempotency_key, sync_state)
+       SELECT 'cancel', k.invoice_id, 'cancel:' || k.invoice_id, 'pending' FROM keepup_sync k
+        WHERE k.invoice_id = $1 AND k.kind = 'invoice' AND k.sync_state = 'synced' AND k.keepup_sale_id IS NOT NULL
+       ON CONFLICT DO NOTHING`, [input.invoiceId]);
     await tx.query(
       `UPDATE keepup_sync SET
          sync_state = CASE WHEN keepup_sale_id IS NULL AND sync_state IN ('pending','failed') THEN 'cancelled' ELSE 'needs_reconciliation' END,

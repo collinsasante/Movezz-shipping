@@ -1,6 +1,6 @@
 // Airtable exporter: fixture-based tests against a fake Airtable REST server. No network, no real data, no credentials.
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -112,6 +112,11 @@ describe("retries, rate limits and partial failures", () => {
     const g = dataset(3); let r2 = 0; const f2 = fakeAirtable(g, { onCall: (_n, table) => { if (table === "Customers" && ++r2 === 2) g.Customers[0].fields.Name = "edited"; return undefined; } });
     expect(await code(run(f2.fetchImpl))).toBe("INCONSISTENT");                       // an edit with the same ids is caught by the content hash
   });
+  it("a change in ANY table during the export window is detected (whole-pass comparison), not only within one table's two reads", async () => {
+    const d = dataset(3); let customerReads = 0;
+    const f = fakeAirtable(d, { onCall: (_n, table) => { if (table === "Customers" && ++customerReads === 2) d.Orders[0].fields.Notes = "edited after pass 1 of every table"; return undefined; } });
+    expect(await code(run(f.fetchImpl))).toBe("INCONSISTENT");
+  });
   it("requests are paced (minimum interval) and the single-pass option is flagged", async () => {
     const stamps: number[] = []; let t = 0; const f = fakeAirtable(dataset(2), { onCall: () => { stamps.push(t); return undefined; } });
     sleeps.length = 0;
@@ -193,6 +198,19 @@ describe("authorisation, destination and the CLI", () => {
     const wt = mkdtempSync(path.join(tmpdir(), "wt-")); mkdirSync(path.join(wt, ".git")); mkdirSync(path.join(wt, "out"));
     expect(() => assertDestination(path.join(wt, "out"), path.join(wt, "out"), REPO)).toThrow(/git work tree/);
     expect(() => assertDestination(dir, dir, REPO)).not.toThrow();
+  });
+  it("refuses a destination writable by group/others, and a symlink that leads into a git work tree", async () => {
+    const { chmodSync, symlinkSync } = await import("node:fs");
+    const open = mkdtempSync(path.join(tmpdir(), "open-")); chmodSync(open, 0o770);
+    expect(() => assertDestination(open, open, REPO)).toThrow(/writable by group or others/);
+    const wt = mkdtempSync(path.join(tmpdir(), "wt2-")); mkdirSync(path.join(wt, ".git")); mkdirSync(path.join(wt, "out"), { mode: 0o700 });
+    const link = path.join(mkdtempSync(path.join(tmpdir(), "ln-")), "link"); symlinkSync(path.join(wt, "out"), link);
+    expect(() => assertDestination(link, link, REPO)).toThrow(/git work tree/);
+  });
+  it("an existing file or a pre-planted symlink at the target name is never overwritten or followed", async () => {
+    const { writeNew } = await import("../../scripts/lib/export/destination.mjs"); const { symlinkSync } = await import("node:fs");
+    const victim = path.join(dir, "victim.txt"); writeFileSync(victim, "keep"); const link = path.join(dir, "planted.json"); symlinkSync(victim, link);
+    expect(() => writeNew(link, "x")).toThrow(/EEXIST/); expect(readFileSync(victim, "utf8")).toBe("keep");
   });
   it("export files are created new (wx) with mode 0600 and never overwritten", async () => {
     const { writeNew } = await import("../../scripts/lib/export/destination.mjs");

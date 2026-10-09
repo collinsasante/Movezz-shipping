@@ -225,7 +225,7 @@ dbDescribe("backup, restore and staging isolation (PostgreSQL)", () => {
     for (const m of results) {
       expect(m.dryRunWroteNothing).toBe(true); expect(m.duplicateImportIdentical).toBe(true);
       expect(m.report.failed).toBe(0); expect(m.report.reconciliation.passed).toBe(m.report.reconciliation.total);
-      expect(m.restore).toMatchObject({ signatureEqual: true, migrations: 18, actorKeysInRestoredDatabase: 0, reconcileExit: 2 });
+      expect(m.restore).toMatchObject({ signatureEqual: true, migrations: 19, actorKeysInRestoredDatabase: 0, reconcileExit: 2 });
       expect(m.backupContainsSigningKey).toBe(false);
       expect(m.phases["dry-run"].verdict).toBe("NOT_READY"); expect(m.report.financialDiscrepancies).toBe(0);
     }

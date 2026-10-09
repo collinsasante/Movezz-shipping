@@ -308,17 +308,19 @@ dbDescribe("invoice cancellation, release and re-invoicing (PostgreSQL)", () => 
       const c = await customer(db.admin);
       const mk = async () => (await make(c, { itemIds: [await pricedItem(db.admin, c, "40.00")] })).invoice;
       const unsent = await mk(); await cancel(unsent.id);
-      expect((await q("SELECT sync_state, keepup_sale_id, last_error FROM keepup_sync WHERE invoice_id=$1", [unsent.id]))[0]).toMatchObject({ sync_state: "cancelled", keepup_sale_id: null });
+      expect((await q("SELECT sync_state, keepup_sale_id, last_error FROM keepup_sync WHERE invoice_id=$1 AND kind='invoice'", [unsent.id]))[0]).toMatchObject({ sync_state: "cancelled", keepup_sale_id: null });
       const sold = await mk();
       await q("UPDATE keepup_sync SET sync_state='synced', keepup_sale_id='KU-555', external_status='open' WHERE invoice_id=$1", [sold.id]);
       await cancel(sold.id);
-      const k = (await q("SELECT sync_state, keepup_sale_id, external_status, last_error FROM keepup_sync WHERE invoice_id=$1", [sold.id]))[0];
+      const k = (await q("SELECT sync_state, keepup_sale_id, external_status, last_error FROM keepup_sync WHERE invoice_id=$1 AND kind='invoice'", [sold.id]))[0];
       expect(k).toMatchObject({ sync_state: "needs_reconciliation", keepup_sale_id: "KU-555", external_status: "open" });
       expect(k.last_error).toMatch(/NOT been cancelled in Keepup/);
+      expect(await q("SELECT kind, sync_state, keepup_sale_id FROM keepup_sync WHERE invoice_id=$1 AND kind='cancel'", [sold.id])).toEqual([{ kind: "cancel", sync_state: "pending", keepup_sale_id: null }]);   // queued for the worker; nothing is claimed as done
+      expect(await q("SELECT 1 FROM keepup_sync WHERE invoice_id=$1 AND kind='cancel'", [unsent.id])).toEqual([]);                                                                                      // no sale -> nothing to cancel in Keepup
       const unknown = await mk();
       await q("UPDATE keepup_sync SET sync_state='creating' WHERE invoice_id=$1", [unknown.id]);
       await cancel(unknown.id);
-      expect((await q("SELECT sync_state FROM keepup_sync WHERE invoice_id=$1", [unknown.id]))[0].sync_state).toBe("needs_reconciliation");
+      expect((await q("SELECT sync_state FROM keepup_sync WHERE invoice_id=$1 AND kind='invoice'", [unknown.id]))[0].sync_state).toBe("needs_reconciliation");
     });
   });
 

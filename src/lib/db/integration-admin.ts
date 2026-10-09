@@ -23,6 +23,24 @@ export async function retryKeepupSync(db: Pool, i: { syncId: string; reason: str
   });
 }
 
+/** Resolves a Keepup payment/cancel operation whose outcome was unknown, after a person checked Keepup. */
+export async function resolveKeepupOperation(db: Pool, i: { syncId: string; outcome: "applied" | "not_applied" | "abandoned"; reason: string; actor: ActorAssertion }): Promise<void> {
+  if (!/\S/.test(i.reason ?? "")) throw new DomainError("INVALID_INPUT", "A resolution reason is required");
+  await withActorTransaction(db, i.actor, async (tx) => {
+    await authorize(tx, "keepup.sync.manual");
+    await tx.query("SELECT movezz_sec.keepup_op_resolve($1, $2, $3)", [i.syncId, i.outcome, i.reason]);
+  });
+}
+
+/** Re-queues a payment/cancel operation that FAILED definitively (never one with an unknown outcome). */
+export async function retryKeepupOperation(db: Pool, i: { syncId: string; reason: string; actor: ActorAssertion }): Promise<void> {
+  if (!/\S/.test(i.reason ?? "")) throw new DomainError("INVALID_INPUT", "A retry reason is required");
+  await withActorTransaction(db, i.actor, async (tx) => {
+    await authorize(tx, "keepup.sync.manual");
+    await tx.query("SELECT movezz_sec.keepup_op_manual_retry($1, $2)", [i.syncId, i.reason]);
+  });
+}
+
 export async function requeueDeadNotification(db: Pool, i: { outboxId: string; reason: string; actor: ActorAssertion }): Promise<void> {
   if (!/\S/.test(i.reason ?? "")) throw new DomainError("INVALID_INPUT", "A reason is required");
   await withActorTransaction(db, i.actor, async (tx) => {

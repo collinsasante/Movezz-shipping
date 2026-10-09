@@ -7,7 +7,7 @@
 //
 // The credential variables are deliberately NOT AIRTABLE_API_KEY / AIRTABLE_BASE_ID, so the live application's configuration can never be used by accident.
 // Run it only after the freeze (docs/CUTOVER-RUNBOOK.md §2) and only with written authorisation. This repository's tests never contact Airtable.
-import { readFileSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAirtableReader, runExport, ExportError } from "./lib/export/export.mjs";
@@ -34,7 +34,8 @@ try {
     const r = await runExport({ reader, baseId, passes, label, authorizedBy, allowMissingLinks: rest.includes("--allow-missing-links") });
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "Z");
     const snapFile = path.join(dir, `${label}-${stamp}.snapshot.json`); const manFile = path.join(dir, `${label}-${stamp}.manifest.json`);
-    writeNew(snapFile, r.text); writeNew(manFile, JSON.stringify(r.manifest, null, 1));
+    writeNew(snapFile, r.text);
+    try { writeNew(manFile, JSON.stringify(r.manifest, null, 1)); } catch (e) { try { unlinkSync(snapFile); } catch { /* nothing more to clean */ } throw e; }   // never leave a snapshot without its manifest
     console.log(JSON.stringify({ written: [path.basename(snapFile), path.basename(manFile)], directory: dir, totalRecords: r.manifest.deterministic.totalRecords, counts: Object.fromEntries(Object.entries(r.manifest.deterministic.tables).map(([t, v]) => [t, v.records])),
       fingerprint: r.manifest.deterministic.fingerprint, warnings: r.manifest.warnings, next: "Record the fingerprint and the per-table counts on a SEPARATE channel from the files; verification requires them." }, null, 1));
   } else if (cmd === "verify") {

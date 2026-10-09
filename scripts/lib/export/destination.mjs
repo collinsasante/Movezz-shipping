@@ -9,6 +9,7 @@ export function assertDestination(dir, confirm, repoRoot) {
   if (!path.isAbsolute(dir)) throw new ExportError("DESTINATION", "--out-dir must be an absolute path");
   if (path.resolve(dir) !== path.resolve(confirm)) throw new ExportError("DESTINATION", "--confirm-destination must equal --out-dir exactly");
   if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new ExportError("DESTINATION", "the destination directory does not exist (create it first; it is never created implicitly)");
+  if ((statSync(dir).mode & 0o022) !== 0) throw new ExportError("DESTINATION", "the destination directory is writable by group or others; use a private directory (chmod 700)");
   const real = realpathSync(dir); const repo = realpathSync(repoRoot);
   if (real === repo || real.startsWith(repo + path.sep)) throw new ExportError("DESTINATION", "the destination must be outside the repository");
   for (let d = real; ; d = path.dirname(d)) { if (existsSync(path.join(d, ".git"))) throw new ExportError("DESTINATION", "the destination is inside a git work tree; exports must never be committable"); if (path.dirname(d) === d) break; }

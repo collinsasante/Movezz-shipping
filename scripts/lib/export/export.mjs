@@ -113,14 +113,15 @@ export async function runExport({ reader, baseId, passes = 2, label = "airtable-
   if (!Number.isInteger(passes) || passes < 1 || passes > 3) throw new ExportError("CONFIG", "passes must be 1..3");
   if (!authorizedBy || authorizedBy.trim().length < 3) throw new ExportError("AUTHORIZATION", "the person authorising the export must be named");
   const startedAt = now();
+  // Pass 1 reads every table; each further pass re-reads EVERY table and compares it with pass 1. Reading whole passes (not table by table) means a
+  // change anywhere during the export window, in any table, shows up as a difference; cross-table skew cannot hide between a table's two reads.
   const first = {}; const perTable = {};
-  for (const t of tables) {
-    const a = await reader.readTable(t); first[t] = a.records;
-    perTable[t] = { records: a.records.length, pages: a.pages, passesCompared: 1 };
-    for (let p = 2; p <= passes; p++) {
+  for (const t of tables) { const a = await reader.readTable(t); first[t] = a.records; perTable[t] = { records: a.records.length, pages: a.pages, passesCompared: 1 }; }
+  for (let p = 2; p <= passes; p++) {
+    for (const t of tables) {
       const b = await reader.readTable(t);
-      if (contentHash(b.records) !== contentHash(a.records) || idHash(b.records) !== idHash(a.records))
-        throw new ExportError("INCONSISTENT", `table ${t} changed between pass 1 and pass ${p} (${a.records.length} vs ${b.records.length} records): the source is not frozen; nothing was exported`);
+      if (contentHash(b.records) !== contentHash(first[t]) || idHash(b.records) !== idHash(first[t]))
+        throw new ExportError("INCONSISTENT", `table ${t} changed between pass 1 and pass ${p} (${first[t].length} vs ${b.records.length} records): the source is not frozen; nothing was exported`);
       perTable[t].passesCompared = p;
     }
   }

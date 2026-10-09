@@ -7,7 +7,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextRequest } from "next/server";
 import { dbDescribe, createTestDb, customer, staffUser, fxRate, packageRates, pricedItem, type TestDb } from "./helpers";
-import { createInvoice } from "../../src/lib/db/invoices";
+import { createInvoice, recordPayment, cancelInvoice } from "../../src/lib/db/invoices";
 import { user } from "../../src/lib/db/actor";
 import { setPoolForTests } from "../../src/lib/db/client";
 import { describeKeepup, createKeepupGateway, KEEPUP_PRODUCTION_BASE } from "../../src/lib/integrations/keepup-runtime";
@@ -45,7 +45,7 @@ describe("Keepup mode resolution never mistakes a mock or sandbox for live", () 
 
 dbDescribe("Keepup worker CLI against a local stub (sandbox mode)", () => {
   let db: TestDb; let server: http.Server; let base: string; let admin: string;
-  const seen: string[] = []; let mode: "ok" | "500" | "422" = "ok"; let n = 0;
+  const seen: string[] = []; let mode: "ok" | "500" | "422" = "ok"; let n = 0; let saleSeq = 0;   // sale ids are unique across the whole run (a repeated id is correctly refused)
   const SCRIPT = path.join(__dirname, "..", "..", "scripts", "keepup-worker.mjs");
   const cli = (args: string[], env: Record<string, string | undefined>) => new Promise<{ status: number | null; out: string; err: string }>((resolve) => {
     const c = spawn(process.execPath, [SCRIPT, ...args], { env: { PATH: process.env.PATH ?? "", ACTOR_CONTEXT_KEY: process.env.ACTOR_CONTEXT_KEY, ...env } as unknown as NodeJS.ProcessEnv });
@@ -57,7 +57,7 @@ dbDescribe("Keepup worker CLI against a local stub (sandbox mode)", () => {
   beforeAll(async () => {
     db = await createTestDb(); admin = await staffUser(db.admin, "super_admin"); await packageRates(db.admin); await fxRate(db.admin);
     server = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { seen.push(`${req.method} ${req.url} ${b}`);
-      res.setHeader("content-type", "application/json"); if (mode === "500") { res.statusCode = 500; res.end("{}"); } else if (mode === "422") { res.statusCode = 422; res.end('{"error":"bad"}'); } else res.end(JSON.stringify({ data: { sale_id: `STUB-${seen.length}`, share_link: `https://sandbox.keepup.invalid/s/${seen.length}` } })); }); });
+      res.setHeader("content-type", "application/json"); if (mode === "500") { res.statusCode = 500; res.end("{}"); } else if (mode === "422") { res.statusCode = 422; res.end('{"error":"bad"}'); } else res.end(JSON.stringify({ data: { sale_id: `STUB-${++saleSeq}`, share_link: `https://sandbox.keepup.invalid/s/${saleSeq}` } })); }); });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r)); base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v2.0`;
   });
   afterAll(async () => { await new Promise((r) => server.close(r)); await db?.close(); });
@@ -84,6 +84,22 @@ dbDescribe("Keepup worker CLI against a local stub (sandbox mode)", () => {
     expect(r.out + r.err).not.toMatch(/sandbox-test-key|postgres:\/\//);
     const again = await cli(["--once"], sandboxEnv()); expect(JSON.parse(again.out).result).toMatchObject({ claimed: 0, synced: 0 }); expect(seen).toHaveLength(1);
   });
+  it("the same CLI also sends queued payments and sale cancellations (PUT) exactly once, in order, after the sale exists", async () => {
+    const inv = await mkInvoice(); await recordPayment(db.app, { invoiceId: inv.id, amountGhs: "25.00", actor: user(admin), idempotencyKey: `kp-${Date.now()}-p1-abcdefgh` });
+    const r1 = await cli(["--once"], sandboxEnv()); expect(r1.status).toBe(0);
+    expect(JSON.parse(r1.out).result).toMatchObject({ synced: 1, ops: { claimed: 1, applied: 1 } });
+    expect(seen.map((x) => x.split(" ").slice(0, 2).join(" "))).toEqual(["POST /v2.0/sales/add", expect.stringMatching(/^PUT \/v2\.0\/sales\/balance\/STUB-/)]);
+    expect(seen[1]).toContain('"amount_paid":"25"');
+    const p = (await db.admin.query("SELECT id FROM payments WHERE invoice_id = $1", [inv.id])).rows[0].id;
+    const { voidPayment } = await import("../../src/lib/db/invoices");
+    await voidPayment(db.app, { paymentId: p, reason: "customer refund", actor: user(admin) });                               // flagged for manual reversal: blocks the cancel
+    await cancelInvoice(db.app, { invoiceId: inv.id, reason: "test cancel", actor: user(admin), idempotencyKey: `kp-${Date.now()}-c1-abcdefgh` });
+    seen.length = 0; const blocked = await cli(["--once"], sandboxEnv()); expect(JSON.parse(blocked.out).result.ops.claimed).toBe(0); expect(seen).toEqual([]);
+    await db.admin.query("UPDATE keepup_sync SET sync_state = 'cancelled' WHERE invoice_id = $1 AND kind = 'payment'", [inv.id]);   // (a person settled the payment in Keepup)
+    const done = await cli(["--once"], sandboxEnv()); expect(JSON.parse(done.out).result.ops).toMatchObject({ claimed: 1, applied: 1 });
+    expect(seen).toHaveLength(1); expect(seen[0]).toMatch(/^PUT \/v2\.0\/sales\/cancel\/STUB-/);
+    const again = await cli(["--once"], sandboxEnv()); expect(JSON.parse(again.out).result.ops.claimed).toBe(0); expect(seen).toHaveLength(1);
+  });
   it("an ambiguous provider answer (HTTP 500) is NOT retried and lands in reconciliation; a definite rejection (422) is failed with back-off", async () => {
     const a = await mkInvoice(); mode = "500";
     const r = await cli(["--once"], sandboxEnv()); expect(JSON.parse(r.out).result).toMatchObject({ ambiguous: 1, synced: 0 });
@@ -100,48 +116,61 @@ dbDescribe("readiness endpoint (separate from liveness)", () => {
   let db: TestDb;
   const saved: Record<string, string | undefined> = {};
   const set = (o: Record<string, string | undefined>) => { for (const [k, v] of Object.entries(o)) { if (!(k in saved)) saved[k] = process.env[k]; if (v === undefined) delete process.env[k]; else process.env[k] = v; } };
-  const FULL = { MOVEZZ_DATA_BACKEND: "postgres", FIREBASE_PROJECT_ID: "p", FIREBASE_CLIENT_EMAIL: "e@example.invalid", FIREBASE_PRIVATE_KEY: "k", NEXT_PUBLIC_FIREBASE_API_KEY: "a", CLOUDINARY_CLOUD_NAME: "c", CLOUDINARY_API_KEY: "k", CLOUDINARY_API_SECRET: "s", RESEND_API_KEY: "r", EMAIL_FROM: "x@example.invalid", READINESS_TOKEN: "readiness-token-0123456789", MOVEZZ_KEEPUP_MODE: "mock", MOVEZZ_KEEPUP_REQUIRED: undefined, AIRTABLE_API_KEY: undefined, AIRTABLE_BASE_ID: undefined, ACTOR_CONTEXT_KEY: process.env.ACTOR_CONTEXT_KEY };
+  const FULL = { MOVEZZ_DATA_BACKEND: "postgres", FIREBASE_PROJECT_ID: "p", FIREBASE_CLIENT_EMAIL: "e@example.invalid", FIREBASE_PRIVATE_KEY: "k", NEXT_PUBLIC_FIREBASE_API_KEY: "a", CLOUDINARY_CLOUD_NAME: "c", CLOUDINARY_API_KEY: "k", CLOUDINARY_API_SECRET: "s", RESEND_API_KEY: "r", EMAIL_FROM: "x@example.invalid", READINESS_TOKEN: "readiness-token-0123456789-abcdef", MOVEZZ_KEEPUP_MODE: "mock", MOVEZZ_KEEPUP_REQUIRED: undefined, AIRTABLE_API_KEY: undefined, AIRTABLE_BASE_ID: undefined, ACTOR_CONTEXT_KEY: process.env.ACTOR_CONTEXT_KEY };
   const get = (token?: string) => readyGet(new NextRequest("http://localhost/api/ready", { headers: { "x-forwarded-for": `198.51.100.${Math.floor(Math.random() * 200)}`, ...(token ? { authorization: `Bearer ${token}` } : {}) } }));
   beforeAll(async () => { db = await createTestDb(); setPoolForTests(db.app); });
   afterAll(async () => { setPoolForTests(undefined); for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } await db?.close(); });
   beforeEach(() => { resetReadinessCache(); set(FULL); });
 
-  it("Airtable mode: 501, nothing evaluated", async () => { set({ MOVEZZ_DATA_BACKEND: undefined }); const r = await get(); expect(r.status).toBe(501); });
+  it("Airtable mode: 501 with a generic body (it must not reveal which backend is deployed), nothing evaluated", async () => { set({ MOVEZZ_DATA_BACKEND: undefined }); const r = await get(); expect(r.status).toBe(501); expect(await r.json()).toEqual({ success: false, error: "Not available" }); });
   it("a MOCK Keepup is not live: not ready (503) while every database check passes; the report says why", async () => {
     const pub = await get(); expect(pub.status).toBe(503); expect(await pub.json()).toEqual({ ready: false });
-    const det = await (await get("readiness-token-0123456789")).json();
+    const det = await (await get("readiness-token-0123456789-abcdef")).json();
     const by = (n: string) => det.checks.find((c: { name: string }) => c.name === n);
     for (const n of ["backend_is_postgres", "database_reachable", "schema_present", "runtime_role_unprivileged", "actor_signing_key_accepted_by_database", "firebase_configured", "cloudinary_configured", "email_configured"]) expect(by(n).ok, n).toBe(true);
-    expect(by("keepup_live_configured")).toMatchObject({ ok: false, gating: true }); expect(det.keepup).toMatchObject({ mode: "mock", liveCapable: false, required: true });
+    expect(by("keepup_live_configured")).toMatchObject({ ok: false, gating: true }); expect(det.keepup).toMatchObject({ mode: "mock", configuredForLive: false, required: true, waived: false, providerConnectivityVerified: false });
     expect(det.notes.join(" ")).toMatch(/not proven/);
   });
   it("sandbox is not live either; only explicitly consented live configuration is 'configured' (no provider is contacted)", async () => {
     set({ MOVEZZ_KEEPUP_MODE: "sandbox", KEEPUP_API_KEY: "sandbox-key-1234", KEEPUP_BASE_URL: "http://127.0.0.1:9/v2.0" }); expect((await get()).status).toBe(503);
     resetReadinessCache(); set({ MOVEZZ_KEEPUP_MODE: "live", KEEPUP_API_KEY: "live-key-12345678", MOVEZZ_KEEPUP_ALLOW_PRODUCTION: undefined }); expect((await get()).status).toBe(503);
     resetReadinessCache(); set({ MOVEZZ_KEEPUP_ALLOW_PRODUCTION: "true" }); const r = await get(); expect(r.status).toBe(200); expect(await r.json()).toEqual({ ready: true });
-    const det = await (await get("readiness-token-0123456789")).json(); expect(det.keepup).toMatchObject({ mode: "live", liveCapable: true });
+    const det = await (await get("readiness-token-0123456789-abcdef")).json(); expect(det.keepup).toMatchObject({ mode: "live", configuredForLive: true, providerConnectivityVerified: false });
     expect(det.notes.join(" ")).toMatch(/presence only/);
   });
   it("waiving Keepup is explicit (MOVEZZ_KEEPUP_REQUIRED=false) and is reported as such", async () => {
-    set({ MOVEZZ_KEEPUP_REQUIRED: "false" }); const det = await (await get("readiness-token-0123456789")).json();
-    expect(det.ready).toBe(true); expect(det.keepup.required).toBe(false); expect(det.checks.find((c: { name: string }) => c.name === "keepup_live_configured")).toMatchObject({ ok: false, gating: false });
+    set({ MOVEZZ_KEEPUP_REQUIRED: "false" }); const det = await (await get("readiness-token-0123456789-abcdef")).json();
+    expect(det.ready).toBe(true); expect(det.keepup).toMatchObject({ required: false, waived: true, configuredForLive: false }); expect(det.waivers.join(" ")).toMatch(/waived .* not a successful integration/); expect(det.checks.find((c: { name: string }) => c.name === "keepup_live_configured")).toMatchObject({ ok: false, gating: false });
   });
   it("fails closed: wrong actor key, missing provider settings, unreachable database, privileged role", async () => {
-    set({ MOVEZZ_KEEPUP_REQUIRED: "false", ACTOR_CONTEXT_KEY: Buffer.alloc(32, 7).toString("base64") }); let d = await (await get("readiness-token-0123456789")).json();
+    set({ MOVEZZ_KEEPUP_REQUIRED: "false", ACTOR_CONTEXT_KEY: Buffer.alloc(32, 7).toString("base64") }); let d = await (await get("readiness-token-0123456789-abcdef")).json();
     expect(d.ready).toBe(false); expect(d.checks.find((c: { name: string }) => c.name === "actor_signing_key_accepted_by_database").ok).toBe(false);
-    resetReadinessCache(); set({ ACTOR_CONTEXT_KEY: FULL.ACTOR_CONTEXT_KEY, CLOUDINARY_API_SECRET: undefined }); d = await (await get("readiness-token-0123456789")).json(); expect(d.checks.find((c: { name: string }) => c.name === "cloudinary_configured").ok).toBe(false);
+    resetReadinessCache(); set({ ACTOR_CONTEXT_KEY: FULL.ACTOR_CONTEXT_KEY, CLOUDINARY_API_SECRET: undefined }); d = await (await get("readiness-token-0123456789-abcdef")).json(); expect(d.checks.find((c: { name: string }) => c.name === "cloudinary_configured").ok).toBe(false);
     set({ CLOUDINARY_API_SECRET: "s" }); resetReadinessCache();
     const broken = { query: async () => { throw new Error("connect ECONNREFUSED postgres://u:SECRETPW@h/db"); }, connect: async () => { throw new Error("no"); } };
     const rb = await evaluateReadiness({ pool: broken as never }); expect(rb.ready).toBe(false); expect(JSON.stringify(rb)).not.toMatch(/SECRETPW|postgres:\/\//);
     const rs = await evaluateReadiness({ pool: db.admin as never }); expect(rs.checks.find((c) => c.name === "runtime_role_unprivileged")?.ok).toBe(false);   // the superuser pool is not an acceptable runtime role
   });
+  it("the detailed report shows the Keepup queue as counts (so a stalled worker or unresolved rows are visible); it never decides ready and anonymous callers never see it", async () => {
+    set({ MOVEZZ_KEEPUP_REQUIRED: "false" });
+    const empty = await (await get("readiness-token-0123456789-abcdef")).json(); expect(empty.backlog).toEqual({ pending: 0, creating: 0, failed: 0, failedExhausted: 0, needsReconciliation: 0, oldestDueSeconds: null });
+    const adminId = await staffUser(db.admin, "super_admin"); await packageRates(db.admin); await fxRate(db.admin);
+    const c = await customer(db.admin); const i = await pricedItem(db.admin, c, "50.00");
+    const { invoice } = await createInvoice(db.app, { customerId: c, itemIds: [i], actor: user(adminId), idempotencyKey: `rd-${Date.now()}-abcdefgh` });
+    await db.admin.query("UPDATE keepup_sync SET created_at = now() - interval '20 minutes' WHERE invoice_id = $1", [invoice.id]);
+    resetReadinessCache(); const stalled = await (await get("readiness-token-0123456789-abcdef")).json();
+    expect(stalled.backlog).toMatchObject({ pending: 1, needsReconciliation: 0 }); expect(stalled.backlog.oldestDueSeconds).toBeGreaterThanOrEqual(1200); expect(stalled.ready).toBe(true);
+    await db.admin.query("UPDATE keepup_sync SET sync_state = 'needs_reconciliation' WHERE invoice_id = $1", [invoice.id]);
+    resetReadinessCache(); expect((await (await get("readiness-token-0123456789-abcdef")).json()).backlog).toMatchObject({ pending: 0, needsReconciliation: 1 });
+    resetReadinessCache(); expect(Object.keys(await (await get()).json())).toEqual(["ready"]);
+  });
   it("anonymous and wrong-token callers get only {ready}; the detailed report never contains secrets, hosts or connection strings", async () => {
     set({ MOVEZZ_KEEPUP_REQUIRED: "false", DATABASE_URL: "postgres://movezz_app:SECRETPW@127.0.0.1/x", KEEPUP_API_KEY: "SECRETKEYVALUE1" });
     expect(Object.keys(await (await get("wrong-token-wrong-token")).json())).toEqual(["ready"]);
     expect(Object.keys(await (await get()).json())).toEqual(["ready"]);
-    set({ READINESS_TOKEN: "short" }); expect(Object.keys(await (await get("short")).json())).toEqual(["ready"]);       // a short token is never accepted
-    set({ READINESS_TOKEN: "readiness-token-0123456789" });
-    const text = JSON.stringify(await (await get("readiness-token-0123456789")).json());
+    set({ READINESS_TOKEN: "readiness-token-0123456789" }); expect(Object.keys(await (await get("readiness-token-0123456789")).json())).toEqual(["ready"]);   // 26 chars: below the 32-char minimum, never accepted
+    set({ READINESS_TOKEN: "readiness-token-0123456789-abcdef" });
+    const text = JSON.stringify(await (await get("readiness-token-0123456789-abcdef")).json());
     expect(text).not.toMatch(/SECRETPW|SECRETKEYVALUE|postgres:\/\/|127\.0\.0\.1|readiness-token|FIREBASE_PRIVATE|api_key/i);
   });
 });

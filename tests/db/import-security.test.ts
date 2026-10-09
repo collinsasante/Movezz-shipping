@@ -269,7 +269,7 @@ dbDescribe("migration 0016 (PostgreSQL)", () => {
       await migrate(bare.url, { dir });
       await customer(bare.admin);
       const before = (await bare.admin.query("SELECT (SELECT count(*) FROM customers) AS c, (SELECT count(*) FROM audit_logs) AS a")).rows[0];
-      expect((await migrate(bare.url)).applied).toEqual(["0016_import_framework.sql", "0017_quarantine_resolution.sql", "0018_photo_rehost_log.sql"]);
+      expect((await migrate(bare.url)).applied).toEqual(["0016_import_framework.sql", "0017_quarantine_resolution.sql", "0018_photo_rehost_log.sql", "0019_keepup_propagation.sql"]);
       expect((await bare.admin.query("SELECT (SELECT count(*) FROM customers) AS c, (SELECT count(*) FROM audit_logs) AS a")).rows[0]).toEqual(before);
       for (const t of ["import_batches", "import_records", "import_quarantine"]) expect(Number((await bare.admin.query(`SELECT count(*) AS n FROM ${t}`)).rows[0].n)).toBe(0);
       expect((await migrate(bare.url)).applied).toEqual([]);

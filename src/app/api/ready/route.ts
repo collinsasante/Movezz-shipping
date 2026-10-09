@@ -7,7 +7,7 @@ import { checkRateLimit, getClientIp, rateLimitedResponse } from "@/lib/rate-lim
 
 export async function GET(request: NextRequest) {
   let postgres = false; try { postgres = isPostgresBackend(); } catch { /* invalid value -> not ready below */ }
-  if (!postgres) return Response.json({ success: false, error: "Readiness checks apply to the PostgreSQL backend" }, { status: 501, headers: { "Cache-Control": "no-store" } });
+  if (!postgres) return Response.json({ success: false, error: "Not available" }, { status: 501, headers: { "Cache-Control": "no-store" } });
   if (!checkRateLimit(`ready:${getClientIp(request)}`, 60, 60_000)) return rateLimitedResponse(60);
   try {
     const r = await evaluateReadiness();

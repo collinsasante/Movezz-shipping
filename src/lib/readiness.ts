@@ -12,7 +12,15 @@ import { actorKeyFromEnv, withActorTransaction } from "./db/actor";
 import { describeKeepup } from "./integrations/keepup-runtime";
 
 export interface ReadinessCheck { name: string; ok: boolean; gating: boolean; detail?: string }
-export interface ReadinessReport { ready: boolean; checks: ReadinessCheck[]; keepup: { mode: string; configured: boolean; liveCapable: boolean; required: boolean }; notes: string[] }
+export interface KeepupBacklog { pending: number; creating: number; failed: number; failedExhausted: number; needsReconciliation: number; oldestDueSeconds: number | null }
+export interface ReadinessReport {
+  ready: boolean; checks: ReadinessCheck[]; waivers: string[];
+  /** Keepup work queue, counts only (no ids, no customer data). `null` when it could not be read. Informational: it does not decide `ready`. */
+  backlog: KeepupBacklog | null;
+  /** `configuredForLive` = settings say live; `providerConnectivityVerified` is ALWAYS false: no provider is contacted by a readiness check. */
+  keepup: { mode: string; configured: boolean; configuredForLive: boolean; required: boolean; waived: boolean; providerConnectivityVerified: false }; notes: string[]
+}
+export const READINESS_TOKEN_MIN = 32;
 
 const NOTES = [
   "Worker-to-PostgreSQL connectivity from the deployed Cloudflare bundle is not proven by this check; it needs deployed staging evidence.",
@@ -32,7 +40,7 @@ export async function evaluateReadiness(opts: { pool?: Pool; ttlMs?: number } = 
 
   let postgres = false; try { postgres = isPostgresBackend(); } catch { /* invalid value */ }
   add("backend_is_postgres", postgres, true, postgres ? undefined : "MOVEZZ_DATA_BACKEND is not postgres");
-  let pool: Pool | null = null;
+  let pool: Pool | null = null; let backlog: KeepupBacklog | null = null;
   if (postgres) { try { pool = opts.pool ?? getPool(); } catch { add("database_configured", false, true, "no database connection is configured"); } }
   if (pool) {
     try {
@@ -47,7 +55,17 @@ export async function evaluateReadiness(opts: { pool?: Pool; ttlMs?: number } = 
       add("runtime_role_unprivileged", info.unprivileged === true, true, info.unprivileged === true ? undefined : "the application role has elevated privileges");
       try {
         actorKeyFromEnv();
-        await timeout(withActorTransaction(pool, { type: "system", requestId: "readiness" }, async (tx) => { await tx.query("SELECT 1"); }), 4000);
+        await timeout(withActorTransaction(pool, { type: "integration", requestId: "readiness" }, async (tx) => {
+          await tx.query("SELECT 1");
+          try {   // counts only; a failure here must not hide the signing-key result
+            const b = (await tx.query(`SELECT count(*) FILTER (WHERE sync_state = 'pending')::int AS pending, count(*) FILTER (WHERE sync_state = 'creating')::int AS creating,
+                count(*) FILTER (WHERE sync_state = 'failed')::int AS failed, count(*) FILTER (WHERE sync_state = 'failed' AND next_retry_at IS NULL)::int AS failed_exhausted,
+                count(*) FILTER (WHERE sync_state = 'needs_reconciliation')::int AS needs_reconciliation,
+                floor(max(extract(epoch FROM now() - coalesce(next_retry_at, created_at))) FILTER (WHERE sync_state IN ('pending','failed') AND coalesce(next_retry_at, created_at) <= now()))::int AS oldest_due
+              FROM keepup_sync`)).rows[0];
+            backlog = { pending: b.pending, creating: b.creating, failed: b.failed, failedExhausted: b.failed_exhausted, needsReconciliation: b.needs_reconciliation, oldestDueSeconds: b.oldest_due ?? null };
+          } catch { backlog = null; }
+        }), 4000);
         add("actor_signing_key_accepted_by_database", true);
       } catch { add("actor_signing_key_accepted_by_database", false, true, "ACTOR_CONTEXT_KEY is missing, malformed, or not registered in this database"); }
     } catch (e) { add("database_reachable", false, true, (e as Error).message === "timeout" ? "no answer within 3 s" : "the database query failed"); }
@@ -61,15 +79,16 @@ export async function evaluateReadiness(opts: { pool?: Pool; ttlMs?: number } = 
   add("keepup_live_configured", k.liveCapable, required, k.liveCapable ? undefined : `keepup mode is ${k.mode}${k.problems.length ? " (misconfigured)" : ""}; only mode=live counts`);
   add("airtable_credentials_absent", !present("AIRTABLE_API_KEY") && !present("AIRTABLE_BASE_ID"), false, "informational until cutover; required for Airtable independence");
 
-  const report: ReadinessReport = { ready: checks.filter((c) => c.gating).every((c) => c.ok), checks, keepup: { mode: k.mode, configured: k.configured, liveCapable: k.liveCapable, required }, notes: NOTES };
+  const waivers = required ? [] : ["keepup: synchronisation waived by MOVEZZ_KEEPUP_REQUIRED=false (an explicit owner decision, not a successful integration)"];
+  const report: ReadinessReport = { ready: checks.filter((c) => c.gating).every((c) => c.ok), checks, waivers, backlog, keepup: { mode: k.mode, configured: k.configured, configuredForLive: k.liveCapable, required, waived: !required, providerConnectivityVerified: false }, notes: NOTES };
   if (!opts.pool) cache = { at: Date.now(), report };
   return report;
 }
 
-/** Constant-time comparison of the presented bearer token with READINESS_TOKEN (>= 16 chars). */
+/** Constant-time comparison of the presented bearer token with READINESS_TOKEN (at least READINESS_TOKEN_MIN characters; shorter configured tokens are never accepted). */
 export function readinessTokenOk(authorization: string | null): boolean {
   const expected = readEnv("READINESS_TOKEN") ?? "";
-  if (expected.length < 16 || !authorization?.startsWith("Bearer ")) return false;
+  if (expected.length < READINESS_TOKEN_MIN || !authorization?.startsWith("Bearer ")) return false;
   const given = authorization.slice(7); let diff = given.length ^ expected.length;
   for (let i = 0; i < expected.length; i++) diff |= (given.charCodeAt(i) || 0) ^ expected.charCodeAt(i);
   return diff === 0;

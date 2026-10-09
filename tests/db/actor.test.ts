@@ -262,6 +262,7 @@ dbDescribe("trusted actor context (PostgreSQL)", () => {
         "submit_registration", "approve_registration", "reject_registration", "activate_registration",
         // Phase 7H operational functions: each checks the verified actor itself (service identity or super_admin)
         "keepup_claim", "keepup_complete", "keepup_fail", "keepup_ambiguous", "keepup_reap_expired", "keepup_resolve", "keepup_manual_retry",
+        "keepup_op_claim", "keepup_op_complete", "keepup_op_fail", "keepup_op_ambiguous", "keepup_op_resolve", "keepup_op_manual_retry",
         "outbox_claim", "outbox_complete", "outbox_fail", "outbox_reap_expired", "outbox_requeue_dead"]);
       const refAlloc = new Set(["allocate_reference", "allocate_container_reference"]); // intentionally runtime-callable (reference numbers; no actor, no data read)
       for (const f of fns) {

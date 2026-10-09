@@ -42,7 +42,7 @@ PASS (local / local browser): staff navigation, invoice discount UI, Keepup stat
 BLOCKED: real-export rehearsal (needs an export + staging PostgreSQL), Cloudflare staging test of the deployed bundle (`docs/CLOUDFLARE-STAGING.md`), production secrets/encrypted backups (`docs/SECRETS-AND-BACKUPS.md`), historical-data decision (owner only).
 
 ## 4. BEFORE CUTOVER
-- [x] VL: migrations 0001–0018 (0018: photo re-host log), photo re-host tool, importer, reconciliation, rehearsal 1x–10x, backup/restore, identity chain, mock workers, quarantine resolution, production key validation
+- [x] VL: migrations 0001–0019 (0018: photo re-host log; 0019: Keepup payment/cancel propagation), photo re-host tool, importer, reconciliation, rehearsal 1x–10x, backup/restore, identity chain, mock workers, quarantine resolution, production key validation
 - [ ] Port the REQUIRED routes (§3) and re-run the characterization suite against PostgreSQL
 - [ ] BDR: verified financial/payment source (B1) or approval of the "orders stay archived" option
 - [ ] BDR: how ownership of each customer is verified before a login is linked (§5)

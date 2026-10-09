@@ -35,6 +35,7 @@ try {
   if (status.mode === "disabled") throw new Error(`Keepup is disabled or misconfigured${status.problems.length ? `: ${status.problems.join("; ")}` : " (set MOVEZZ_KEEPUP_MODE=sandbox)"}`);
   if (status.mode === "mock" && !args.includes("--allow-mock")) throw new Error("mock mode needs --allow-mock (a mock never talks to Keepup)");
   const gateway = w.createKeepupGateway(env);
+  if (gateway.kind === "http-production" || !gateway.kind) throw new Error(`refusing to run with a ${gateway.kind ?? "unidentified"} gateway (checked at execution time, independent of the arguments)`);
   pool = new pg.Pool({ connectionString: url, max: 2 }); pool.on("error", () => {});
   const result = await w.runKeepupWorkerOnce(pool, { gateway, owner: opt("--owner") ?? "keepup-cli-1", batch: 5, leaseSeconds: 120, callTimeoutMs: 20_000 });
   console.log(JSON.stringify({ mode: status.mode, gateway: gateway.kind ?? "unknown", result }));
